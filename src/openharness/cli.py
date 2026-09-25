@@ -1751,60 +1751,73 @@ def _login_provider(provider: str) -> None:
 
 @app.command("setup")
 def setup_cmd(
-    profile: str | None = typer.Argument(None, help="Provider profile name to configure"),
+    profile: str | None = typer.Argument(None, help="Provider profile name to validate"),
 ) -> None:
-    """Unified setup flow: choose workflow, authenticate if needed, then set the model."""
-    from openharness.auth.manager import AuthManager
-    from openharness.config.settings import display_model_setting
+    """Validate model configuration from settings.json (non-interactive).
 
-    manager = AuthManager()
-    statuses = manager.get_profile_statuses()
-    if not statuses:
-        print("No provider profiles available.", file=sys.stderr)
-        raise typer.Exit(1)
+    Model/provider settings are configured by editing ~/.openharness/settings.json
+    or via environment variables (OPENHARNESS_MODEL, OPENHARNESS_BASE_URL,
+    OPENHARNESS_PROVIDER, OPENHARNESS_API_FORMAT, plus the provider's API key).
+    This command only reads and validates; it never prompts interactively.
+    """
+    from openharness.api.provider import auth_status, detect_provider
+    from openharness.config import get_config_file_path, load_settings
 
-    target = profile
-    if target is None:
-        target = _select_setup_workflow(
-            statuses,
-            default_value=manager.get_active_profile(),
+    settings = load_settings()
+    available = settings.merged_profiles()
+    if profile is not None:
+        if profile not in available:
+            print(f"Unknown provider profile: {profile!r}", file=sys.stderr)
+            print(f"Available profiles: {', '.join(sorted(available))}", file=sys.stderr)
+            raise typer.Exit(1)
+        settings = settings.model_copy(update={"active_profile": profile}).materialize_active_profile()
+
+    profile_name, profile_obj = settings.resolve_profile()
+    provider = detect_provider(settings)
+    auth = auth_status(settings)
+
+    print("OpenHarness Setup (non-interactive)")
+    print()
+    print("Resolved model configuration")
+    print(f"  config file:    {get_config_file_path()}")
+    print(f"  profile:        {profile_name} ({profile_obj.label})")
+    print(f"  provider:       {provider.name}")
+    print(f"  api_format:     {settings.api_format}")
+    print(f"  model:          {settings.model}")
+    print(f"  base_url:       {settings.base_url or '(default)'}")
+    print(f"  auth:           {auth}")
+    print()
+
+    if auth.startswith("missing"):
+        print("Status: NOT READY")
+        print()
+        print("Configure non-interactively by editing settings.json, e.g.:")
+        print(
+            "\n".join(
+                [
+                    "  {",
+                    '    "active_profile": "openai-compatible",',
+                    '    "profiles": {',
+                    '      "openai-compatible": {',
+                    '        "label": "DeepSeek",',
+                    '        "provider": "openai",',
+                    '        "api_format": "openai",',
+                    '        "auth_source": "openai_api_key",',
+                    '        "default_model": "deepseek-chat",',
+                    '        "base_url": "https://api.deepseek.com/v1"',
+                    "      }",
+                    "    }",
+                    "  }",
+                ]
+            )
         )
-
-    target = _specialize_setup_target(manager, target)
-    manager = AuthManager()
-    statuses = manager.get_profile_statuses()
-
-    if target not in statuses:
-        print(f"Unknown provider profile: {target!r}", file=sys.stderr)
+        print()
+        print("Then set the API key via environment (e.g. export OPENAI_API_KEY=...)")
+        print("or store it with `oh auth login`.")
         raise typer.Exit(1)
 
-    info = statuses[target]
-    if not info["configured"]:
-        source_label = _AUTH_SOURCE_LABELS.get(info["auth_source"], info["auth_source"])
-        print(f"{info['label']} requires {source_label}.", flush=True)
-        _ensure_profile_auth(manager, target)
-        manager = AuthManager()
-    else:
-        if _maybe_update_profile_auth(manager, target):
-            manager = AuthManager()
-
-    profile_obj = manager.list_profiles()[target]
-    model_setting = _prompt_model_for_profile(profile_obj)
-    if model_setting.lower() == "default":
-        manager.update_profile(target, last_model="")
-    else:
-        manager.update_profile(target, last_model=model_setting)
-    manager.use_profile(target)
-
-    updated = manager.list_profiles()[target]
-    print(
-        "Setup complete:\n"
-        f"- profile: {target}\n"
-        f"- provider: {updated.provider}\n"
-        f"- auth_source: {updated.auth_source}\n"
-        f"- model: {display_model_setting(updated)}",
-        flush=True,
-    )
+    print("Status: READY")
+    print("Run `oh` for an interactive session, or `oh -p \"...\"` for a single prompt.")
 
 
 @auth_app.command("login")

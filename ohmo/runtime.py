@@ -12,7 +12,7 @@ from openharness.api.client import SupportsStreamingMessages
 from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete, CompactProgressEvent, ErrorEvent, StatusEvent
 from openharness.ui.backend_host import run_backend_host
 from openharness.ui.runtime import build_runtime, close_runtime, handle_line, start_runtime
-from openharness.ui.react_launcher import _resolve_npm, _resolve_tsx, get_frontend_dir
+from openharness.ui.react_launcher import _resolve_branding, _resolve_npm, _resolve_tsx, get_frontend_dir
 
 from ohmo.memory import create_memory_command_backend
 from ohmo.prompts import build_ohmo_system_prompt
@@ -129,6 +129,7 @@ async def launch_ohmo_react_tui(
             ),
             "initial_prompt": None,
             "theme": "default",
+            "branding": _resolve_branding(),
         }
     )
     tsx_cmd = _resolve_tsx(frontend_dir)

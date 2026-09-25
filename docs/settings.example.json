@@ -1,0 +1,17 @@
+{
+  "active_profile": "openai-compatible",
+  "branding": {
+    "product_name": "ABC Tech",
+    "slogan": "企业级AI助手"
+  },
+  "profiles": {
+    "openai-compatible": {
+      "label": "DeepSeek",
+      "provider": "openai",
+      "api_format": "openai",
+      "auth_source": "openai_api_key",
+      "default_model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com/v1"
+    }
+  }
+}

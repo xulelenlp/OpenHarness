@@ -73,6 +73,8 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 	const [selectModal, setSelectModal] = useState<SelectModalState>(null);
 	const [selectIndex, setSelectIndex] = useState(0);
 	const session = useBackendSession(config, () => exit());
+	const productName = config.branding?.product_name;
+	const slogan = config.branding?.slogan;
 	const deferredTranscript = useDeferredValue(session.transcript);
 	const deferredAssistantBuffer = useDeferredValue(session.assistantBuffer);
 	const deferredStatus = useDeferredValue(session.status);
@@ -509,6 +511,8 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 					assistantBuffer={deferredAssistantBuffer}
 					showWelcome={session.ready && outputStyle !== 'codex'}
 					outputStyle={outputStyle}
+					productName={productName}
+					slogan={slogan}
 				/>
 			</Box>
 

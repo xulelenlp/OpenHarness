@@ -563,6 +563,28 @@ class VisionModelConfig(BaseModel):
         return bool(self.model and self.api_key)
 
 
+class BrandingSettings(BaseModel):
+    """Product branding shown in the interactive welcome screen.
+
+    ``product_name`` replaces the default ASCII logo with a plain-text
+    product title; ``slogan`` is rendered as a dim subtitle underneath it.
+    Both may be set via ``settings.json`` under the ``branding`` key or via
+    the ``OPENHARNESS_PRODUCT_NAME`` / ``OPENHARNESS_SLOGAN`` environment
+    variables (env vars take precedence at load time).
+    """
+
+    product_name: str = "ABC Tech"
+    slogan: str = "An AI-powered coding assistant"
+
+    @classmethod
+    def from_env(cls) -> "BrandingSettings":
+        """Load branding overrides from environment variables."""
+        return cls(
+            product_name=os.environ.get("OPENHARNESS_PRODUCT_NAME", "").strip() or "ABC Tech",
+            slogan=os.environ.get("OPENHARNESS_SLOGAN", "").strip() or "An AI-powered coding assistant",
+        )
+
+
 class Settings(BaseModel):
     """Main settings model for OpenHarness."""
 
@@ -598,6 +620,7 @@ class Settings(BaseModel):
     # UI
     theme: str = "default"
     output_style: str = "default"
+    branding: BrandingSettings = Field(default_factory=BrandingSettings)
     vim_mode: bool = False
     voice_mode: bool = False
     fast_mode: bool = False
@@ -1033,6 +1056,17 @@ def _apply_env_overrides(settings: Settings) -> Settings:
         ]
     if web_updates:
         updates["web"] = settings.web.model_copy(update=web_updates)
+
+    # --- branding (product name / slogan for the welcome screen) ---
+    branding_updates: dict[str, Any] = {}
+    product_name = os.environ.get("OPENHARNESS_PRODUCT_NAME")
+    if product_name and product_name.strip():
+        branding_updates["product_name"] = strip_ansi_escape_sequences(product_name).strip()
+    slogan = os.environ.get("OPENHARNESS_SLOGAN")
+    if slogan and slogan.strip():
+        branding_updates["slogan"] = strip_ansi_escape_sequences(slogan).strip()
+    if branding_updates:
+        updates["branding"] = settings.branding.model_copy(update=branding_updates)
 
     if not updates:
         return settings

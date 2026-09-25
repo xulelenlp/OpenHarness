@@ -3,32 +3,26 @@ import {Box, Text} from 'ink';
 
 import {useTheme} from '../theme/ThemeContext.js';
 
-const VERSION = '0.1.0';
+const DEFAULT_PRODUCT_NAME = 'ABC Tech';
+const DEFAULT_SLOGAN = 'An AI-powered coding assistant';
 
-// prettier-ignore
-const LOGO = [
-	' ██████╗ ██╗  ██╗    ███╗   ███╗██╗   ██╗    ██╗  ██╗ █████╗ ██████╗ ███╗   ██╗███████╗███████╗███████╗██╗',
-	'██╔═══██╗██║  ██║    ████╗ ████║╚██╗ ██╔╝    ██║  ██║██╔══██╗██╔══██╗████╗  ██║██╔════╝██╔════╝██╔════╝██║',
-	'██║   ██║███████║    ██╔████╔██║ ╚████╔╝     ███████║███████║██████╔╝██╔██╗ ██║█████╗  ███████╗███████╗██║',
-	'██║   ██║██╔══██║    ██║╚██╔╝██║  ╚██╔╝      ██╔══██║██╔══██║██╔══██╗██║╚██╗██║██╔══╝  ╚════██║╚════██║╚═╝',
-	'╚██████╔╝██║  ██║    ██║ ╚═╝ ██║   ██║       ██║  ██║██║  ██║██║  ██║██║ ╚████║███████╗███████║███████║██╗',
-	' ╚═════╝ ╚═╝  ╚═╝    ╚═╝     ╚═╝   ╚═╝       ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚══════╝╚═╝',
-];
-
-export function WelcomeBanner(): React.JSX.Element {
+export function WelcomeBanner({
+	productName,
+	slogan,
+}: {
+	productName?: string;
+	slogan?: string;
+}): React.JSX.Element {
 	const {theme} = useTheme();
+	const name = (productName ?? '').trim() || DEFAULT_PRODUCT_NAME;
+	const tagline = (slogan ?? '').trim() || DEFAULT_SLOGAN;
 
 	return (
 		<Box flexDirection="column" marginBottom={1}>
 			<Box flexDirection="column" paddingX={0}>
-				{LOGO.map((line, i) => (
-					<Text key={i} color={theme.colors.primary} bold>{line}</Text>
-				))}
+				<Text color={theme.colors.primary} bold>{name}</Text>
 				<Text> </Text>
-				<Text>
-					<Text dimColor> An AI-powered coding assistant</Text>
-					<Text dimColor>{'  '}v{VERSION}</Text>
-				</Text>
+				<Text dimColor> {tagline}</Text>
 				<Text> </Text>
 				<Text>
 					<Text dimColor> </Text>

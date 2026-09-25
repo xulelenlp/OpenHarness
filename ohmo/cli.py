@@ -527,43 +527,63 @@ def main(
 def init_cmd(
     cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="Project working directory (reserved for future project overrides)"),
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
-    interactive: bool = typer.Option(
-        True,
-        "--interactive/--no-interactive",
-        help="Run the provider/channel setup wizard when attached to a terminal",
-    ),
 ) -> None:
-    """Initialize the .ohmo workspace."""
+    """Initialize the .ohmo workspace (non-interactive)."""
     root_path = get_workspace_root(workspace)
     already_exists = root_path.exists()
     root = initialize_workspace(root_path)
     print(f"Initialized ohmo workspace at {root}")
     if already_exists:
         print("ohmo workspace already exists.")
-        if not interactive:
-            print("Use `ohmo config` to update provider and channel settings.")
-            return
-        if not _confirm_prompt("Open configuration now?", default=True):
-            print("Use `ohmo config` when you want to change provider or channel settings.")
-            return
-    if interactive:
-        config = _run_gateway_config_wizard(root)
-        _print_gateway_config_summary(config)
-        print(f"Saved gateway config to {get_gateway_config_path(root)}")
+    print("Configure the provider and channels non-interactively with `ohmo config`, or edit .ohmo/gateway.json directly.")
 
 
 @app.command("config")
 def config_cmd(
     cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="Project working directory"),
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    provider_profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="Set the ohmo provider profile (non-interactive; omit to only inspect)",
+    ),
 ) -> None:
-    """Configure provider profile and gateway channels."""
+    """Show or update ohmo provider/gateway configuration (non-interactive).
+
+    The provider profile and channels are stored in ``.ohmo/gateway.json``.
+    Edit that file directly, or pass ``--profile`` to switch the provider
+    profile. This command never prompts interactively.
+    """
     cwd_path = str(Path(cwd).resolve())
     workspace_root = initialize_workspace(workspace)
-    config = _run_gateway_config_wizard(workspace_root)
+    config = load_gateway_config(workspace_root)
+
+    if provider_profile is not None:
+        config = config.model_copy(update={"provider_profile": provider_profile})
+        save_gateway_config(config, workspace_root)
+
+    settings = load_settings()
+    statuses = AuthManager(settings).get_profile_statuses()
+    profile_info = statuses.get(config.provider_profile)
+
+    print("ohmo config (non-interactive)")
+    print(f"  workspace:        {workspace_root}")
+    print(f"  gateway_config:   {get_gateway_config_path(workspace_root)}")
+    print(f"  provider_profile: {config.provider_profile}")
+    if profile_info is None:
+        print("    -> WARNING: profile not found in OpenHarness settings")
+    else:
+        state = "configured" if profile_info["configured"] else "missing auth"
+        print(f"    -> {profile_info['label']} ({state})")
+    print(f"  permission_mode:  {config.permission_mode}")
+
+    if provider_profile is not None:
+        print(f"Saved provider_profile={config.provider_profile}.")
+        state = gateway_status(cwd_path, workspace_root)
+        if state.running:
+            print("ohmo gateway is running. Restart to apply changes with `ohmo gateway restart`.")
+
     _print_gateway_config_summary(config)
-    print(f"Saved gateway config to {get_gateway_config_path(workspace_root)}")
-    _maybe_restart_gateway(cwd=cwd_path, workspace=workspace_root)
 
 
 @app.command("doctor")

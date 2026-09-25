@@ -32,11 +32,15 @@ function ConversationViewInner({
 	assistantBuffer,
 	showWelcome,
 	outputStyle,
+	productName,
+	slogan,
 }: {
 	items: TranscriptItem[];
 	assistantBuffer: string;
 	showWelcome: boolean;
 	outputStyle: string;
+	productName?: string;
+	slogan?: string;
 }): React.JSX.Element {
 	const {theme} = useTheme();
 	const isCodexStyle = outputStyle === 'codex';
@@ -45,7 +49,9 @@ function ConversationViewInner({
 
 	return (
 		<Box flexDirection="column" flexGrow={1}>
-			{showWelcome && items.length === 0 ? <WelcomeBanner /> : null}
+			{showWelcome && items.length === 0 ? (
+				<WelcomeBanner productName={productName} slogan={slogan} />
+			) : null}
 
 			{grouped.map((group, index) => {
 				if (Array.isArray(group)) {

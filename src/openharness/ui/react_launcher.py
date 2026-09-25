@@ -19,6 +19,19 @@ def _resolve_theme() -> str:
         return "default"
 
 
+def _resolve_branding() -> dict[str, str]:
+    """Read product branding (name + slogan) from settings."""
+    try:
+        from openharness.config.settings import load_settings
+        branding = load_settings().branding
+        return {
+            "product_name": branding.product_name or "ABC Tech",
+            "slogan": branding.slogan or "An AI-powered coding assistant",
+        }
+    except Exception:
+        return {"product_name": "ABC Tech", "slogan": "An AI-powered coding assistant"}
+
+
 def _resolve_npm() -> str:
     """Resolve the npm executable (npm.cmd on Windows)."""
     return shutil.which("npm") or "npm"
@@ -161,6 +174,7 @@ async def launch_react_tui(
             ),
             "initial_prompt": prompt,
             "theme": _resolve_theme(),
+            "branding": _resolve_branding(),
         }
     )
     tsx_cmd = _resolve_tsx(frontend_dir)
