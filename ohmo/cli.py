@@ -36,8 +36,8 @@ from ohmo.workspace import (
 
 
 app = typer.Typer(
-    name="ohmo",
-    help="ohmo: a personal-agent app built on top of OpenHarness.",
+    name="abcag",
+    help="abcag: the ABC personal-agent app built on OpenHarness.",
     invoke_without_command=True,
     add_completion=False,
 )
@@ -535,7 +535,7 @@ def init_cmd(
     print(f"Initialized ohmo workspace at {root}")
     if already_exists:
         print("ohmo workspace already exists.")
-    print("Configure the provider and channels non-interactively with `ohmo config`, or edit .ohmo/gateway.json directly.")
+    print("Configure the provider and channels non-interactively with `abcag config`, or edit .ohmo/gateway.json directly.")
 
 
 @app.command("config")
@@ -566,7 +566,7 @@ def config_cmd(
     statuses = AuthManager(settings).get_profile_statuses()
     profile_info = statuses.get(config.provider_profile)
 
-    print("ohmo config (non-interactive)")
+    print("abcag config (non-interactive)")
     print(f"  workspace:        {workspace_root}")
     print(f"  gateway_config:   {get_gateway_config_path(workspace_root)}")
     print(f"  provider_profile: {config.provider_profile}")

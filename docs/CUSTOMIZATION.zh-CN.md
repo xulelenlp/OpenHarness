@@ -34,7 +34,7 @@
 }
 ```
 
-> 安全建议：API key 不要写进 `settings.json`，而是通过环境变量（如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`，或各 provider 专属变量）注入，或使用 `oh auth login` 存入 `~/.openharness/credentials.json`（`chmod 600`）。
+> 安全建议：API key 不要写进 `settings.json`，而是通过环境变量（如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`，或各 provider 专属变量）注入，或使用 `abc auth login` 存入 `~/.openharness/credentials.json`（`chmod 600`）。
 
 ### 1.3 环境变量
 
@@ -51,18 +51,18 @@
 ### 1.4 非交互校验命令
 
 ```bash
-oh setup                 # 读取并校验当前配置（不再问答）
-oh setup <profile>       # 校验指定 profile
+abc setup                 # 读取并校验当前配置（不再问答）
+abc setup <profile>       # 校验指定 profile
 ```
 
-`oh setup` 会打印 `Resolved model configuration` 与 `Status: READY / NOT READY`，未就绪时给出配置文件示例与下一步提示。
+`abc setup` 会打印 `Resolved model configuration` 与 `Status: READY / NOT READY`，未就绪时给出配置文件示例与下一步提示。
 
-`ohmo` 侧同理：
+`abcag` 侧同理：
 
 ```bash
-ohmo config                    # 查看 ohmo provider/gateway 配置（不再问答）
-ohmo config --profile <name>   # 非交互切换 provider profile
-ohmo init                      # 初始化 workspace（不再触发向导）
+abcag config                    # 查看 abcag provider/gateway 配置（不再问答）
+abcag config --profile <name>   # 非交互切换 provider profile
+abcag init                      # 初始化 workspace（不再触发向导）
 ```
 
 ---
@@ -94,7 +94,7 @@ export OPENHARNESS_PRODUCT_NAME="ABC Tech"
 export OPENHARNESS_SLOGAN="企业级编码助手"
 ```
 
-`oh` 与 `ohmo` 的交互式启动画面都会读取同一份 branding 配置。
+`abc` 与 `abcag` 的交互式启动画面都会读取同一份 branding 配置。
 
 ---
 
@@ -107,7 +107,7 @@ export OPENHARNESS_SLOGAN="企业级编码助手"
 | `src/openharness/config/settings.py` | 新增 `BrandingSettings`（`product_name` / `slogan`）与 `Settings.branding` 字段；`_apply_env_overrides` 支持 `OPENHARNESS_PRODUCT_NAME` / `OPENHARNESS_SLOGAN` |
 | `src/openharness/ui/react_launcher.py` | 新增 `_resolve_branding()`，将 branding 写入 `OPENHARNESS_FRONTEND_CONFIG` |
 | `src/openharness/cli.py` | `setup_cmd` 改为非交互：读配置 + 校验 + 打印，不再问答 |
-| `ohmo/runtime.py` | `launch_ohmo_react_tui` 传递 branding |
+| `ohmo/runtime.py` | `launch_abcag_react_tui` 传递 branding |
 | `ohmo/cli.py` | `config_cmd` / `init_cmd` 改为非交互 |
 
 ### 前端（TypeScript / React）
@@ -125,13 +125,13 @@ export OPENHARNESS_SLOGAN="企业级编码助手"
 
 ```bash
 # 后端（需在已安装 openharness 的环境，如 conda env `openharness`）
-oh setup                          # 非交互校验
-oh --dry-run -p "hello"           # 确认 dry-run 未受影响
-ohmo config                       # 非交互查看
+abc setup                          # 非交互校验
+abc --dry-run -p "hello"           # 确认 dry-run 未受影响
+abcag config                       # 非交互查看
 
 # 前端类型检查
 cd frontend/terminal
 npx tsc --noEmit
 ```
 
-> 前端改动后，交互式 `oh` 会自动 `npm install` 并以 `tsx` 启动，无需重新构建；若已手动构建过，请重新 `npm run build`。
+> 前端改动后，交互式 `abc` 会自动 `npm install` 并以 `tsx` 启动，无需重新构建；若已手动构建过，请重新 `npm run build`。

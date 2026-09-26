@@ -10,32 +10,31 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
     import tomli as tomllib
 
 
-def test_pyproject_exposes_openh_console_script():
+def test_pyproject_exposes_abc_console_scripts():
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     scripts = data["project"]["scripts"]
-    assert scripts["openh"] == "openharness.cli:app"
-    assert scripts["oh"] == "openharness.cli:app"
+    assert scripts["abc"] == "openharness.cli:app"
+    assert scripts["abcag"] == "ohmo.cli:app"
 
 
-def test_powershell_installer_recommends_openh_for_windows():
+def test_legacy_console_scripts_removed():
+    data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    scripts = data["project"]["scripts"]
+    for legacy in ("openharness", "oh", "openh", "ohmo"):
+        assert legacy not in scripts
+
+
+def test_powershell_installer_recommends_abc_for_windows():
     script = Path("scripts/install.ps1").read_text(encoding="utf-8")
-    assert "openh.exe" in script
-    assert "Launch (PowerShell):     openh" in script
-    assert "Out-Host" in script
+    assert "abc.exe" in script
+    assert "Launch (PowerShell):     abc" in script
+    assert "Launch personal agent:   abcag" in script
+    # The legacy 'oh' alias collided with PowerShell's Out-Host alias; 'abc' does not.
+    assert "Out-Host" not in script
 
 
-def test_powershell_installer_falls_back_when_openh_exe_missing():
-    """Older PyPI releases don't ship an `openh` console script.
-
-    When `openh.exe` is absent from the venv, the installer must still pick a
-    working launcher (`openharness` or `oh.exe`) and guide the user to it
-    rather than telling them to run a binary that doesn't exist (issue #144).
-    """
+def test_powershell_installer_falls_back_when_abc_exe_missing():
+    """When ``abc.exe`` is absent from the venv, the installer must still guide
+    the user to run via ``python -m openharness`` instead of a missing binary."""
     script = Path("scripts/install.ps1").read_text(encoding="utf-8")
-    # Every launcher produced by the pyproject `[project.scripts]` table is
-    # probed during verification.
-    assert "openharness.exe" in script
-    assert "oh.exe" in script
-    # Fallback guidance for users on a release without the `openh` alias.
-    assert "Launch (PowerShell):     openharness" in script
-    assert "Launch (PowerShell):     oh.exe" in script
+    assert "python -m openharness" in script

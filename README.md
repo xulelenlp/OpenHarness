@@ -1,9 +1,9 @@
 <h1 align="center">
   <img src="assets/logo.png" alt="OpenHarness" width="64" style="vertical-align: middle;">
   &nbsp;&nbsp;
-  <img src="assets/ohmo.png" alt="ohmo" width="64" style="vertical-align: middle;">
+  <img src="assets/ohmo.png" alt="abcag" width="64" style="vertical-align: middle;">
   <br>
-  <code>oh</code> — OpenHarness &amp; <code>ohmo</code>
+  <code>abc</code> — OpenHarness &amp; <code>abcag</code>
 </h1>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 **OpenHarness** delivers core lightweight agent infrastructure: tool-use, skills, memory, and multi-agent coordination.
 
-**ohmo** is a personal AI agent built on OpenHarness — not another chatbot, but an assistant that actually works for you over long sessions. Chat with ohmo in Feishu / Slack / Telegram / Discord, and it forks branches, writes code, runs tests, and opens PRs on its own. ohmo runs on your existing Claude Code or Codex subscription — no extra API key needed.
+**abcag** is a personal AI agent built on OpenHarness — not another chatbot, but an assistant that actually works for you over long sessions. Chat with abcag in Feishu / Slack / Telegram / Discord, and it forks branches, writes code, runs tests, and opens PRs on its own. abcag runs on your existing Claude Code or Codex subscription — no extra API key needed.
 
 **Join the community**: contribute **Harness** for open agent development.
 
@@ -36,7 +36,7 @@
   <a href="https://github.com/HKUDS/.github/blob/main/profile/README.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
-One Command (**oh**) to Launch **OpenHarness** and Unlock All Agent Harnesses. 
+One Command (**abc**) to Launch **OpenHarness** and Unlock All Agent Harnesses. 
 
 Supports CLI agent integration including OpenClaw, nanobot, Cursor, and more.
 
@@ -154,22 +154,22 @@ OpenHarness is an open-source Python implementation designed for **researchers, 
 ## 📰 What's New
 
 - **Unreleased** 🔍 **Dry-run safe preview**:
-  - `oh --dry-run` previews resolved runtime settings, auth state, skills, commands, tools, and configured MCP servers without executing the model, tools, or subagents.
+  - `abc --dry-run` previews resolved runtime settings, auth state, skills, commands, tools, and configured MCP servers without executing the model, tools, or subagents.
   - Dry-run now reports a `ready` / `warning` / `blocked` readiness verdict with concrete next-step suggestions such as fixing auth, fixing MCP config, or running the prompt directly.
   - Prompt previews include likely matching skills and tools, while slash-command previews show whether the command is mostly read-only or stateful.
 - **2026-04-18** ⚙️ **v0.1.7** — Packaging & TUI polish:
-  - Install script now links `oh`, `ohmo`, and `openharness` into `~/.local/bin` instead of prepending the virtualenv `bin` directory to `PATH`, which avoids clobbering Conda-managed shells.
+  - Install script now links `abc` and `abcag` into `~/.local/bin` instead of prepending the virtualenv `bin` directory to `PATH`, which avoids clobbering Conda-managed shells.
   - React TUI now supports `Shift+Enter` to insert a newline while keeping plain `Enter` as submit.
   - Busy-state animation in the React TUI is quieter and less error-prone on Windows terminals, with conservative spinner frames and reduced flashing.
 - **2026-04-10** 🧠 **v0.1.6** — Auto-Compaction & Markdown TUI:
   - Auto-Compaction preserves task state and channel logs across context compression — agents can run multi-day sessions without manual compact/clear
   - Subprocess teammates run in headless worker mode; agent team creation stabilized
   - Assistant messages now render full Markdown in the React TUI
-  - `ohmo` gains channel slash commands and multimodal attachment support
+  - `abcag` gains channel slash commands and multimodal attachment support
 - **2026-04-08** 🔌 **v0.1.5** — MCP HTTP transport & Swarm polling:
   - MCP protocol adds HTTP transport, auto-reconnect on disconnect, and tool-only server compatibility
   - JSON Schema types inferred for MCP tool inputs — no manual type mapping needed
-  - `ohmo` channels support file attachments and multimodal gateway messages
+  - `abcag` channels support file attachments and multimodal gateway messages
   - Subprocess agents are now pollable in real runs; permission modals serialized to prevent input swallowing
 - **2026-04-08** 🌙 **v0.1.4** — Multi-provider auth & Moonshot/Kimi:
   - Native Moonshot/Kimi provider with `reasoning_content` support for thinking models
@@ -177,10 +177,10 @@ OpenHarness is an open-source Python implementation designed for **researchers, 
   - MCP gracefully handles disconnected servers in `call_tool` / `read_resource`
   - Security: built-in sensitive-path protection in PermissionChecker, hardened `web_fetch` URL validation
   - Stability: EIO crash recovery in Ink TUI, `--debug` logging, Windows cmd flash fix
-- **2026-04-06** 🚀 **v0.1.2** — Unified setup flows and `ohmo` personal-agent app:
-  - `oh setup` now guides provider selection as workflows instead of exposing raw auth/provider internals
+- **2026-04-06** 🚀 **v0.1.2** — Unified setup flows and `abcag` personal-agent app:
+  - `abc setup` now guides provider selection as workflows instead of exposing raw auth/provider internals
   - Compatible API setup is now profile-scoped, so Anthropic/OpenAI-compatible endpoints can keep separate keys
-  - `ohmo` ships as a packaged app with `~/.ohmo` workspace, gateway, bootstrap prompts, and channel config flow
+  - `abcag` ships as a packaged app with `~/.ohmo` workspace, gateway, bootstrap prompts, and channel config flow
 - **2026-04-01** 🎨 **v0.1.0** — Initial **OpenHarness** open-source release featuring complete Harness architecture: 
 
 <p align="center">
@@ -218,13 +218,13 @@ iex (Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/HKUDS/OpenHarness
 pip install openharness-ai
 ```
 
-**Note**: Windows support is now native. In PowerShell, use `openh` instead of `oh` because `oh` can resolve to the built-in `Out-Host` alias.
+**Note**: Windows support is now native. In PowerShell, run `abc` and `abcag` directly.
 
 ### 2. Configure
 
 ```bash
-oh setup    # interactive wizard — pick a provider, authenticate, done
-# On Windows PowerShell, use: openh setup
+abc setup    # interactive wizard — pick a provider, authenticate, done
+# On Windows PowerShell, use: abc setup
 ```
 
 Supports **Claude / OpenAI / Copilot / Codex / Moonshot(Kimi) / GLM / MiniMax / NVIDIA NIM** and any compatible endpoint.
@@ -232,37 +232,37 @@ Supports **Claude / OpenAI / Copilot / Codex / Moonshot(Kimi) / GLM / MiniMax / 
 ### 3. Run
 
 ```bash
-oh
-# On Windows PowerShell, use: openh
+abc
+# On Windows PowerShell, use: abc
 ```
 
 <p align="center">
   <img src="assets/landing.png" alt="OpenHarness Landing Screen" width="700">
 </p>
 
-### 4. Set up ohmo (Personal Agent)
+### 4. Set up abcag (Personal Agent)
 
 Want an AI agent that works for you from Feishu / Slack / Telegram / Discord?
 
 ```bash
-ohmo init             # initialize ~/.ohmo workspace
-ohmo config           # configure channels and provider
-ohmo gateway start    # start the gateway — ohmo is now live in your chat app
+abcag init             # initialize ~/.ohmo workspace
+abcag config           # configure channels and provider
+abcag gateway start    # start the gateway — abcag is now live in your chat app
 ```
 
-ohmo runs on your existing **Claude Code subscription** or **Codex subscription** — no extra API key needed.
+abcag runs on your existing **Claude Code subscription** or **Codex subscription** — no extra API key needed.
 
 ### Non-Interactive Mode (Pipes & Scripts)
 
 ```bash
 # Single prompt → stdout
-oh -p "Explain this codebase"
+abc -p "Explain this codebase"
 
 # JSON output for programmatic use
-oh -p "List all functions in main.py" --output-format json
+abc -p "List all functions in main.py" --output-format json
 
 # Stream JSON events in real-time
-oh -p "Fix the bug" --output-format stream-json
+abc -p "Fix the bug" --output-format stream-json
 ```
 
 ### Dry Run (Safe Preview)
@@ -271,16 +271,16 @@ Use `--dry-run` when you want to inspect what OpenHarness would use before any l
 
 ```bash
 # Preview an interactive session setup
-oh --dry-run
+abc --dry-run
 
 # Preview one prompt without executing the model or tools
-oh --dry-run -p "Review this bug fix and grep for failing tests"
+abc --dry-run -p "Review this bug fix and grep for failing tests"
 
 # Preview a slash command path
-oh --dry-run -p "/plugin list"
+abc --dry-run -p "/plugin list"
 
 # Get structured output for scripts or channels
-oh --dry-run -p "Explain this repository" --output-format json
+abc --dry-run -p "Explain this repository" --output-format json
 ```
 
 Dry-run is intentionally static:
@@ -298,18 +298,18 @@ Readiness levels:
 
 `next actions` in the dry-run output tell you the shortest fix or follow-up step, such as:
 
-- run `oh auth login`
+- run `abc auth login`
 - fix or disable broken MCP configuration
-- run the prompt directly with `oh -p "..."` or open the interactive UI with `oh`
+- run the prompt directly with `abc -p "..."` or open the interactive UI with `abc`
 
 ## 🔌 Provider Compatibility
 
 OpenHarness treats providers as **workflows** backed by named profiles. In day-to-day use, prefer:
 
 ```bash
-oh setup
-oh provider list
-oh provider use <profile>
+abc setup
+abc provider list
+abc provider use <profile>
 ```
 
 ### Built-in Workflows
@@ -356,13 +356,13 @@ Any provider implementing the OpenAI `/v1/chat/completions` style API works:
 
 ```bash
 # List saved workflows
-oh provider list
+abc provider list
 
 # Switch the active workflow
-oh provider use codex
+abc provider use codex
 
 # Add your own compatible endpoint
-oh provider add my-endpoint \
+abc provider add my-endpoint \
   --label "My Endpoint" \
   --provider openai \
   --api-format openai \
@@ -379,7 +379,7 @@ Run local models through Ollama's OpenAI-compatible endpoint:
 
 ```bash
 # Add an Ollama provider profile
-oh provider add ollama \
+abc provider add ollama \
   --label "Ollama" \
   --provider Ollama \
   --api-format openai \
@@ -393,14 +393,14 @@ Saved provider profile: ollama
 
 ```bash
 # Activate and verify
-oh provider use ollama
+abc provider use ollama
 ```
 ```
 Activated provider profile: ollama
 ```
 
 ```bash
-oh provider list
+abc provider list
 ```
 ```
   claude-api: Anthropic-Compatible API [ready]
@@ -417,20 +417,20 @@ Use your existing GitHub Copilot subscription as the LLM backend. Authentication
 
 ```bash
 # One-time login (opens browser for GitHub authorization)
-oh auth copilot-login
+abc auth copilot-login
 
 # Then launch with Copilot as the provider
-uv run oh --api-format copilot
+uv run abc --api-format copilot
 
 # Or via environment variable
 export OPENHARNESS_API_FORMAT=copilot
-uv run oh
+uv run abc
 
 # Check auth status
-oh auth status
+abc auth status
 
 # Remove stored credentials
-oh auth copilot-logout
+abc auth copilot-logout
 ```
 
 | Feature | Details |
@@ -560,7 +560,7 @@ Project-level skills are enabled by default and are discovered from the current 
 Disable project skills for untrusted repositories with:
 
 ```bash
-oh config set allow_project_skills false
+abc config set allow_project_skills false
 ```
 
 Use `/skills` to list loaded skills with their source and path. User-invocable skills can be run directly as slash commands, for example `/deploy staging`.
@@ -598,9 +598,9 @@ The proxy URL must be HTTP/HTTPS and cannot contain embedded credentials.
 
 ```bash
 # Manage plugins
-oh plugin list
-oh plugin install <source>
-oh plugin enable <name>
+abc plugin list
+abc plugin install <source>
+abc plugin enable <name>
 ```
 
 ### 🤝 Ecosystem Workflows
@@ -648,7 +648,7 @@ React/Ink TUI with full interactive experience:
 ### 📡 CLI
 
 ```
-oh [OPTIONS] COMMAND [ARGS]
+abc [OPTIONS] COMMAND [ARGS]
 
 Session:     -c/--continue, -r/--resume, -n/--name
 Model:       -m/--model, --effort, --max-turns
@@ -657,29 +657,29 @@ Permissions: --permission-mode, --dangerously-skip-permissions
 Context:     -s/--system-prompt, --append-system-prompt, --settings
 Advanced:    -d/--debug, --mcp-config, --bare
 
-Subcommands: oh setup | oh provider | oh auth | oh mcp | oh plugin
+Subcommands: abc setup | abc provider | abc auth | abc mcp | abc plugin
 ```
 
-### 🧑‍💼 ohmo Personal Agent
+### 🧑‍💼 abcag Personal Agent
 
-`ohmo` is a personal-agent app built on top of OpenHarness. It is packaged alongside `oh`, with its own workspace and gateway:
+`abcag` is a personal-agent app built on top of OpenHarness. It is packaged alongside `abc`, with its own workspace and gateway:
 
 ```bash
 # Initialize personal workspace
-ohmo init
+abcag init
 
 # Configure gateway channels and pick a provider profile
-ohmo config
+abcag config
 
 # Run the personal agent
-ohmo
+abcag
 
 # Run the gateway in foreground
-ohmo gateway run
+abcag gateway run
 
 # Check or restart the gateway
-ohmo gateway status
-ohmo gateway restart
+abcag gateway status
+abcag gateway restart
 ```
 
 Key concepts:
@@ -689,7 +689,7 @@ Key concepts:
 - `soul.md`
   - long-term agent personality and behavior
 - `identity.md`
-  - who `ohmo` is
+  - who `abcag` is
 - `user.md`
   - user profile and preferences
 - `BOOTSTRAP.md`
@@ -699,7 +699,7 @@ Key concepts:
 - `gateway.json`
   - selected provider profile and channel configuration
 
-`ohmo config` uses the same workflow language as `oh setup`, so you can point the personal-agent gateway at:
+`abcag config` uses the same workflow language as `abc setup`, so you can point the personal-agent gateway at:
 
 - `Anthropic-Compatible API`
 - `Claude Subscription`
@@ -707,9 +707,9 @@ Key concepts:
 - `Codex Subscription`
 - `GitHub Copilot`
 
-`ohmo init` creates the home workspace once. After that, use `ohmo config` to update provider and channel settings; if the gateway is already running, the config flow can restart it for you.
+`abcag init` creates the home workspace once. After that, use `abcag config` to update provider and channel settings; if the gateway is already running, the config flow can restart it for you.
 
-Currently `ohmo init` / `ohmo config` can guide channel setup for:
+Currently `abcag init` / `abcag config` can guide channel setup for:
 
 - Telegram
 - Slack

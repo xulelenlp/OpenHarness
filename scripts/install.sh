@@ -283,31 +283,32 @@ success "Config directory ready: ~/.openharness/"
 step "Registering global commands"
 
 mkdir -p "$BIN_DIR"
-ln -snf "$VENV_DIR/bin/oh" "$BIN_DIR/oh"
-ln -snf "$VENV_DIR/bin/ohmo" "$BIN_DIR/ohmo"
-ln -snf "$VENV_DIR/bin/openharness" "$BIN_DIR/openharness"
-success "Linked oh/ohmo into ${BIN_DIR}"
+# Remove legacy command links from previous releases.
+rm -f "$BIN_DIR/oh" "$BIN_DIR/ohmo" "$BIN_DIR/openharness" "$BIN_DIR/openh"
+ln -snf "$VENV_DIR/bin/abc" "$BIN_DIR/abc"
+ln -snf "$VENV_DIR/bin/abcag" "$BIN_DIR/abcag"
+success "Linked abc/abcag into ${BIN_DIR}"
 
 # ---------------------------------------------------------------------------
 # Step 9: Verify installation
 # ---------------------------------------------------------------------------
 step "Verifying installation"
 
-if [ -x "$BIN_DIR/oh" ] && [ -x "$BIN_DIR/ohmo" ]; then
-    OH_VERSION=$("$BIN_DIR/oh" --version 2>&1 || echo "(version check failed)")
-    OHMO_VERSION=$("$BIN_DIR/ohmo" --help >/dev/null 2>&1 && echo "available" || echo "not available")
+if [ -x "$BIN_DIR/abc" ] && [ -x "$BIN_DIR/abcag" ]; then
+    ABC_VERSION=$("$BIN_DIR/abc" --version 2>&1 || echo "(version check failed)")
+    ABCAG_VERSION=$("$BIN_DIR/abcag" --help >/dev/null 2>&1 && echo "available" || echo "not available")
     success "Installation successful!"
     echo ""
-    echo -e "  ${BOLD}oh${RESET} is ready: ${GREEN}${OH_VERSION}${RESET}"
-    echo -e "  ${BOLD}ohmo${RESET} is ready: ${GREEN}${OHMO_VERSION}${RESET}"
+    echo -e "  ${BOLD}abc${RESET} is ready: ${GREEN}${ABC_VERSION}${RESET}"
+    echo -e "  ${BOLD}abcag${RESET} is ready: ${GREEN}${ABCAG_VERSION}${RESET}"
 elif "$PYTHON_CMD" -m openharness --version &>/dev/null 2>&1; then
-    OH_VERSION=$("$PYTHON_CMD" -m openharness --version 2>&1)
-    warn "'oh'/'ohmo' command links are not executable yet. Run via: python -m openharness or python -m ohmo"
-    echo "  Version: ${OH_VERSION}"
+    ABC_VERSION=$("$PYTHON_CMD" -m openharness --version 2>&1)
+    warn "'abc'/'abcag' command links are not executable yet. Run via: python -m openharness or python -m ohmo"
+    echo "  Version: ${ABC_VERSION}"
     echo "  To add them to PATH, ensure ${BIN_DIR} is in PATH:"
     echo "    export PATH=\"${BIN_DIR}:\$PATH\""
 else
-    warn "Could not verify 'oh'/'ohmo' commands. The package may need a PATH update."
+    warn "Could not verify 'abc'/'abcag' commands. The package may need a PATH update."
     echo "  Try: $PYTHON_CMD -m openharness --version"
     echo "  Or add ${BIN_DIR} to PATH and restart your shell."
 fi
@@ -377,8 +378,8 @@ echo "    1. Restart shell, or reload your shell config:"
 echo "         bash/zsh: source ~/.bashrc  (or ~/.zshrc)"
 echo "         fish:     source ~/.config/fish/config.fish"
 echo "    2. Set your API key:        export ANTHROPIC_API_KEY=your_key"
-echo "    3. Launch:                  oh"
-echo "    4. Launch ohmo:             ohmo"
+echo "    3. Launch:                  abc"
+echo "    4. Launch personal agent:   abcag"
 echo "    5. Docs:                    https://github.com/HKUDS/OpenHarness"
 echo ""
 echo "  Notes:"

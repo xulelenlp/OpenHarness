@@ -749,9 +749,9 @@ def _version_callback(value: bool) -> None:
 
 
 app = typer.Typer(
-    name="openharness",
+    name="abc",
     help=(
-        "Oh my Harness! An AI-powered coding assistant.\n\n"
+        "ABC coding assistant — an AI-powered coding assistant.\n\n"
         "Starts an interactive session by default, use -p/--print for non-interactive output."
     ),
     add_completion=False,
@@ -1406,7 +1406,7 @@ def _select_setup_workflow(
     *,
     default_value: str | None = None,
 ) -> str:
-    """Render the top-level `oh setup` workflow picker with richer hints."""
+    """Render the top-level `abc setup` workflow picker with richer hints."""
     hints = {
         "claude-api": ("Claude / Kimi / GLM / MiniMax", "fg:#7aa2f7"),
         "openai-compatible": ("OpenAI / OpenRouter", "fg:#9ece6a"),

@@ -11,10 +11,14 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 - Hooks now support a `priority` field (default `0`). Within an event, hooks run highest-priority first, and hooks sharing a priority keep their registration order. This lets users order, for example, a security-check hook ahead of a logging hook regardless of where each is declared in settings or contributed by plugins.
 - `edit_file` and `write_file` in the React TUI now preview a unified diff before applying file changes, let users approve once or for the rest of the session, and skip the extra prompt automatically in `full_auto` mode.
 
+### Changed
+
+- **Breaking**: the launch commands are unified and renamed — `oh` → `abc` (coding assistant) and `ohmo` → `abcag` (personal agent). The legacy `oh`, `ohmo`, `openh`, and `openharness` console scripts are removed; `python -m openharness` / `python -m ohmo` module entry points remain available for internal process spawning.
+
 ### Fixed
 
 - Codex subscription requests now pass reasoning effort separately, enabling `gpt-5.5` with `xhigh` effort instead of treating `gpt-5.5 xhigh` as an unsupported model name.
-- Telegram channel now delivers replies again under `ohmo init --no-interactive` and other configs that do not write a `reply_to_message` field. `TelegramConfig` declares `reply_to_message: bool = True` so the attribute access in `TelegramChannel.send` no longer raises `AttributeError` and outbound progress/tool-hint/final messages are sent as expected. See issue #243.
+- Telegram channel now delivers replies again under `abcag init --no-interactive` and other configs that do not write a `reply_to_message` field. `TelegramConfig` declares `reply_to_message: bool = True` so the attribute access in `TelegramChannel.send` no longer raises `AttributeError` and outbound progress/tool-hint/final messages are sent as expected. See issue #243.
 
 ## [0.1.9] - 2026-05-07
 

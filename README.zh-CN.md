@@ -1,4 +1,4 @@
-# <img src="assets/logo.png" alt="OpenHarness" width="40" style="vertical-align: middle;"> `oh` — OpenHarness 中文说明
+# <img src="assets/logo.png" alt="OpenHarness" width="40" style="vertical-align: middle;"> `abc` — OpenHarness 中文说明
 
 <p align="center">
   <a href="README.md"><strong>English</strong></a> ·
@@ -14,7 +14,7 @@
 - multi-agent coordination
 - provider workflows
 - React TUI
-- `ohmo` personal-agent app
+- `abcag` personal-agent app
 
 ---
 
@@ -22,17 +22,17 @@
 
 ### Unreleased · Dry-run 安全预览
 
-- 新增 `oh --dry-run`，可以在**不执行模型、不执行工具、不 spawn subagent** 的前提下，预览当前会话会使用的配置、skills、commands、tools 和 MCP 配置。
+- 新增 `abc --dry-run`，可以在**不执行模型、不执行工具、不 spawn subagent** 的前提下，预览当前会话会使用的配置、skills、commands、tools 和 MCP 配置。
 - Dry-run 会给出 `ready / warning / blocked` 结论，并直接告诉你下一步该做什么，例如先修认证、先修 MCP 配置，或者可以直接运行。
 - 对普通 prompt，会给出可能命中的 skills / tools；对 slash command，会展示它更偏只读还是会改本地状态。
 
 ### 2026-04-06 · v0.1.2
 
-- 新增统一配置入口 `oh setup`
+- 新增统一配置入口 `abc setup`
 - provider 配置从“auth -> provider -> model”收敛成 workflow 视角
 - Anthropic/OpenAI 兼容接口支持 profile 级凭据，不再强制共用一把全局 key
-- 新增 `ohmo` personal-agent app
-- `ohmo` 使用 `~/.ohmo` 作为 home workspace，支持 gateway、bootstrap prompts 和交互式 channel 配置
+- 新增 `abcag` personal-agent app
+- `abcag` 使用 `~/.ohmo` 作为 home workspace，支持 gateway、bootstrap prompts 和交互式 channel 配置
 
 ---
 
@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/HKUDS/OpenHarness/main/scripts/inst
 git clone https://github.com/HKUDS/OpenHarness.git
 cd OpenHarness
 uv sync --extra dev
-uv run oh
+uv run abc
 ```
 
 ---
@@ -71,10 +71,10 @@ uv run oh
 现在最推荐的入口是：
 
 ```bash
-oh setup
+abc setup
 ```
 
-`oh setup` 会按下面的顺序引导：
+`abc setup` 会按下面的顺序引导：
 
 1. 选择一个 workflow
 2. 如果需要，完成认证
@@ -119,16 +119,16 @@ oh setup
 
 ```bash
 # 统一配置入口
-oh setup
+abc setup
 
 # 查看已有 workflow/profile
-oh provider list
+abc provider list
 
 # 切换当前 workflow
-oh provider use codex
+abc provider use codex
 
 # 查看认证状态
-oh auth status
+abc auth status
 ```
 
 ### 高级：添加自定义兼容接口
@@ -136,7 +136,7 @@ oh auth status
 如果内置 preset 不够，可以直接新增 profile：
 
 ```bash
-oh provider add my-endpoint \
+abc provider add my-endpoint \
   --label "My Endpoint" \
   --provider anthropic \
   --api-format anthropic \
@@ -155,7 +155,7 @@ oh provider add my-endpoint \
 运行：
 
 ```bash
-oh
+abc
 ```
 
 你会得到 React/Ink TUI，支持：
@@ -170,9 +170,9 @@ oh
 非交互模式也支持：
 
 ```bash
-oh -p "Explain this repository"
-oh -p "List all functions in main.py" --output-format json
-oh -p "Fix the bug" --output-format stream-json
+abc -p "Explain this repository"
+abc -p "List all functions in main.py" --output-format json
+abc -p "Fix the bug" --output-format stream-json
 ```
 
 ### Dry-run 安全预览
@@ -181,16 +181,16 @@ oh -p "Fix the bug" --output-format stream-json
 
 ```bash
 # 预览交互会话本身
-oh --dry-run
+abc --dry-run
 
 # 预览一个普通 prompt
-oh --dry-run -p "Review this bug fix and grep for failing tests"
+abc --dry-run -p "Review this bug fix and grep for failing tests"
 
 # 预览 slash command
-oh --dry-run -p "/plugin list"
+abc --dry-run -p "/plugin list"
 
 # 输出结构化 JSON，方便脚本或 channel 使用
-oh --dry-run -p "Explain this repository" --output-format json
+abc --dry-run -p "Explain this repository" --output-format json
 ```
 
 Dry-run 的边界是明确的：
@@ -209,9 +209,9 @@ Readiness 结论说明：
 
 Dry-run 输出里的 `next actions` 会直接给出下一步建议，例如：
 
-- 先执行 `oh auth login`
+- 先执行 `abc auth login`
 - 先修或禁用坏掉的 MCP 配置
-- 直接运行 `oh -p "..."` 或进入 `oh`
+- 直接运行 `abc -p "..."` 或进入 `abc`
 
 ---
 
@@ -230,21 +230,21 @@ OpenHarness 现在把 provider 视为 **workflow + profile**，而不是只暴�
 日常推荐用法：
 
 ```bash
-oh setup
-oh provider list
-oh provider use <profile>
+abc setup
+abc provider list
+abc provider use <profile>
 ```
 
 ---
 
-## `ohmo` Personal Agent
+## `abcag` Personal Agent
 
-`ohmo` 是基于 OpenHarness 的 personal-agent app，不是 core 的一个 mode。
+`abcag` 是基于 OpenHarness 的 personal-agent app，不是 core 的一个 mode。
 
 ### 初始化
 
 ```bash
-ohmo init
+abcag init
 ```
 
 这会创建：
@@ -259,7 +259,7 @@ ohmo init
 其中：
 
 - `soul.md`：长期人格与行为原则
-- `identity.md`：`ohmo` 自己是谁
+- `identity.md`：`abcag` 自己是谁
 - `user.md`：用户画像、偏好、关系信息
 - `BOOTSTRAP.md`：首轮 landing / onboarding ritual
 - `memory/`：personal memory
@@ -268,10 +268,10 @@ ohmo init
 ### 配置
 
 ```bash
-ohmo config
+abcag config
 ```
 
-`ohmo config` 会用和 `oh setup` 一致的 workflow 语言来配置 gateway，例如：
+`abcag config` 会用和 `abc setup` 一致的 workflow 语言来配置 gateway，例如：
 
 - `Anthropic-Compatible API`
 - `Claude Subscription`
@@ -279,7 +279,7 @@ ohmo config
 - `Codex Subscription`
 - `GitHub Copilot`
 
-目前 `ohmo init` / `ohmo config` 已支持引导式配置这些 channel：
+目前 `abcag init` / `abcag config` 已支持引导式配置这些 channel：
 
 - Telegram
 - Slack
@@ -292,16 +292,16 @@ ohmo config
 
 ```bash
 # 运行 personal agent
-ohmo
+abcag
 
 # 前台运行 gateway
-ohmo gateway run
+abcag gateway run
 
 # 查看 gateway 状态
-ohmo gateway status
+abcag gateway status
 
 # 重启 gateway
-ohmo gateway restart
+abcag gateway restart
 ```
 
 ---
@@ -349,26 +349,26 @@ ohmo gateway restart
 
 ## 常见命令
 
-### `oh`
+### `abc`
 
 ```bash
-oh setup
-oh provider list
-oh provider use codex
-oh auth status
-oh -p "Explain this codebase"
-oh
+abc setup
+abc provider list
+abc provider use codex
+abc auth status
+abc -p "Explain this codebase"
+abc
 ```
 
-### `ohmo`
+### `abcag`
 
 ```bash
-ohmo init
-ohmo config
-ohmo
-ohmo gateway run
-ohmo gateway status
-ohmo gateway restart
+abcag init
+abcag config
+abcag
+abcag gateway run
+abcag gateway status
+abcag gateway restart
 ```
 
 ---

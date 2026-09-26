@@ -46,10 +46,8 @@ dev = [
 ]
 
 [project.scripts]
-openharness = "openharness.cli:app"
-oh = "openharness.cli:app"
-openh = "openharness.cli:app"
-ohmo = "ohmo.cli:app"
+abc = "openharness.cli:app"
+abcag = "ohmo.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openharness", "ohmo"]

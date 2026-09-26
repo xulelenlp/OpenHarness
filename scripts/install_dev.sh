@@ -119,10 +119,11 @@ fi
 step "Registering global commands"
 
 mkdir -p "$BIN_DIR"
-ln -snf "$VENV_DIR/bin/oh" "$BIN_DIR/oh"
-ln -snf "$VENV_DIR/bin/ohmo" "$BIN_DIR/ohmo"
-ln -snf "$VENV_DIR/bin/openharness" "$BIN_DIR/openharness"
-success "Linked oh/ohmo into ${BIN_DIR}"
+# Remove legacy command links from previous releases.
+rm -f "$BIN_DIR/oh" "$BIN_DIR/ohmo" "$BIN_DIR/openharness" "$BIN_DIR/openh"
+ln -snf "$VENV_DIR/bin/abc" "$BIN_DIR/abc"
+ln -snf "$VENV_DIR/bin/abcag" "$BIN_DIR/abcag"
+success "Linked abc/abcag into ${BIN_DIR}"
 
 ensure_path_in_file() {
     local rc_file="$1"
@@ -168,7 +169,7 @@ echo -e "${BOLD}${GREEN}Developer install complete.${RESET}"
 echo ""
 echo "  Repo root:           $REPO_ROOT"
 echo "  Virtual environment: $VENV_DIR"
-echo "  Command links:       $BIN_DIR/oh , $BIN_DIR/ohmo"
+echo "  Command links:       $BIN_DIR/abc , $BIN_DIR/abcag"
 echo ""
 echo "  If this shell does not see the commands yet, run one of:"
 echo "    bash: source ~/.bashrc"

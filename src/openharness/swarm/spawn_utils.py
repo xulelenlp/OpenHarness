@@ -100,7 +100,7 @@ def get_teammate_command() -> str:
     if sys.executable:
         return sys.executable
 
-    entry_point = shutil.which("openharness")
+    entry_point = shutil.which("abc")
     if entry_point:
         return entry_point
     return "python"
