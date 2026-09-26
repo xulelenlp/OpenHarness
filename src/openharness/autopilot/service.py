@@ -1178,13 +1178,13 @@ class RepoAutopilotStore:
             {
                 "name": "autopilot.scan",
                 "schedule": "*/30 * * * *",
-                "command": f"oh autopilot scan all --cwd {self._cwd}",
+                "command": f"abc autopilot scan all --cwd {self._cwd}",
                 "cwd": str(self._cwd),
             },
             {
                 "name": "autopilot.tick",
                 "schedule": "0 */2 * * *",
-                "command": f"oh autopilot tick --cwd {self._cwd}",
+                "command": f"abc autopilot tick --cwd {self._cwd}",
                 "cwd": str(self._cwd),
             },
         ]

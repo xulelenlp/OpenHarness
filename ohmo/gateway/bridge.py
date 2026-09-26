@@ -33,22 +33,22 @@ def _format_gateway_error(exc: Exception) -> str:
     if "claude oauth refresh failed" in lowered:
         return (
             "[ohmo gateway error] Claude subscription auth refresh failed. "
-            "Run `oh auth claude-login` again or switch the gateway profile."
+            "Run `abc auth claude-login` again or switch the gateway profile."
         )
     if "claude oauth refresh token is invalid or expired" in lowered:
         return (
             "[ohmo gateway error] Claude subscription token is expired. "
-            "Run `claude auth login`, then `oh auth claude-login`, or switch the gateway profile."
+            "Run `claude auth login`, then `abc auth claude-login`, or switch the gateway profile."
         )
     if "auth source not found" in lowered or "access token" in lowered:
         return (
             "[ohmo gateway error] Authentication is not configured for the current "
-            "gateway profile. Run `oh setup` or `ohmo config`."
+            "gateway profile. Run `abc setup` or `abcag config`."
         )
     if "api key" in lowered or "auth" in lowered or "credential" in lowered:
         return (
             "[ohmo gateway error] Authentication failed for the current gateway "
-            "profile. Check `oh auth status` and `ohmo config`."
+            "profile. Check `abc auth status` and `abcag config`."
         )
     return f"[ohmo gateway error] {message}"
 

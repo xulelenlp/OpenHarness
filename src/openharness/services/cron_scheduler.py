@@ -1,6 +1,6 @@
 """Background cron scheduler daemon.
 
-Runs as a standalone process (``oh cron start``) or can be embedded via
+Runs as a standalone process (``abc cron start``) or can be embedded via
 :func:`run_scheduler_loop`.  Every tick it reads the cron registry, checks
 which enabled jobs are due, executes them, and records results in a history
 log.
@@ -514,7 +514,7 @@ def _install_shutdown_signal_handlers(
 
 
 # ---------------------------------------------------------------------------
-# Daemon entry point (spawned by ``oh cron start``)
+# Daemon entry point (spawned by ``abc cron start``)
 # ---------------------------------------------------------------------------
 
 def _run_daemon() -> None:

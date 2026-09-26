@@ -343,7 +343,7 @@ def _evaluate_dry_run_readiness(
     if entrypoint.get("kind") == "unknown_slash_command":
         level = "blocked"
         reasons.append("The prompt starts with '/' but does not match any registered slash command.")
-        next_actions.append("Check the command name and run `oh --dry-run -p \"/help\"` to inspect available slash commands.")
+        next_actions.append("Check the command name and run `abc --dry-run -p \"/help\"` to inspect available slash commands.")
 
     api_client = validation.get("api_client")
     if isinstance(api_client, dict) and api_client.get("status") == "error":
@@ -367,17 +367,17 @@ def _evaluate_dry_run_readiness(
     if auth_status.startswith("missing") and entrypoint.get("kind") in {"interactive_session", "model_prompt"} and level != "blocked":
         level = "warning"
         reasons.append("Authentication is missing, so live model execution would not start successfully.")
-        next_actions.append("Run `oh auth login` or configure the active profile credentials before executing.")
+        next_actions.append("Run `abc auth login` or configure the active profile credentials before executing.")
 
     if not prompt and level == "ready":
         reasons.append("No prompt provided; dry-run only validated the session setup path.")
-        next_actions.append("Provide `-p/--print` for a single prompt preview, or start `oh` normally to enter an interactive session.")
+        next_actions.append("Provide `-p/--print` for a single prompt preview, or start `abc` normally to enter an interactive session.")
     elif level == "ready":
         reasons.append("Resolved configuration, prompt assembly, and static discovery checks all look usable.")
         if entrypoint.get("kind") == "slash_command":
-            next_actions.append(f"You can run `oh -p \"{prompt}\"` directly.")
+            next_actions.append(f"You can run `abc -p \"{prompt}\"` directly.")
         elif entrypoint.get("kind") == "model_prompt":
-            next_actions.append("You can run this prompt directly with `oh -p '...'` or open the interactive UI with `oh`.")
+            next_actions.append("You can run this prompt directly with `abc -p '...'` or open the interactive UI with `abc`.")
         else:
             next_actions.append("You can run OpenHarness normally with the current configuration.")
 
@@ -998,7 +998,7 @@ def cron_logs_cmd(
 
     log_path = get_logs_dir() / "cron_scheduler.log"
     if not log_path.exists():
-        print("No scheduler log found. Start the scheduler with: oh cron start")
+        print("No scheduler log found. Start the scheduler with: abc cron start")
         return
     content = log_path.read_text(encoding="utf-8", errors="replace")
     tail = content.splitlines()[-lines:]
@@ -1710,7 +1710,7 @@ def _bind_external_provider(provider: str) -> None:
         "anthropic_claude": "claude-subscription",
     }[provider]
     print(f"{label} bound from {credential.source_path}.", flush=True)
-    print(f"Use `oh provider use {profile_name}` to activate it.", flush=True)
+    print(f"Use `abc provider use {profile_name}` to activate it.", flush=True)
 
 
 def _login_provider(provider: str) -> None:
@@ -1804,7 +1804,8 @@ def setup_cmd(
                     '        "api_format": "openai",',
                     '        "auth_source": "openai_api_key",',
                     '        "default_model": "deepseek-chat",',
-                    '        "base_url": "https://api.deepseek.com/v1"',
+                    '        "base_url": "https://api.deepseek.com/v1",',
+                    '        "api_key": "sk-YOUR-KEY"',
                     "      }",
                     "    }",
                     "  }",
@@ -1812,12 +1813,12 @@ def setup_cmd(
             )
         )
         print()
-        print("Then set the API key via environment (e.g. export OPENAI_API_KEY=...)")
-        print("or store it with `oh auth login`.")
+        print("The API key can live in settings.json (profile `api_key`, as above).")
+        print("Alternatively set an env var (e.g. OPENAI_API_KEY) or `abc auth login`.")
         raise typer.Exit(1)
 
     print("Status: READY")
-    print("Run `oh` for an interactive session, or `oh -p \"...\"` for a single prompt.")
+    print("Run `abc` for an interactive session, or `abc -p \"...\"` for a single prompt.")
 
 
 @auth_app.command("login")
@@ -1952,12 +1953,12 @@ def _run_copilot_login() -> None:
         print(f"  Enterprise domain: {enterprise_url}", flush=True)
     print(flush=True)
     print("To use Copilot as the provider, run:", flush=True)
-    print("  oh provider use copilot", flush=True)
+    print("  abc provider use copilot", flush=True)
 
 
 @auth_app.command("copilot-login")
 def auth_copilot_login() -> None:
-    """Authenticate with GitHub Copilot via device flow (alias for 'oh auth login copilot')."""
+    """Authenticate with GitHub Copilot via device flow (alias for 'abc auth login copilot')."""
     _run_copilot_login()
 
 

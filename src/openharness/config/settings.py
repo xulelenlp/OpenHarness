@@ -132,6 +132,7 @@ class ProviderProfile(BaseModel):
     base_url: str | None = None
     last_model: str | None = None
     credential_slot: str | None = None
+    api_key: str = ""
     allowed_models: list[str] = Field(default_factory=list)
     context_window_tokens: int | None = None
     auto_compact_threshold_tokens: int | None = None
@@ -748,7 +749,7 @@ class Settings(BaseModel):
         """Resolve API key with precedence: instance value > env var > empty.
 
         For ``copilot`` api_format the key is managed separately via
-        ``oh auth copilot-login`` and this method is not called.
+        ``abc auth copilot-login`` and this method is not called.
 
         Returns the API key string. Raises ValueError if no key is found.
         """
@@ -808,7 +809,7 @@ class Settings(BaseModel):
             binding = load_external_binding(auth_source_provider_name(auth_source))
             if binding is None:
                 raise ValueError(
-                    f"No external auth binding found for {auth_source}. Run 'oh auth "
+                    f"No external auth binding found for {auth_source}. Run 'abc auth "
                     f"{'codex-login' if auth_source == 'codex_subscription' else 'claude-login'}' first."
                 )
             credential = load_external_credential(
@@ -860,6 +861,16 @@ class Settings(BaseModel):
                 auth_kind="api_key",
                 value=env_value,
                 source=f"env:{env_var}",
+                state="configured",
+            )
+
+        profile_key = (profile.api_key or "").strip()
+        if profile_key:
+            return ResolvedAuth(
+                provider=provider or storage_provider,
+                auth_kind="api_key",
+                value=profile_key,
+                source="settings:profile",
                 state="configured",
             )
 

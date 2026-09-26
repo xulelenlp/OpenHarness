@@ -256,8 +256,8 @@ def _print_auth_resolution_error(settings, exc: Exception) -> None:
         print(
             f"Error: {message}\n"
             f"  This profile uses subscription auth, not an API key.\n"
-            f"  Run `oh auth {login_command}` to bind the local CLI session, then\n"
-            f"  run `oh provider use {provider_name}` to activate it.",
+            f"  Run `abc auth {login_command}` to bind the local CLI session, then\n"
+            f"  run `abc provider use {provider_name}` to activate it.",
             file=sys.stderr,
         )
         return
@@ -265,7 +265,7 @@ def _print_auth_resolution_error(settings, exc: Exception) -> None:
     print(
         "Error: No API key configured.\n"
         f"  {message}\n"
-        "  Run `oh auth login` to set up authentication, or set the\n"
+        "  Run `abc auth login` to set up authentication, or set the\n"
         "  ANTHROPIC_API_KEY (or OPENAI_API_KEY) environment variable.",
         file=sys.stderr,
     )

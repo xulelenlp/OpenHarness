@@ -1,17 +1,125 @@
 {
-  "active_profile": "openai-compatible",
   "branding": {
     "product_name": "ABC Tech",
     "slogan": "企业级AI助手"
   },
+  "active_profile": "qwen",
   "profiles": {
+    "qwen": {
+      "label": "Qwen (DashScope)",
+      "provider": "dashscope",
+      "api_format": "openai",
+      "auth_source": "dashscope_api_key",
+      "default_model": "qwen-plus",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "sk-your-api-key"
+    },
     "openai-compatible": {
-      "label": "DeepSeek",
+      "label": "DeepSeek (通用 OpenAI 兼容)",
       "provider": "openai",
       "api_format": "openai",
       "auth_source": "openai_api_key",
       "default_model": "deepseek-chat",
       "base_url": "https://api.deepseek.com/v1"
     }
+  },
+
+  "model": "qwen-plus",
+  "max_tokens": 16384,
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "timeout": 30.0,
+  "context_window_tokens": null,
+  "auto_compact_threshold_tokens": null,
+  "api_format": "openai",
+  "provider": "dashscope",
+  "max_turns": 200,
+
+  "system_prompt": null,
+  "effort": "medium",
+  "passes": 1,
+  "fast_mode": false,
+  "verbose": false,
+
+  "permission": {
+    "mode": "default",
+    "allowed_tools": [],
+    "denied_tools": [],
+    "denied_commands": [],
+    "path_rules": []
+  },
+
+  "hooks": {},
+
+  "memory": {
+    "enabled": true,
+    "max_files": 5,
+    "max_entrypoint_lines": 200,
+    "max_entrypoint_bytes": 25000,
+    "context_window_tokens": null,
+    "auto_compact_threshold_tokens": null,
+    "auto_extract_enabled": false,
+    "auto_extract_max_records": 3,
+    "session_memory_enabled": true,
+    "auto_dream_enabled": false,
+    "auto_dream_min_hours": 24.0,
+    "auto_dream_min_sessions": 5
+  },
+
+  "sandbox": {
+    "enabled": false,
+    "backend": "srt",
+    "fail_if_unavailable": false,
+    "enabled_platforms": [],
+    "network": {
+      "allowed_domains": [],
+      "denied_domains": []
+    },
+    "filesystem": {
+      "allow_read": [],
+      "deny_read": [],
+      "allow_write": ["."],
+      "deny_write": []
+    },
+    "docker": {
+      "image": "openharness-sandbox:latest",
+      "auto_build_image": true,
+      "cpu_limit": 0.0,
+      "memory_limit": "",
+      "extra_mounts": [],
+      "extra_env": {}
+    }
+  },
+
+  "web": {
+    "proxy": null,
+    "resolution_mode": "auto",
+    "synthetic_dns_cidrs": []
+  },
+
+  "enabled_plugins": {},
+  "allow_project_plugins": false,
+  "allow_project_skills": true,
+  "project_skill_dirs": [".openharness/skills", ".agents/skills", ".claude/skills"],
+
+  "mcp_servers": {},
+
+  "theme": "default",
+  "output_style": "default",
+  "vim_mode": false,
+  "voice_mode": false,
+
+  "vision": {
+    "model": "",
+    "api_key": "",
+    "base_url": ""
+  },
+
+  "image_generation": {
+    "provider": "auto",
+    "model": "gpt-image-2",
+    "api_key": "",
+    "base_url": "",
+    "codex_model": "gpt-5.4",
+    "codex_base_url": ""
   }
 }

@@ -1927,7 +1927,7 @@ def create_default_command_registry(
         return CommandResult(
             message=(
                 "# Release Notes\n\n"
-                "- React TUI is now the default `oh` interface.\n"
+                "- React TUI is now the default `abc` interface.\n"
                 "- Added richer session, files, bridge, agent, copy, rewind, effort, passes, and privacy commands.\n"
                 "- Expanded real-model validation across tools, MCP, tasks, plugins, notebook, LSP, cron, and worktree flows.\n"
             )
