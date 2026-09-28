@@ -220,6 +220,21 @@ pip install openharness-ai
 
 **Note**: Windows support is now native. In PowerShell, run `abc` and `abcag` directly.
 
+#### Run from source (Conda)
+
+Prefer an isolated, reproducible environment? Build from source with [Conda](https://docs.conda.io/):
+
+```bash
+git clone https://github.com/HKUDS/OpenHarness.git
+cd OpenHarness
+conda create -n openharness python=3.11 -y
+conda activate openharness
+pip install -e ".[dev]"
+abc
+```
+
+> Prefer plain venv? Replace the `conda create` / `conda activate` lines with `python -m venv .venv && source .venv/bin/activate`.
+
 ### 2. Configure
 
 ```bash
@@ -420,11 +435,11 @@ Use your existing GitHub Copilot subscription as the LLM backend. Authentication
 abc auth copilot-login
 
 # Then launch with Copilot as the provider
-uv run abc --api-format copilot
+abc --api-format copilot
 
 # Or via environment variable
 export OPENHARNESS_API_FORMAT=copilot
-uv run abc
+abc
 
 # Check auth status
 abc auth status
@@ -731,7 +746,7 @@ Currently `abcag init` / `abcag config` can guide channel setup for:
 
 ```bash
 # Run all tests
-uv run pytest -q                           # 114 unit/integration
+pytest -q                                  # 114 unit/integration
 python scripts/test_harness_features.py     # Harness E2E
 python scripts/test_real_skills_plugins.py  # Real plugins E2E
 ```
@@ -824,11 +839,13 @@ OpenHarness is a **community-driven research project**. We welcome contributions
 | **Documentation** | Architecture guides, tutorials, translations |
 
 ```bash
-# Development setup
+# Development setup (Conda)
 git clone https://github.com/HKUDS/OpenHarness.git
 cd OpenHarness
-uv sync --extra dev
-uv run pytest -q  # Verify everything works
+conda create -n openharness python=3.11 -y
+conda activate openharness
+pip install -e ".[dev]"
+pytest -q  # Verify everything works
 ```
 
 Useful contributor entry points:

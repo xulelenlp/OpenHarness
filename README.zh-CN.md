@@ -57,12 +57,18 @@ curl -fsSL https://raw.githubusercontent.com/HKUDS/OpenHarness/main/scripts/inst
 
 ### 本地运行
 
+推荐使用 [Conda](https://docs.conda.io/) 创建隔离环境：
+
 ```bash
 git clone https://github.com/HKUDS/OpenHarness.git
 cd OpenHarness
-uv sync --extra dev
-uv run abc
+conda create -n openharness python=3.11 -y
+conda activate openharness
+pip install -e ".[dev]"
+abc
 ```
+
+> 如果不想用 Conda，也可以用 `python -m venv .venv && source .venv/bin/activate` 代替前两步。
 
 ---
 
@@ -376,7 +382,7 @@ abcag gateway restart
 ## 测试
 
 ```bash
-uv run pytest -q
+pytest -q
 python scripts/test_harness_features.py
 python scripts/test_real_skills_plugins.py
 ```
@@ -400,8 +406,10 @@ python scripts/test_real_skills_plugins.py
 ```bash
 git clone https://github.com/HKUDS/OpenHarness.git
 cd OpenHarness
-uv sync --extra dev
-uv run pytest -q
+conda create -n openharness python=3.11 -y
+conda activate openharness
+pip install -e ".[dev]"
+pytest -q
 ```
 
 更多信息：

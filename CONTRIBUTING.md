@@ -15,7 +15,9 @@ OpenHarness is an open-source agent harness focused on clarity, hackability, and
 ```bash
 git clone https://github.com/HKUDS/OpenHarness.git
 cd OpenHarness
-uv sync --extra dev
+conda create -n openharness python=3.11 -y
+conda activate openharness
+pip install -e ".[dev]"
 ```
 
 If you want to work on the React terminal UI as well:
@@ -31,8 +33,8 @@ cd ../..
 Run the same core checks that CI runs before opening a PR:
 
 ```bash
-uv run ruff check src tests scripts
-uv run pytest -q
+ruff check src tests scripts
+pytest -q
 ```
 
 Frontend sanity check:
@@ -49,7 +51,7 @@ npx tsc --noEmit
 - Add or update tests when behavior changes.
 - Update docs when CLI flags, workflows, or compatibility claims change.
 - Add a short entry under `Unreleased` in [`CHANGELOG.md`](CHANGELOG.md) for user-visible changes.
-- If you are improving type coverage, feel free to run `uv run mypy src/openharness`, but it is not yet a required green check for the whole repo.
+- If you are improving type coverage, feel free to run `mypy src/openharness`, but it is not yet a required green check for the whole repo.
 
 ## Documentation and community contributions
 

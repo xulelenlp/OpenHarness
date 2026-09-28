@@ -7,7 +7,7 @@ This page collects concrete ways to use OpenHarness without overselling the proj
 Use OpenHarness as a lightweight local coding agent for reading code, making edits, and running validation commands.
 
 ```bash
-uv run abc
+abc
 ```
 
 Example prompt:
@@ -21,8 +21,8 @@ Review this repo, identify the highest-risk bug, patch it, and run the relevant 
 The print mode is useful when you want structured output in shell pipelines or automation jobs.
 
 ```bash
-uv run abc -p "Summarize the purpose of this repository" --output-format json
-uv run abc -p "List files that define the permission system" --output-format stream-json
+abc -p "Summarize the purpose of this repository" --output-format json
+abc -p "List files that define the permission system" --output-format stream-json
 ```
 
 ## 3. Skill and plugin playground
