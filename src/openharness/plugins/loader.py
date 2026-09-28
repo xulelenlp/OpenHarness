@@ -41,10 +41,36 @@ def get_user_plugins_dir() -> Path:
 
 
 def get_project_plugins_dir(cwd: str | Path) -> Path:
-    """Return the project plugin directory."""
+    """Return the standard project plugin directory (``.openharness/plugins``)."""
     path = Path(cwd).resolve() / ".openharness" / "plugins"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def get_repo_plugins_dir(cwd: str | Path) -> Path:
+    """Return the repo-root ``plugins/`` directory.
+
+    Repositories may ship plugins under a top-level ``plugins/`` directory
+    (tracked in VCS). Treating it as a project-local plugin location lets those
+    plugins load without a manual ``plugin install`` step. Discovery is gated by
+    ``allow_project_plugins``, exactly like the standard project plugin dir.
+    """
+    return Path(cwd).resolve() / "plugins"
+
+
+def _project_plugin_dirs(cwd: str | Path) -> list[Path]:
+    """Return project plugin directories in precedence order (highest first)."""
+    return [get_project_plugins_dir(cwd), get_repo_plugins_dir(cwd)]
+
+
+def _has_plugin_manifests(root: Path) -> bool:
+    """Return True if ``root`` contains at least one plugin manifest."""
+    if not root.is_dir():
+        return False
+    return any(
+        path.is_dir() and _find_manifest(path) is not None
+        for path in sorted(root.iterdir())
+    )
 
 
 def _find_manifest(plugin_dir: Path) -> Path | None:
@@ -60,7 +86,7 @@ def _find_manifest(plugin_dir: Path) -> Path | None:
 
 def discover_plugin_paths(cwd: str | Path, extra_roots: Iterable[str | Path] | None = None) -> list[Path]:
     """Find plugin directories from user and project locations."""
-    roots = [get_user_plugins_dir(), get_project_plugins_dir(cwd)]
+    roots = [get_user_plugins_dir(), *_project_plugin_dirs(cwd)]
     if extra_roots:
         for root in extra_roots:
             path = Path(root).expanduser().resolve()
@@ -86,7 +112,7 @@ def discover_plugin_paths_for_settings(
     """Find plugin directories that are permitted by the active settings."""
     roots = [get_user_plugins_dir()]
     if getattr(settings, "allow_project_plugins", False):
-        roots.append(get_project_plugins_dir(cwd))
+        roots.extend(_project_plugin_dirs(cwd))
     if extra_roots:
         for root in extra_roots:
             path = Path(root).expanduser().resolve()
@@ -106,14 +132,14 @@ def discover_plugin_paths_for_settings(
 
 def load_plugins(settings, cwd: str | Path, extra_roots: Iterable[str | Path] | None = None) -> list[LoadedPlugin]:
     """Load plugins from disk."""
-    project_plugins_dir = get_project_plugins_dir(cwd)
+    project_plugin_dirs = _project_plugin_dirs(cwd)
     if not getattr(settings, "allow_project_plugins", False) and any(
-        path.is_dir() and _find_manifest(path) is not None for path in sorted(project_plugins_dir.iterdir())
+        _has_plugin_manifests(root) for root in project_plugin_dirs
     ):
         logger.warning(
             "Found project-local plugins in %s, but they are disabled by default. "
             "Set allow_project_plugins=true if you trust this workspace.",
-            project_plugins_dir,
+            project_plugin_dirs,
         )
     plugins: list[LoadedPlugin] = []
     for path in discover_plugin_paths_for_settings(settings, cwd, extra_roots=extra_roots):

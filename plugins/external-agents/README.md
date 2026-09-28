@@ -128,6 +128,19 @@ abc plugin install plugins/external-agents
 { "enabled_plugins": { "external-agents": true } }
 ```
 
+### 仓库内置自动发现（推荐）
+
+当插件源码保留在仓库根目录的 `plugins/external-agents/` 时，只要在项目的
+`.openharness/settings.json` 里启用项目级插件，运行时会自动发现并加载，**无需手动 install**：
+
+```json
+{ "allow_project_plugins": true }
+```
+
+运行时同时扫描 `.openharness/plugins/` 与仓库根目录 `plugins/` 两个位置（均受
+`allow_project_plugins` 控制），因此把插件随仓库分发时，在任意新环境（含容器、CI）
+都能直接生效。
+
 > 修改插件源码后重新执行 `abc plugin install plugins/external-agents` 即可覆盖更新；长驻会话需重启（或 `/reload-plugins`）以刷新工具描述。
 
 ## 返回安全

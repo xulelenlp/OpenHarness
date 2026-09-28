@@ -13,6 +13,7 @@ __all__ = [
     "PluginManifest",
     "discover_plugin_paths",
     "get_project_plugins_dir",
+    "get_repo_plugins_dir",
     "get_user_plugins_dir",
     "install_plugin_from_path",
     "load_plugins",
@@ -21,10 +22,11 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    if name in {"discover_plugin_paths", "get_project_plugins_dir", "get_user_plugins_dir", "load_plugins"}:
+    if name in {"discover_plugin_paths", "get_project_plugins_dir", "get_repo_plugins_dir", "get_user_plugins_dir", "load_plugins"}:
         from openharness.plugins.loader import (
             discover_plugin_paths,
             get_project_plugins_dir,
+            get_repo_plugins_dir,
             get_user_plugins_dir,
             load_plugins,
         )
@@ -32,6 +34,7 @@ def __getattr__(name: str):
         return {
             "discover_plugin_paths": discover_plugin_paths,
             "get_project_plugins_dir": get_project_plugins_dir,
+            "get_repo_plugins_dir": get_repo_plugins_dir,
             "get_user_plugins_dir": get_user_plugins_dir,
             "load_plugins": load_plugins,
         }[name]

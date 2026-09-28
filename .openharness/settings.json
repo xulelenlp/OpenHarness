@@ -97,7 +97,7 @@
   },
 
   "enabled_plugins": {},
-  "allow_project_plugins": false,
+  "allow_project_plugins": true,
   "allow_project_skills": true,
   "project_skill_dirs": [".openharness/skills", ".agents/skills", ".claude/skills"],
 
