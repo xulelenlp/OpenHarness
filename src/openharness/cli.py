@@ -1755,9 +1755,11 @@ def setup_cmd(
 ) -> None:
     """Validate model configuration from settings.json (non-interactive).
 
-    Model/provider settings are configured by editing ~/.openharness/settings.json
-    or via environment variables (OPENHARNESS_MODEL, OPENHARNESS_BASE_URL,
-    OPENHARNESS_PROVIDER, OPENHARNESS_API_FORMAT, plus the provider's API key).
+    Model/provider settings are configured by editing the effective settings file
+    (.openharness/settings.json inside the repo when present, otherwise
+    ~/.openharness/settings.json) or via environment variables (OPENHARNESS_MODEL,
+    OPENHARNESS_BASE_URL, OPENHARNESS_PROVIDER, OPENHARNESS_API_FORMAT, plus the
+    provider's API key).
     This command only reads and validates; it never prompts interactively.
     """
     from openharness.api.provider import auth_status, detect_provider
@@ -2030,7 +2032,11 @@ def config_set(
     key: str = typer.Argument(..., help="Setting key, including dotted nested keys"),
     value: str = typer.Argument(..., help="Value to store"),
 ) -> None:
-    """Persist one setting in ~/.openharness/settings.json."""
+    """Persist one setting in the effective settings file.
+
+    Writes to the project's ``.openharness/settings.json`` when running inside a
+    repo that has one, otherwise to ``~/.openharness/settings.json``.
+    """
     from openharness.config.settings import load_settings, save_settings
 
     settings = load_settings()

@@ -8,21 +8,21 @@
 
 | 配置文件 | 默认位置 | 作用 | 维护方式 |
 |---|---|---|---|
-| **主配置** | `~/.openharness/settings.json` | 模型 / Provider / **API key** / 品牌化 / 权限 / Hooks / 记忆 / 沙箱 / Web / MCP / UI 等**全部设置** | 手工编辑 + `abc setup` 校验 |
+| **主配置** | 项目内 `.openharness/settings.json`（**优先**）；否则 `~/.openharness/settings.json` | 模型 / Provider / **API key** / 品牌化 / 权限 / Hooks / 记忆 / 沙箱 / Web / MCP / UI 等**全部设置** | 手工编辑 + `abc setup` 校验 |
 | **凭证（可选）** | `~/.openharness/credentials.json` | 命令管理的 API key（权限 `600`）；也可不写此文件，把 key 放 settings.json | `abc auth login` 管理 |
 | **ohmo gateway** | `~/.ohmo/gateway.json` | personal agent 的 Provider / 渠道 / 会话路由 / 权限 | 手工编辑 + `abcag config` 校验 |
 | **ohmo 人格** | `~/.ohmo/soul.md` / `identity.md` / `user.md` / `BOOTSTRAP.md` | agent 的人设、身份、用户偏好、引导词 | 手工编辑 |
-| **项目级** | `<project>/.openharness/` | issue.md、pr_comments.md、autopilot 状态与策略 (yaml) | 运行时生成 + 按需手工 |
+| **项目级** | `<project>/.openharness/` | `settings.json`（可随仓库版本化的主配置）、issue.md、pr_comments.md、autopilot 状态与策略 (yaml) | 手工编辑 + 运行时生成 |
 | **用户级扩展** | `~/.openharness/skills/`、`~/.openharness/plugins/` | 用户级技能 / 插件 | 手工放置目录 |
 | **运行时数据** | `~/.openharness/data/`、`logs/` | sessions、tasks、cron_jobs.json、日志 | **自动生成，无需维护** |
 
-> 目录可整体迁移：设置 `OPENHARNESS_CONFIG_DIR` / `OPENHARNESS_DATA_DIR` / `OPENHARNESS_LOGS_DIR`、`OHMO_WORKSPACE` 指向任意位置（例如团队共享目录或 Git 仓库）。
+> 目录可整体迁移：设置 `OPENHARNESS_CONFIG_DIR` / `OPENHARNESS_DATA_DIR` / `OPENHARNESS_LOGS_DIR`、`OHMO_WORKSPACE` 指向任意位置（例如团队共享目录或 Git 仓库）。也可直接把 `.openharness/settings.json` 随仓库提交，克隆到新机器即可复用同一份配置。
 
 ---
 
-## 2. 主配置文件 `~/.openharness/settings.json`
+## 2. 主配置文件（项目内 `.openharness/settings.json` 优先，否则 `~/.openharness/settings.json`）
 
-这是**唯一的核心配置文件**，承载绝大多数全局设置。完整可复制模板见 [`docs/settings.example.json`](./settings.example.json)。
+这是**唯一的核心配置文件**，承载绝大多数全局设置。放在项目（Git 仓库）里时随代码一起迁移，实现“集中管理、快速部署”。完整可复制模板见 [`docs/settings.example.json`](./settings.example.json)。
 
 ### 2.1 字段分组速查
 
@@ -126,7 +126,7 @@ abcag config --profile <name>      # 非交互切换 provider profile
 ## 6. 配置优先级
 
 ```
-CLI 参数  >  环境变量  >  settings.json  >  默认值
+CLI 参数  >  环境变量  >  项目 settings.json (.openharness/settings.json)  >  用户 settings.json (~/.openharness/settings.json)  >  默认值
 ```
 
 启动命令本身也有别名优先级（模块入口保留用于内部派生）：

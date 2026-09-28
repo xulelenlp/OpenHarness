@@ -3,8 +3,9 @@
 Settings are resolved with the following precedence (highest first):
 1. CLI arguments
 2. Environment variables (ANTHROPIC_API_KEY, OPENHARNESS_MODEL, etc.)
-3. Config file (~/.openharness/settings.json)
-4. Defaults
+3. Project config file (.openharness/settings.json, when running inside a repo)
+4. User config file (~/.openharness/settings.json)
+5. Defaults
 """
 
 from __future__ import annotations
@@ -777,7 +778,8 @@ class Settings(BaseModel):
         raise ValueError(
             "No API key found. Set an OPENHARNESS_* provider API key "
             "(preferred) or the matching native provider environment variable, "
-            "or configure api_key in ~/.openharness/settings.json"
+            "or configure api_key in the effective settings file "
+            "(.openharness/settings.json in the repo, or ~/.openharness/settings.json)"
         )
 
     def resolve_auth(self) -> ResolvedAuth:

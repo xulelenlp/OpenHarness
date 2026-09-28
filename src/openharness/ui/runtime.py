@@ -143,7 +143,8 @@ class RuntimeBundle:
     def current_settings(self):
         """Return the effective settings for this session.
 
-        We persist most settings to disk (``~/.openharness/settings.json``), but
+        We persist most settings to disk (the project ``.openharness/settings.json``
+        when present, otherwise ``~/.openharness/settings.json``), but
         CLI options like ``--model``/``--api-format`` should remain in effect for
         the lifetime of the running process. Without this overlay, issuing any
         slash command (e.g. ``/fast``) would refresh UI state from disk and

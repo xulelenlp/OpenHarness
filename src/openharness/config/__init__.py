@@ -4,6 +4,7 @@ Provides settings management, path resolution, and API key handling.
 """
 
 from openharness.config.paths import (
+    find_project_config_file,
     get_config_dir,
     get_config_file_path,
     get_data_dir,
@@ -25,6 +26,7 @@ __all__ = [
     "auth_source_provider_name",
     "default_auth_source_for_provider",
     "default_provider_profiles",
+    "find_project_config_file",
     "get_config_dir",
     "get_config_file_path",
     "get_data_dir",

@@ -29,8 +29,69 @@ def get_config_dir() -> Path:
     return config_dir
 
 
-def get_config_file_path() -> Path:
-    """Return the path to the main settings file (~/.openharness/settings.json)."""
+def _find_git_root(start: Path) -> Path | None:
+    """Find the nearest git root containing start, if any."""
+    current = start
+    while True:
+        if (current / ".git").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+
+
+def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
+    """Return the nearest project ``.openharness/settings.json`` above cwd, if any.
+
+    Walks from ``cwd`` up to the git root (or the home directory when no git
+    repository is detected) and returns the first existing
+    ``.openharness/settings.json``. Returns ``None`` when no project config
+    file is found.
+    """
+    start = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
+    if start.is_file():
+        start = start.parent
+    if not start.is_dir():
+        start = start.parent
+
+    git_root = _find_git_root(start)
+    home = Path.home().resolve()
+    current = start
+    while True:
+        candidate = current / _DEFAULT_BASE_DIR / _CONFIG_FILE_NAME
+        if candidate.is_file():
+            return candidate
+        if git_root is not None and current == git_root:
+            break
+        if git_root is None and current == home:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
+def get_config_file_path(cwd: str | Path | None = None) -> Path:
+    """Return the path to the effective settings file.
+
+    Resolution order (highest first):
+    1. ``OPENHARNESS_CONFIG_DIR`` environment variable (explicit override)
+    2. Project-local ``.openharness/settings.json`` (nearest ancestor of cwd,
+       up to the git root) — enables per-repo, portable configuration
+    3. ``~/.openharness/settings.json`` (user config)
+    """
+    env_dir = os.environ.get("OPENHARNESS_CONFIG_DIR")
+    if env_dir:
+        config_dir = Path(env_dir)
+        config_dir.mkdir(parents=True, exist_ok=True)
+        return config_dir / _CONFIG_FILE_NAME
+
+    project_file = find_project_config_file(cwd)
+    if project_file is not None:
+        return project_file
+
     return get_config_dir() / _CONFIG_FILE_NAME
 
 

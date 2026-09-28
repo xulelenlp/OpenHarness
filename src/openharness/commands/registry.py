@@ -19,6 +19,7 @@ from openharness.autopilot import RepoAutopilotStore
 from openharness.auth.manager import AuthManager
 from openharness.config.paths import (
     get_config_dir,
+    get_config_file_path,
     get_data_dir,
     get_feedback_log_path,
     get_project_config_dir,
@@ -1178,7 +1179,7 @@ def create_default_command_registry(
                 )
             )
         manager.store_profile_credential(profile_name, "api_key", api_key)
-        return CommandResult(message="Stored API key in ~/.openharness/settings.json")
+        return CommandResult(message=f"Stored API key in {get_config_file_path()}")
 
     async def _logout_handler(_: str, context: CommandContext) -> CommandResult:
         del context

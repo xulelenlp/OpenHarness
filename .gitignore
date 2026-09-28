@@ -30,7 +30,10 @@ htmlcov/
 frontend/terminal/node_modules/
 
 # User data (never commit API keys or session data)
-.openharness/
+.openharness/*
+# Version-controlled project config for portable, centralized setup.
+# Keep secrets (api_key) out of this file; use env vars or `abc auth login`.
+!.openharness/settings.json
 react_tui_smoke.txt
 
 # OS
