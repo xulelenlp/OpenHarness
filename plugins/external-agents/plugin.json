@@ -1,0 +1,7 @@
+{
+  "name": "external-agents",
+  "version": "1.0.0",
+  "description": "Declarative external HTTP-based analysis agents (e.g. power-grid indicator analysis).",
+  "enabled_by_default": true,
+  "tools_dir": "tools"
+}

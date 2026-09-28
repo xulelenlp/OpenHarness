@@ -1,0 +1,41 @@
+{
+  "agents": [
+    {
+      "id": "power-grid-analysis",
+      "type": "http",
+      "name": "电网指标数据分析",
+      "description": "电力、电网、能源行业各项经营与技术指标的数据分析，覆盖但不限于：售电量、供电量、购电量、线损率、停电时间（含全量停电平均时间）、供电可靠性、电压合格率、负载率、电价、电费回收率等。当用户咨询上述任意指标的统计汇总、对比、趋势、同比/环比、影响因素等分析时调用，返回完整 markdown 分析报告。",
+      "enabled": true,
+      "conversation_id": "auto",
+      "timeout_seconds": 180,
+      "max_response_chars": 200000,
+      "response": {
+        "mode": "auto",
+        "json_text_paths": [
+          "choices[0].delta.content",
+          "choices[0].message.content",
+          "choices[0].text",
+          "delta",
+          "content",
+          "answer",
+          "message",
+          "data",
+          "text",
+          "output",
+          "result"
+        ]
+      },
+      "config": {
+        "endpoint": "http://192.168.139.144:18081/api/chat/stream",
+        "method": "POST",
+        "headers": { "content-type": "application/json" },
+        "request_body": {
+          "message": "{message}",
+          "conversation_id": "{conversation_id}",
+          "context": {},
+          "chat_type": 4
+        }
+      }
+    }
+  ]
+}
