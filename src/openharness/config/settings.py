@@ -574,14 +574,14 @@ class BrandingSettings(BaseModel):
     variables (env vars take precedence at load time).
     """
 
-    product_name: str = "ABC Tech"
+    product_name: str = "abc helper"
     slogan: str = "An AI-powered coding assistant"
 
     @classmethod
     def from_env(cls) -> "BrandingSettings":
         """Load branding overrides from environment variables."""
         return cls(
-            product_name=os.environ.get("OPENHARNESS_PRODUCT_NAME", "").strip() or "ABC Tech",
+            product_name=os.environ.get("OPENHARNESS_PRODUCT_NAME", "").strip() or "abc helper",
             slogan=os.environ.get("OPENHARNESS_SLOGAN", "").strip() or "An AI-powered coding assistant",
         )
 

@@ -71,7 +71,7 @@ abcag init                      # 初始化 workspace（不再触发向导）
 
 启动画面的 ASCII 大字 logo 已替换为**可配置的纯文本产品名 + 副标题**，默认值：
 
-- 产品名：`ABC Tech`
+- 产品名：`abc helper`
 - 副标题：`An AI-powered coding assistant`
 
 ### 2.1 配置方式
@@ -81,7 +81,7 @@ abcag init                      # 初始化 workspace（不再触发向导）
 ```json
 {
   "branding": {
-    "product_name": "ABC Tech",
+    "product_name": "abc helper",
     "slogan": "企业级编码助手"
   }
 }
@@ -90,7 +90,7 @@ abcag init                      # 初始化 workspace（不再触发向导）
 或使用环境变量（优先级高于 `settings.json`）：
 
 ```bash
-export OPENHARNESS_PRODUCT_NAME="ABC Tech"
+export OPENHARNESS_PRODUCT_NAME="abc helper"
 export OPENHARNESS_SLOGAN="企业级编码助手"
 ```
 

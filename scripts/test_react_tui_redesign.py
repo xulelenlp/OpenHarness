@@ -56,7 +56,7 @@ def test_welcome_banner() -> tuple[bool, str]:
     )
     try:
         # Wait for welcome banner
-        child.expect("ABC Tech", timeout=15)
+        child.expect("abc helper", timeout=15)
         child.expect(pexpect.EOF, timeout=15)
         return True, "Welcome banner displayed with the product name"
     except pexpect.TIMEOUT:
@@ -64,7 +64,7 @@ def test_welcome_banner() -> tuple[bool, str]:
         return False, f"Timeout waiting for welcome banner. Output: {output[:300]}"
     except pexpect.EOF:
         output = child.before or ""
-        if "ABC Tech" in output:
+        if "abc helper" in output:
             return True, "Welcome banner found in output"
         return False, f"EOF before banner. Output: {output[:300]}"
     finally:

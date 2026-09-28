@@ -7,9 +7,12 @@ from __future__ import annotations
 
 from openharness.prompts.environment import EnvironmentInfo, get_environment_info
 
+_DEFAULT_PRODUCT_NAME = "abc helper"
 
+# The identity line carries a placeholder so the assistant's self-introduction
+# ("You are ...") follows branding.product_name, keeping the name configurable.
 _BASE_SYSTEM_PROMPT = """\
-You are OpenHarness, an open-source AI coding assistant CLI. \
+You are {product_name}, an open-source AI coding assistant CLI. \
 You are an interactive agent that helps users with software engineering tasks. \
 Use the instructions below and the tools available to you to assist the user.
 
@@ -55,9 +58,16 @@ Carefully consider the reversibility and blast radius of actions. Freely take lo
  - If you can say it in one sentence, don't use three."""
 
 
-def get_base_system_prompt() -> str:
+def _render_base_system_prompt(product_name: str) -> str:
+    """Render the base prompt with the configured product name injected."""
+    return _BASE_SYSTEM_PROMPT.replace(
+        "{product_name}", (product_name or "").strip() or _DEFAULT_PRODUCT_NAME
+    )
+
+
+def get_base_system_prompt(product_name: str = _DEFAULT_PRODUCT_NAME) -> str:
     """Return the built-in base system prompt without environment info."""
-    return _BASE_SYSTEM_PROMPT
+    return _render_base_system_prompt(product_name)
 
 
 def _format_environment_section(env: EnvironmentInfo) -> str:
@@ -89,6 +99,7 @@ def build_system_prompt(
     custom_prompt: str | None = None,
     env: EnvironmentInfo | None = None,
     cwd: str | None = None,
+    product_name: str = _DEFAULT_PRODUCT_NAME,
 ) -> str:
     """Build the complete system prompt.
 
@@ -96,6 +107,7 @@ def build_system_prompt(
         custom_prompt: If provided, replaces the base system prompt entirely.
         env: Pre-built EnvironmentInfo. If None, auto-detects.
         cwd: Working directory override (only used when env is None).
+        product_name: Product name used in the base identity line.
 
     Returns:
         The assembled system prompt string.
@@ -103,7 +115,7 @@ def build_system_prompt(
     if env is None:
         env = get_environment_info(cwd=cwd)
 
-    base = custom_prompt if custom_prompt is not None else _BASE_SYSTEM_PROMPT
+    base = custom_prompt if custom_prompt is not None else _render_base_system_prompt(product_name)
     env_section = _format_environment_section(env)
 
     return f"{base}\n\n{env_section}"

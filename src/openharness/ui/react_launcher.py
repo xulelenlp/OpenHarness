@@ -25,11 +25,11 @@ def _resolve_branding() -> dict[str, str]:
         from openharness.config.settings import load_settings
         branding = load_settings().branding
         return {
-            "product_name": branding.product_name or "ABC Tech",
+            "product_name": branding.product_name or "abc helper",
             "slogan": branding.slogan or "An AI-powered coding assistant",
         }
     except Exception:
-        return {"product_name": "ABC Tech", "slogan": "An AI-powered coding assistant"}
+        return {"product_name": "abc helper", "slogan": "An AI-powered coding assistant"}
 
 
 def _resolve_npm() -> str:

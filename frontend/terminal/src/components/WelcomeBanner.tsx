@@ -3,7 +3,7 @@ import {Box, Text} from 'ink';
 
 import {useTheme} from '../theme/ThemeContext.js';
 
-const DEFAULT_PRODUCT_NAME = 'ABC Tech';
+const DEFAULT_PRODUCT_NAME = 'abc helper';
 const DEFAULT_SLOGAN = 'An AI-powered coding assistant';
 
 export function WelcomeBanner({

@@ -112,10 +112,16 @@ def build_runtime_system_prompt(
     if is_coordinator_mode():
         sections = [get_coordinator_system_prompt()]
     else:
-        sections = [build_system_prompt(custom_prompt=settings.system_prompt, cwd=str(cwd))]
+        sections = [
+            build_system_prompt(
+                custom_prompt=settings.system_prompt,
+                cwd=str(cwd),
+                product_name=settings.branding.product_name,
+            )
+        ]
 
     if not is_coordinator_mode() and settings.system_prompt is None:
-        sections[0] = build_system_prompt(cwd=str(cwd))
+        sections[0] = build_system_prompt(cwd=str(cwd), product_name=settings.branding.product_name)
 
     sections.append(_build_permission_mode_section(settings))
 
