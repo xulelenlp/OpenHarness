@@ -7,8 +7,8 @@
       "description": "电力、电网、能源行业各项经营与技术指标的数据分析，覆盖但不限于：售电量、供电量、购电量、线损率、停电时间（含全量停电平均时间）、供电可靠性、电压合格率、负载率、电价、电费回收率等。当用户咨询上述任意指标的统计汇总、对比、趋势、同比/环比、影响因素等分析时调用，返回完整 markdown 分析报告。",
       "enabled": true,
       "conversation_id": "auto",
-      "timeout_seconds": 180,
-      "max_response_chars": 200000,
+      "timeout_seconds": 300,
+      "max_response_chars": 220000,
       "response": {
         "mode": "auto",
         "json_text_paths": [
@@ -34,6 +34,108 @@
           "conversation_id": "{conversation_id}",
           "context": {},
           "chat_type": 4
+        }
+      }
+    },
+    {
+      "id": "smart-data-query",
+      "type": "http",
+      "name": "智能问数",
+      "description": "面向业务数据的即席查数/数据查询：当用户直接询问某个指标的具体数值、数据明细、统计结果等数据查询问题（例如「福建去年售电量是多少」「某地区某月供电量明细」）时调用，返回数据查询结果。侧重『查数据、要具体数值/明细』，与『电网指标数据分析』的深度分析报告区分；趋势、对比、成因解读等分析类需求走分析报告智能体。",
+      "enabled": true,
+      "conversation_id": "auto",
+      "timeout_seconds": 300,
+      "max_response_chars": 220000,
+      "response": {
+        "mode": "auto",
+        "json_text_paths": [
+          "choices[0].delta.content",
+          "choices[0].message.content",
+          "choices[0].text",
+          "delta",
+          "content",
+          "answer",
+          "message",
+          "data",
+          "text",
+          "output",
+          "result"
+        ]
+      },
+      "config": {
+        "endpoint": "http://192.168.139.144:18094/chat_agent_roll",
+        "method": "POST",
+        "headers": { "content-type": "application/json" },
+        "request_body": {
+          "id": "",
+          "query": "{message}",
+          "user_id": "T00033995",
+          "session": "{conversation_id}",
+          "authInfo": {
+            "type": 3001,
+            "orgCode": "210000000000127",
+            "province": "福建",
+            "city": null,
+            "county": null,
+            "powers": "BUREAU LEVEL",
+            "majors": [],
+            "token": "",
+            "loginTime": 1790666313600
+          },
+          "domain_id": 1,
+          "use_direct": 1,
+          "chat_type": null
+        }
+      }
+    },
+    {
+      "id": "knowledge-qa",
+      "type": "http",
+      "name": "知识问答",
+      "description": "专业知识与政策文件问答：回答用户的专业知识、政策解读、文件解读类问题，例如行业政策、规章制度、标准规范、业务知识、名词解释、政策文件要点与条款解读等。当用户提出『是什么/为什么/如何理解/政策如何规定/文件怎么解读』等知识性、解读性问题时调用，返回专业解答。侧重『讲知识、做解读』，与数据查询、指标分析类需求区分。",
+      "enabled": true,
+      "conversation_id": "auto",
+      "timeout_seconds": 300,
+      "max_response_chars": 220000,
+      "response": {
+        "mode": "auto",
+        "json_text_paths": [
+          "choices[0].delta.content",
+          "choices[0].message.content",
+          "choices[0].text",
+          "delta",
+          "content",
+          "answer",
+          "message",
+          "data",
+          "text",
+          "output",
+          "result"
+        ]
+      },
+      "config": {
+        "endpoint": "http://192.168.139.144:18094/chat_agent_roll",
+        "method": "POST",
+        "headers": { "content-type": "application/json" },
+        "request_body": {
+          "id": "",
+          "query": "{message}",
+          "user_id": "T00033995",
+          "session": "{conversation_id}",
+          "authInfo": {
+            "type": 3001,
+            "orgCode": "210000000000127",
+            "province": "福建",
+            "city": null,
+            "county": null,
+            "powers": "BUREAU LEVEL",
+            "majors": [],
+            "token": "",
+            "loginTime": 1790666313600
+          },
+          "domain_id": 6,
+          "use_direct": 1,
+          "chat_type": null
         }
       }
     }
