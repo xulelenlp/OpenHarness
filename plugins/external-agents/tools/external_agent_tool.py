@@ -469,14 +469,21 @@ class ExternalAgentTool(BaseTool):
     def _build_description(self) -> str:
         config = self._load_config()
         enabled = [agent for agent in config.agents if agent.enabled]
-        lines = [
-            (
-                "调用已配置的外部数据分析智能体，返回其完整的 markdown 分析报告。\n"
-                "【重要路由规则】当用户提出某个专业领域的数据分析问题，且该问题属于下方任一智能体"
-                "的领域时，必须调用本工具：把用户原话作为 message，agent 传对应的智能体 id。"
-                "不要自行搜索文件或回答“没有数据/未接入接口”。"
-            ),
-        ]
+        routing_rules = (
+            "调用已配置的外部专业领域智能体，返回其完整报告。\n"
+            "【路由规则：先判意图，再选智能体】当用户问题属于下方任一智能体的领域时，必须调用本工具："
+            "把用户原话作为 message，agent 传对应的智能体 id；不要自行搜索文件或回答“没有数据/未接入接口”。\n"
+            "意图判定优先级（从高到低）：\n"
+            "① 分析类（优先级最高）：问题含「分析、评估、解读、研判、预测、展望、对比、比较、复盘、总结」"
+            "等动词，或「趋势、走势、情况、表现、变化、成因、原因、影响因素、同比、环比、增长、下降、异常、波动」"
+            "等表述，一律判为分析类，选“分析报告”智能体（description 含“分析报告/数据分析”者，如 power-grid-analysis）。"
+            "注意：即使句中同时出现某个具体指标或“福建/售电量”等词，只要带分析意图就按分析类处理，不要当成问数。\n"
+            "② 问数类（仅当完全没有分析意图）：用户只想要“一个具体数值/数据明细”，典型表述「XX 是多少」「查一下 XX 的数值」「XX 明细」，"
+            "才选“问数”智能体（description 含“查数/数据查询”者，如 smart-data-query）。\n"
+            "③ 知识/政策解读类：「是什么/为什么/如何理解/政策如何规定/文件怎么解读」选知识问答智能体。\n"
+            "判例：「分析福建2026年第二季度售电量情况」含“分析”与“情况”→ 分析类 → 选 power-grid-analysis，不选 smart-data-query。"
+        )
+        lines = [routing_rules]
         if not enabled:
             lines.append(
                 "No external agents are currently configured. Check the plugin's "
