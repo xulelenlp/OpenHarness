@@ -1,7 +1,19 @@
 import type { AgentListResponse, ConversationSummary } from "./types";
 
-// 默认走同源：开发态由 Vite 代理到 :8787，生产态由 qaapp static_dir 托管。
-const BASE = "";
+/**
+ * 后端基址，按部署环境可配置（见 frontend/webapp/.env.example）：
+ *
+ * - **留空（默认）= 同源**
+ *   · 开发态：由 Vite dev server 把 `/api`、`/healthz` 代理到 `VITE_API_TARGET`
+ *     （默认 `http://127.0.0.1:8787`）
+ *   · 生产态：前端由 qaapp 的 `static_dir` 一同托管，天然同源
+ * - **非空 = 浏览器直连该地址**，用于前后端分离部署，
+ *   例如 `VITE_API_BASE_URL=http://192.168.139.144:8787`（需后端 `cors_origins` 放行）
+ *
+ * 配置方式：写进 `frontend/webapp/.env.local`（已被 gitignore 忽略），
+ * 或启动/构建时注入环境变量。
+ */
+const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("qaapp_token");

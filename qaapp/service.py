@@ -817,10 +817,24 @@ class QaWebService:
         logging.getLogger("openharness.api.openai_client").setLevel(logging.INFO)
         logging.getLogger("qaapp.service").setLevel(logging.INFO)
 
+        resolved_host = host or self.webapp.host
+        resolved_port = port if port is not None else self.webapp.port
+
+        # 安全兜底：默认监听所有网卡且未配 token 时，同网段任何人都能调用对话 API，
+        # 进而触发文件写入 / shell 执行。这里给出醒目告警而不是静默开放。
+        if resolved_host in {"0.0.0.0", "::", ""} and not self.webapp.api_tokens:
+            logger.warning(
+                "安全告警：服务监听 %s:%s（所有网卡）但 api_tokens 为空——"
+                "同一局域网内任何人都能无需鉴权调用对话 API，并触发文件写入 / shell 执行。"
+                "请设置 api_tokens（见 README §9.1），或把 webapp.json 的 host 改回 127.0.0.1。",
+                resolved_host,
+                resolved_port,
+            )
+
         uvicorn.run(
             self.app,
-            host=host or self.webapp.host,
-            port=port if port is not None else self.webapp.port,
+            host=resolved_host,
+            port=resolved_port,
             log_level="info",
         )
 

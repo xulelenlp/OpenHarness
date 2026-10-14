@@ -165,6 +165,10 @@ curl http://127.0.0.1:8787/healthz
 # → {"status":"ok","active_sessions":0}
 ```
 
+> 服务**默认监听 `0.0.0.0:8787`（所有网卡）**，局域网内其他设备可用
+> `http://<你的本机IP>:8787` 访问。查本机 IP：macOS `ipconfig getifaddr en0`、
+> Linux `hostname -I`。对外监听时请务必配置 `api_tokens`（见 §9.1）。
+
 ---
 
 ## 5. 配置体系（三层配置）
@@ -228,7 +232,7 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
-| `host` | `127.0.0.1` | 监听地址；生产对外需 `0.0.0.0` |
+| `host` | `0.0.0.0` | 监听地址。**默认监听所有网卡**，便于局域网内的 APP / 其他设备直接访问；仅需本机访问时改为 `127.0.0.1`。对外暴露务必配 `api_tokens`（见 §9.1） |
 | `port` | `8787` | 监听端口 |
 | `provider_profile` | `""` | 空=继承 `active_profile`；非空=指定 profile 名 |
 | `api_tokens` | `[]` | 静态 Bearer Token 列表；**空=不鉴权**，非空时除 healthz/agents/WS 外均需鉴权（见 §9.1） |
@@ -406,18 +410,59 @@ POST /api/v1/conversations/{id}/approvals/{request_id}
 ```bash
 cd frontend/webapp
 npm install
-npm run dev      # 开发：http://localhost:5173，/api 与 /healthz 代理到 127.0.0.1:8787
+npm run dev      # 开发：监听 0.0.0.0:5173，/api 与 /healthz 代理到 VITE_API_TARGET（默认 127.0.0.1:8787）
 npm run build    # 生产构建，产物在 dist/
+npm run preview  # 预览构建产物：监听 0.0.0.0:4173
 ```
 
 两种生产部署方式：
 
 1. **同源托管（推荐、最简单）**：把 `dist/` 绝对路径填进 `webapp.json` 的
    `static_dir`，重启服务后由同一端口托管前端 + API（前端请求走同源，无需跨域）。
-2. **独立托管**：把 `dist/` 部署到 Nginx/CDN，前端 `api.ts` 里把 `BASE` 改成 API
-   地址，并在 `webapp.json` 的 `cors_origins` 里加入前端域名。
+2. **独立托管**：把 `dist/` 部署到 Nginx/CDN，用 `VITE_API_BASE_URL` 指定后端地址
+   （见 §8.1），并在 `webapp.json` 的 `cors_origins` 里放行前端域名。
 
-### 8.1 改动生效规则（很容易踩）
+### 8.1 配置后端地址（前后端分机部署必读）
+
+前端通过**环境变量**指定后端，**无需改代码**。两个变量语义不同，别混用：
+
+| 变量 | 作用 | 用在哪 |
+| --- | --- | --- |
+| `VITE_API_TARGET` | **Vite 开发/预览服务器**代理转发的目标地址（服务端转发） | `npm run dev` / `npm run preview`；浏览器同源请求，**不产生跨域** |
+| `VITE_API_BASE_URL` | **浏览器直连**后端的基址 | 仅当前端产物部署在与后端不同的域名/端口时；需后端 `cors_origins` 放行 |
+
+配置方式（**推荐第 2 种**，长期生效且不进版本库）：
+
+```bash
+cd frontend/webapp
+
+# 方式一：命令行临时指定
+VITE_API_TARGET=http://192.168.139.144:8787 npm run dev
+
+# 方式二：写进 .env.local
+cp .env.example .env.local
+# 编辑 .env.local，例如：VITE_API_TARGET=http://192.168.139.144:8787
+npm run dev
+```
+
+常见场景该填什么：
+
+| 场景 | `VITE_API_TARGET` |
+| --- | --- |
+| 前端与后端**同一台机器** | `http://127.0.0.1:8787`（默认值，可不配） |
+| 前端在本机、后端在 `192.168.139.144` | `http://192.168.139.144:8787` |
+| 前端就跑在 `192.168.139.144`、别人访问 `:5173` | `http://127.0.0.1:8787`（dev server 与后端同机，走回环即可） |
+
+> ⚠️ `VITE_API_TARGET` 是**运行 `npm run dev` 那台机器**去连后端的地址，**不是浏览器的地址**。
+> 因此只有「前端与后端不在同一台机器」时才需要改成服务器 IP。
+
+生产构建且前后端分离部署时：
+
+```bash
+VITE_API_BASE_URL=http://192.168.139.144:8787 npm run build
+```
+
+### 8.2 改动生效规则（很容易踩）
 
 | 改了什么 | 必须做什么 | 为什么 |
 | --- | --- | --- |
@@ -432,6 +477,10 @@ npm run build    # 生产构建，产物在 dist/
 ## 9. 部署与运维注意事项（重点）
 
 ### 9.1 鉴权暴露面（务必看清）
+
+> ⚠️ **服务默认监听 `0.0.0.0`（所有网卡）**，同一局域网内的任何设备都能访问。
+> 因此 `api_tokens` **强烈建议务必配置**；留空等于把「对话 API + 文件写入 + shell 执行」
+> 的能力开放给同网段所有人。仅需本机访问时，把 `host` 改回 `127.0.0.1`。
 
 `api_tokens` 非空时，**以下端点仍不鉴权**：`/healthz`、`/api/v1/agents`、
 WebSocket `/stream`。其余 API 需 `Authorization: Bearer <token>`。
@@ -452,7 +501,17 @@ WebSocket `/stream`。其余 API 需 `Authorization: Bearer <token>`。
 
 ### 9.3 对外访问：host / 端口 / 反向代理
 
-- 默认 `host=127.0.0.1` 只监听本机；对外服务改成 `0.0.0.0`（或 CLI `--host 0.0.0.0`）。
+- **默认 `host=0.0.0.0`，即监听所有网卡**，局域网内其他设备（手机 APP、同事电脑）
+  可直接访问。仅需本机时改成 `127.0.0.1`，或用 CLI 临时覆盖：
+  `abcqa webapp run --host 127.0.0.1`。
+- 前端 `npm run dev` / `npm run preview` 同样监听 `0.0.0.0`（见 `vite.config.ts`）：
+  - 前端页面：`http://<本机IP>:5173`（dev）或 `http://<本机IP>:4173`（preview）
+  - 后端 API：`http://<本机IP>:8787`
+  - dev 模式下前端的 `/api` 由 Vite 代理转发到 `VITE_API_TARGET`（默认 `127.0.0.1:8787`），
+    因此**浏览器无需跨域**；后端在别的机器时按 §8.1 改这个变量即可。
+  - 查本机 IP：macOS `ipconfig getifaddr en0`；Linux `hostname -I`。
+- 因为默认已对外监听，**请务必设置 `api_tokens`**：否则同网段任何人都能调用对话
+  API，进而触发文件写入 / shell 执行（见 §9.1）。
 - 生产建议前置 Nginx/Caddy 做 TLS 终止、反向代理到 `127.0.0.1:8787`，并对 SSE 路径
   关闭缓冲（`proxy_buffering off`）以保持流式。
 - SSE 长连接会占用连接数，注意反向代理的 `proxy_read_timeout` 调大（如 300s+）。

@@ -62,7 +62,10 @@ class ConversationPoolConfig(BaseModel):
 class WebappConfig(BaseModel):
     """``webapp.json`` —— Web 服务配置。"""
 
-    host: str = "127.0.0.1"
+    #: 默认监听所有网卡，便于同一局域网内的 APP / 其他设备直接访问。
+    #: 注意：这会扩大暴露面，务必设置 ``api_tokens`` 并在可信网络中部署
+    #: （详见 README §9.1 鉴权暴露面）。如需仅本机访问，改回 ``127.0.0.1``。
+    host: str = "0.0.0.0"
     port: int = 8787
     #: 为空 = 继承 settings.json 的 active_profile；否则显式指定 profile。
     provider_profile: str = ""
