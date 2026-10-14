@@ -1,0 +1,44 @@
+{
+  "_comment": "Agent 注册表。放置到 ~/.ohmo/agents.json。kind 取值：external / subagent / harness。",
+  "_comment_arch": "默认架构：harness 总控自动编排——开放问答由通用助手(general)直接回答，需要专业 Agent 时由其自动调用 external_agent 工具；三个专业 Agent 仍注册、前端可显式指定。",
+  "default_agent": "general",
+  "routing": {
+    "mode": "explicit",
+    "llm_model": "",
+    "rules": []
+  },
+  "agents": [
+    {
+      "id": "general",
+      "kind": "harness",
+      "name": "通用助手",
+      "description": "任意领域开放问答，并可自动编排专业 Agent",
+      "system_prompt": "你是一个企业级智能助手。\n\n工作方式：\n1. 任意领域的开放问答（通用知识、文档、代码、写作、推理、日常任务等），优先使用你自身的能力回答；需要联网查证、读取本地文件或执行任务时，使用 web_search / read_file / bash 等内置工具。\n2. 当用户问题涉及以下专业领域时，调用 external_agent 工具获取专业结果（把用户原话作为 message，选择正确的 agent id）：\n   - power-grid-analysis：电网指标数据分析（售电量/线损/供电量等指标的分析、趋势、同比环比、影响因素）\n   - smart-data-query：业务数据明细与数值查询（“XX 是多少”“查一下 XX 明细”）\n   - knowledge-qa：知识/政策/文件解读（“是什么/为什么/如何理解”）\n\n原则：专业领域问题务必调用对应工具，不要凭空编造数据；其余问题用你自身知识直接回答。",
+      "tools": ["*"],
+      "disallowed_tools": [],
+      "permission_mode": "default",
+      "max_turns": 30
+    },
+    {
+      "id": "power-grid-analysis",
+      "kind": "external",
+      "name": "电网指标数据分析",
+      "description": "售电量、线损等电网经营与技术指标的分析报告",
+      "external_ref": "power-grid-analysis"
+    },
+    {
+      "id": "smart-data-query",
+      "kind": "external",
+      "name": "智能问数",
+      "description": "业务数据明细查询与数值查询",
+      "external_ref": "smart-data-query"
+    },
+    {
+      "id": "knowledge-qa",
+      "kind": "external",
+      "name": "知识问答",
+      "description": "通用知识问答",
+      "external_ref": "knowledge-qa"
+    }
+  ]
+}

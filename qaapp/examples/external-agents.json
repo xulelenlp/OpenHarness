@@ -1,0 +1,46 @@
+{
+  "_comment": "OpenHarness 外部 Agent 插件配置（kind=external 的 Agent 在此声明 transport）。放置到 ~/.openharness/external-agents.json 或项目 .openharness/external-agents.json。",
+  "agents": [
+    {
+      "id": "power-grid-analysis",
+      "type": "http",
+      "name": "电网专业数据洞察",
+      "description": "外部 HTTP 智能体：电网指标分析",
+      "config": {
+        "endpoint": "https://your-agent-gateway.example.com/power-grid-analysis/chat",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json",
+          "authorization": "Bearer YOUR_AGENT_TOKEN"
+        },
+        "request_body": {
+          "message": "{message}",
+          "conversation_id": "{conversation_id}"
+        }
+      },
+      "response": {
+        "mode": "ndjson",
+        "json_text_paths": ["content"]
+      }
+    },
+    {
+      "id": "smart-data-query",
+      "type": "http",
+      "name": "营销数据明细问答",
+      "description": "外部 HTTP 智能体：营销明细查询",
+      "config": {
+        "endpoint": "https://your-agent-gateway.example.com/smart-data-query/chat",
+        "method": "POST",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "request_body": {
+          "message": "{message}"
+        }
+      },
+      "response": {
+        "mode": "auto"
+      }
+    }
+  ]
+}

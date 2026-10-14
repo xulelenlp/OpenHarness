@@ -33,6 +33,9 @@ dependencies = [
     "python-telegram-bot>=21.0.0",
     "discord.py>=2.0.0",
     "lark-oapi>=1.5.0",
+    "starlette>=0.36.0",
+    "uvicorn>=0.30.0",
+    "sse-starlette>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -48,9 +51,10 @@ dev = [
 [project.scripts]
 abc = "openharness.cli:app"
 abcag = "ohmo.cli:app"
+abcqa = "qaapp.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/openharness", "ohmo"]
+packages = ["src/openharness", "ohmo", "qaapp"]
 
 [tool.hatch.build]
 exclude = [

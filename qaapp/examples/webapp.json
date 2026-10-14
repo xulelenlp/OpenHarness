@@ -1,0 +1,14 @@
+{
+  "_comment": "qaapp Web 服务配置。放置到 ohmo workspace 根目录（~/.ohmo/webapp.json，或 OHMO_WORKSPACE 指向的目录）。",
+  "host": "127.0.0.1",
+  "port": 8787,
+  "provider_profile": "",
+  "api_tokens": ["please-change-this-token"],
+  "cors_origins": ["http://localhost:5173", "http://localhost:3000"],
+  "static_dir": "",
+  "approval_timeout_seconds": 300,
+  "conversation": {
+    "max_active_bundles": 100,
+    "idle_timeout_seconds": 86400
+  }
+}
