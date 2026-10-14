@@ -1,4 +1,4 @@
-import {startTransition, useEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';
 import readline from 'node:readline';
 
@@ -60,9 +60,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 		}
 		pendingAssistantDeltaRef.current = '';
 		assistantBufferRef.current += pending;
-		startTransition(() => {
-			setAssistantBuffer(assistantBufferRef.current);
-		});
+		setAssistantBuffer(assistantBufferRef.current);
 	};
 
 	const flushTranscriptItems = (): void => {
@@ -71,9 +69,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			return;
 		}
 		pendingTranscriptItemsRef.current = [];
-		startTransition(() => {
-			setTranscript((items) => [...items, ...pending]);
-		});
+		setTranscript((items) => [...items, ...pending]);
 	};
 
 	const queueTranscriptItem = (item: TranscriptItem): void => {
@@ -183,25 +179,17 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			lastStatusSnapshotRef.current = statusSnapshot;
 			const nextStatus = event.state ?? {};
 			statusRef.current = nextStatus;
-			startTransition(() => {
-				setStatus(nextStatus);
-			});
+			setStatus(nextStatus);
 			const tasksSnapshot = stableStringify(event.tasks ?? []);
 			lastTasksSnapshotRef.current = tasksSnapshot;
-			startTransition(() => {
-				setTasks(event.tasks ?? []);
-			});
+			setTasks(event.tasks ?? []);
 			setCommands(event.commands ?? []);
 			const mcpSnapshot = stableStringify(event.mcp_servers ?? []);
 			lastMcpSnapshotRef.current = mcpSnapshot;
-			startTransition(() => {
-				setMcpServers(event.mcp_servers ?? []);
-			});
+			setMcpServers(event.mcp_servers ?? []);
 			const bridgeSnapshot = stableStringify(event.bridge_sessions ?? []);
 			lastBridgeSnapshotRef.current = bridgeSnapshot;
-			startTransition(() => {
-				setBridgeSessions(event.bridge_sessions ?? []);
-			});
+			setBridgeSessions(event.bridge_sessions ?? []);
 			if (config.initial_prompt && !sentInitialPrompt.current) {
 				sentInitialPrompt.current = true;
 				sendRequest({type: 'submit_line', line: config.initial_prompt});
@@ -215,23 +203,17 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 				lastStatusSnapshotRef.current = statusSnapshot;
 				const nextStatus = event.state ?? {};
 				statusRef.current = nextStatus;
-				startTransition(() => {
-					setStatus(nextStatus);
-				});
+				setStatus(nextStatus);
 			}
 			const mcpSnapshot = stableStringify(event.mcp_servers ?? []);
 			if (mcpSnapshot !== lastMcpSnapshotRef.current) {
 				lastMcpSnapshotRef.current = mcpSnapshot;
-				startTransition(() => {
-					setMcpServers(event.mcp_servers ?? []);
-				});
+				setMcpServers(event.mcp_servers ?? []);
 			}
 			const bridgeSnapshot = stableStringify(event.bridge_sessions ?? []);
 			if (bridgeSnapshot !== lastBridgeSnapshotRef.current) {
 				lastBridgeSnapshotRef.current = bridgeSnapshot;
-				startTransition(() => {
-					setBridgeSessions(event.bridge_sessions ?? []);
-				});
+				setBridgeSessions(event.bridge_sessions ?? []);
 			}
 			return;
 		}
@@ -239,9 +221,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			const tasksSnapshot = stableStringify(event.tasks ?? []);
 			if (tasksSnapshot !== lastTasksSnapshotRef.current) {
 				lastTasksSnapshotRef.current = tasksSnapshot;
-				startTransition(() => {
-					setTasks(event.tasks ?? []);
-				});
+				setTasks(event.tasks ?? []);
 			}
 			return;
 		}
@@ -335,9 +315,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 				flushAssistantDelta();
 			}
 			const text = event.message ?? assistantBufferRef.current;
-			startTransition(() => {
-				setTranscript((items) => [...items, {role: 'assistant', text}]);
-			});
+			setTranscript((items) => [...items, {role: 'assistant', text}]);
 			clearAssistantDelta();
 			// Do NOT reset busy here: tool calls may follow this event.
 			// busy is reset by line_complete (the true end-of-turn signal).
@@ -398,33 +376,25 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 		}
 		if (event.type === 'todo_update') {
 			if (event.todo_markdown != null) {
-				startTransition(() => {
-					setTodoMarkdown(event.todo_markdown);
-				});
+				setTodoMarkdown(event.todo_markdown);
 			}
 			return;
 		}
 		if (event.type === 'swarm_status') {
 			if (event.swarm_teammates != null) {
-				startTransition(() => {
-					setSwarmTeammates(event.swarm_teammates);
-				});
+				setSwarmTeammates(event.swarm_teammates);
 			}
 			if (event.swarm_notifications != null) {
-				startTransition(() => {
-					setSwarmNotifications((prev) => [...prev, ...event.swarm_notifications!].slice(-20));
-				});
+				setSwarmNotifications((prev) => [...prev, ...event.swarm_notifications!].slice(-20));
 			}
 			return;
 		}
 		if (event.type === 'plan_mode_change') {
 			if (event.plan_mode != null) {
-				startTransition(() => {
-					setStatus((s) => {
-						const next = {...s, permission_mode: event.plan_mode};
-						statusRef.current = next;
-						return next;
-					});
+				setStatus((s) => {
+					const next = {...s, permission_mode: event.plan_mode};
+					statusRef.current = next;
+					return next;
 				});
 			}
 			return;

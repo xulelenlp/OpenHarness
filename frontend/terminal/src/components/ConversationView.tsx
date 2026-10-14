@@ -86,7 +86,11 @@ function ConversationViewInner({
 							<Text color={theme.colors.success} bold>{theme.icons.assistant}</Text>
 						</Text>
 						<Box marginLeft={2} flexDirection="column">
-							<MarkdownText content={assistantBuffer} />
+							{/* Streaming text is rendered as plain text to avoid re-lexing
+							    the whole markdown buffer every flush (~20fps), which caused
+							    heavy re-rendering and flicker. Full markdown formatting is
+							    applied once the assistant message completes. */}
+							<Text>{assistantBuffer}</Text>
 						</Box>
 					</Box>
 				)

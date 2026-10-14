@@ -1,4 +1,4 @@
-import React, {useDeferredValue, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useApp, useInput} from 'ink';
 
 import {readClipboardImage, type ImageAttachment} from './clipboardImage.js';
@@ -75,13 +75,6 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 	const session = useBackendSession(config, () => exit());
 	const productName = config.branding?.product_name;
 	const slogan = config.branding?.slogan;
-	const deferredTranscript = useDeferredValue(session.transcript);
-	const deferredAssistantBuffer = useDeferredValue(session.assistantBuffer);
-	const deferredStatus = useDeferredValue(session.status);
-	const deferredTasks = useDeferredValue(session.tasks);
-	const deferredTodoMarkdown = useDeferredValue(session.todoMarkdown);
-	const deferredSwarmTeammates = useDeferredValue(session.swarmTeammates);
-	const deferredSwarmNotifications = useDeferredValue(session.swarmNotifications);
 	const clipboardStatusTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 	useEffect(() => {
@@ -134,8 +127,8 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 
 	// Current tool name for spinner
 	const currentToolName = useMemo(() => {
-		for (let i = deferredTranscript.length - 1; i >= 0; i--) {
-			const item = deferredTranscript[i];
+		for (let i = session.transcript.length - 1; i >= 0; i--) {
+			const item = session.transcript[i];
 			if (item.role === 'tool') {
 				return item.tool_name ?? 'tool';
 			}
@@ -144,7 +137,7 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 			}
 		}
 		return undefined;
-	}, [deferredTranscript]);
+	}, [session.transcript]);
 
 	// Command hints
 	const commandHints = useMemo(() => {
@@ -507,8 +500,8 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 			{/* Conversation area */}
 			<Box flexDirection="column" flexGrow={1}>
 				<ConversationView
-					items={deferredTranscript}
-					assistantBuffer={deferredAssistantBuffer}
+					items={session.transcript}
+					assistantBuffer={session.assistantBuffer}
 					showWelcome={session.ready && outputStyle !== 'codex'}
 					outputStyle={outputStyle}
 					productName={productName}
@@ -541,18 +534,18 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 			) : null}
 
 			{/* Todo panel */}
-			{session.ready && deferredTodoMarkdown ? (
-				<TodoPanel markdown={deferredTodoMarkdown} />
+			{session.ready && session.todoMarkdown ? (
+				<TodoPanel markdown={session.todoMarkdown} />
 			) : null}
 
 			{/* Swarm panel */}
-			{session.ready && (deferredSwarmTeammates.length > 0 || deferredSwarmNotifications.length > 0) ? (
-				<SwarmPanel teammates={deferredSwarmTeammates} notifications={deferredSwarmNotifications} />
+			{session.ready && (session.swarmTeammates.length > 0 || session.swarmNotifications.length > 0) ? (
+				<SwarmPanel teammates={session.swarmTeammates} notifications={session.swarmNotifications} />
 			) : null}
 
 			{/* Status bar (only after backend is ready) */}
 			{session.ready ? (
-				<StatusBar status={deferredStatus} tasks={deferredTasks} activeToolName={session.busy ? currentToolName : undefined} />
+				<StatusBar status={session.status} tasks={session.tasks} activeToolName={session.busy ? currentToolName : undefined} />
 			) : null}
 
 			{/* Input — show loading indicator until backend is ready */}

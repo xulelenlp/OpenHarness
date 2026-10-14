@@ -22,6 +22,7 @@ export function ToolCallDisplay({
 
 		let statusNode: React.ReactNode = null;
 		let errorLines: string[] | null = null;
+		let resultPreview: string[] | null = null;
 
 		if (resultItem) {
 			if (resultItem.is_error) {
@@ -37,16 +38,22 @@ export function ToolCallDisplay({
 				const lineCount = resultItem.text.split('\n').filter((l) => l.trim()).length;
 				const resultLabel = lineCount > 0 ? `${lineCount}L` : theme.icons.success.trim();
 				statusNode = <Text dimColor> → {resultLabel}</Text>;
+				resultPreview = previewResult(resultItem.text);
 			} else {
 				const lineCount = resultItem.text.split('\n').filter((l) => l.trim()).length;
 				statusNode = <Text dimColor>{lineCount > 0 ? ` ${lineCount}L` : ''}</Text>;
 			}
+		} else {
+			// Tool started but not yet finished — surface a running indicator so
+			// users can follow the intermediate execution process.
+			statusNode = <Text dimColor> … running</Text>;
 		}
 
 		if (isCodexStyle) {
+			const verb = resultItem ? 'Ran' : 'Running';
 			return (
 				<Box marginLeft={0} flexDirection="column">
-					<Text dimColor>{`• Ran ${toolName}${summary ? ` ${summary}` : ''}`}{statusNode}</Text>
+					<Text dimColor>{`• ${verb} ${toolName}${summary ? ` ${summary}` : ''}`}{statusNode}</Text>
 					{errorLines?.map((line, i) => {
 						const prefix = i === errorLines.length - 1 ? '└ ' : '│ ';
 						return (
@@ -68,6 +75,11 @@ export function ToolCallDisplay({
 					<Text dimColor> {summary}</Text>
 					{statusNode}
 				</Text>
+				{resultPreview?.map((line, i) => (
+					<Box key={i} marginLeft={4}>
+						<Text dimColor>{line}</Text>
+					</Box>
+				))}
 				{errorLines?.map((line, i) => (
 					<Box key={i} marginLeft={4}>
 						<Text color={theme.colors.error}>{line}</Text>
@@ -111,6 +123,23 @@ export function ToolCallDisplay({
 	}
 
 	return <Text>{item.text}</Text>;
+}
+
+const RESULT_PREVIEW_MAX_LINES = 3;
+const RESULT_PREVIEW_MAX_LINE_LENGTH = 200;
+
+// Bounded preview of a successful tool result so users can follow the
+// intermediate execution process without dumping the full (possibly huge) output.
+function previewResult(text: string): string[] | null {
+	const lines = text.split('\n').map((line) => line.trimEnd()).filter((line) => line.trim());
+	if (lines.length === 0) {
+		return null;
+	}
+	return lines.slice(0, RESULT_PREVIEW_MAX_LINES).map((line) =>
+		line.length > RESULT_PREVIEW_MAX_LINE_LENGTH
+			? `${line.slice(0, RESULT_PREVIEW_MAX_LINE_LENGTH)}…`
+			: line,
+	);
 }
 
 function summarizeInput(toolName: string, toolInput?: Record<string, unknown>, fallback?: string): string {
