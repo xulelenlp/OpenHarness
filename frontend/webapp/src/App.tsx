@@ -8,6 +8,8 @@ import {
   resolveApproval,
   streamMessage,
 } from "./api";
+import { makeAccumulator, reduceEvent } from "./turn";
+import type { TurnAccumulator } from "./turn";
 import type { AgentInfo, ChatMessage, ConversationSummary, Step } from "./types";
 
 interface AgentListResponseShape {
@@ -31,155 +33,6 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-// ---------------------------------------------------------------------------
-// 事件 → 步骤 归约（实时流与历史回放共用同一套逻辑）
-// ---------------------------------------------------------------------------
-
-interface TurnAccumulator {
-  content: string;
-  steps: Step[];
-  agentName?: string;
-  seq: number;
-  /** 正在执行的工具名 → 对应 step.key，用于 tool_progress / tool_completed 回填。 */
-  currentTool: Map<string, string>;
-  /** 当前思考步骤的 key；正文/工具开始时置 done 并清空。 */
-  reasoningKey: string | null;
-}
-
-function makeAccumulator(): TurnAccumulator {
-  return { content: "", steps: [], seq: 0, currentTool: new Map(), reasoningKey: null };
-}
-
-function reduceEvent(acc: TurnAccumulator, evt: Record<string, unknown>): void {
-  const type = evt.type as string;
-  const nextKey = () => `s${acc.seq++}`;
-  const finishReasoning = () => {
-    if (acc.reasoningKey) {
-      const rstep = acc.steps.find((s) => s.key === acc.reasoningKey);
-      if (rstep && rstep.status === "running") rstep.status = "done";
-      acc.reasoningKey = null;
-    }
-  };
-
-  switch (type) {
-    case "agent_routed":
-      acc.agentName = (evt.agent as string) ?? acc.agentName;
-      break;
-
-    case "status": {
-      const text = (evt.text as string) ?? "";
-      acc.steps.push({
-        key: nextKey(),
-        kind: "status",
-        status: "done",
-        title: text || "状态",
-        text,
-        ts: evt.ts as number | undefined,
-      });
-      break;
-    }
-
-    case "tool_started": {
-      finishReasoning();
-      const name = (evt.tool_name as string) ?? "tool";
-      const key = nextKey();
-      acc.currentTool.set(name, key);
-      acc.steps.push({
-        key,
-        kind: "tool",
-        status: "running",
-        title: name,
-        toolName: name,
-        toolInput: evt.tool_input,
-        ts: evt.ts as number | undefined,
-      });
-      break;
-    }
-
-    case "tool_progress": {
-      const name = (evt.tool_name as string) ?? "";
-      const key = acc.currentTool.get(name);
-      const text = (evt.text as string) ?? "";
-      if (key && text) {
-        const step = acc.steps.find((s) => s.key === key);
-        if (step) step.toolProgress = (step.toolProgress ?? "") + text;
-      }
-      break;
-    }
-
-    case "tool_completed": {
-      const name = (evt.tool_name as string) ?? "";
-      const key = acc.currentTool.get(name);
-      if (key) {
-        const step = acc.steps.find((s) => s.key === key);
-        if (step) {
-          step.status = evt.is_error ? "error" : "done";
-          step.toolOutput = evt.output;
-        }
-        acc.currentTool.delete(name);
-      }
-      break;
-    }
-
-    case "approval_required":
-      acc.steps.push({
-        key: nextKey(),
-        kind: "approval",
-        status: "running",
-        title: "需要审批",
-        requestId: evt.request_id as string | undefined,
-        approvalKind: evt.kind as Step["approvalKind"],
-        payload: evt.payload as Record<string, unknown> | undefined,
-        ts: evt.ts as number | undefined,
-      });
-      break;
-
-    case "error":
-      acc.steps.push({
-        key: nextKey(),
-        kind: "error",
-        status: "error",
-        title: (evt.text as string) ?? "出错了",
-        text: evt.text as string | undefined,
-        ts: evt.ts as number | undefined,
-      });
-      break;
-
-    case "reasoning_delta": {
-      const text = (evt.text as string) ?? "";
-      if (!text) break;
-      if (!acc.reasoningKey) {
-        const key = nextKey();
-        acc.reasoningKey = key;
-        acc.steps.push({
-          key,
-          kind: "reasoning",
-          status: "running",
-          title: "思考",
-          text,
-          ts: evt.ts as number | undefined,
-        });
-      } else {
-        const rstep = acc.steps.find((s) => s.key === acc.reasoningKey);
-        if (rstep) rstep.text = (rstep.text ?? "") + text;
-      }
-      break;
-    }
-
-    case "assistant_delta":
-      finishReasoning();
-      acc.content += (evt.text as string) ?? "";
-      break;
-
-    case "assistant_complete":
-      acc.content = (evt.text as string) ?? acc.content;
-      break;
-
-    case "turn_complete":
-      for (const s of acc.steps) if (s.status === "running") s.status = "done";
-      break;
-  }
-}
 
 /** 从 snapshot.messages 的 content 提取纯文本（兼容 TextBlock 数组与字符串）。 */
 function extractText(content: unknown): string {
@@ -348,6 +201,10 @@ export default function App() {
 
   const abortRef = useRef<AbortController | null>(null);
   const assistantIndexRef = useRef<number>(-1);
+  /** 本轮流式事件的累加器；供审批处理同步修改，避免被后续事件覆盖。 */
+  const accRef = useRef<TurnAccumulator | null>(null);
+  /** 正在提交的审批 id（同步判重），防止连点导致重复提交。 */
+  const submittingApprovalsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     localStorage.setItem("qaapp_token", token);
@@ -453,6 +310,7 @@ export default function App() {
     abortRef.current = controller;
 
     const acc = makeAccumulator();
+    accRef.current = acc;
     const onEvent = (evt: Record<string, unknown>) => {
       // 观测日志：浏览器控制台查看收到的每个 SSE 事件，便于排查断点。
       // eslint-disable-next-line no-console
@@ -511,6 +369,10 @@ export default function App() {
   const handleApproval = useCallback<ApprovalAction>(
     async (requestId, decision, reply) => {
       if (!activeId) return;
+      // 同步判重：即便按钮还没从界面上消失，也拦住连点造成的重复提交。
+      if (submittingApprovalsRef.current.has(requestId)) return;
+      submittingApprovalsRef.current.add(requestId);
+
       const label = reply
         ? "已提交补充信息"
         : decision === "approve"
@@ -518,6 +380,32 @@ export default function App() {
           : decision === "always"
             ? "已总是允许"
             : "已拒绝";
+      const titleOf = (s: Step): string => {
+        const target =
+          s.approvalKind === "permission"
+            ? `工具「${String(s.payload?.tool ?? "")}」`
+            : s.approvalKind === "edit"
+              ? `文件「${String(s.payload?.path ?? "").split("/").pop() ?? ""}」`
+              : "补充信息";
+        return `${label} · ${target}`;
+      };
+
+      // 关键：同步改累加器里的这个步骤。
+      // onEvent 每次都用 acc.steps 覆盖消息的 steps，只做 setMessages 乐观更新会被
+      // 随后的流式事件覆盖，导致卡片"复活"、按钮重新可点。
+      const acc = accRef.current;
+      if (acc) {
+        const step = acc.steps.find(
+          (s) => s.kind === "approval" && s.requestId === requestId && s.status === "running",
+        );
+        if (step) {
+          step.status = "done";
+          step.title = titleOf(step);
+          step.text = label;
+        }
+        acc.resolvedApprovals.set(requestId, label);
+      }
+
       // 乐观更新：把对应审批步骤置为完成，并把标题改成「结果 · 目标」，
       // 否则一堆已处理卡片都写着「需要审批」，既刷屏又难分辨。
       setMessages((prev) =>
@@ -534,13 +422,7 @@ export default function App() {
                   ) {
                     return s;
                   }
-                  const target =
-                    s.approvalKind === "permission"
-                      ? `工具「${String(s.payload?.tool ?? "")}」`
-                      : s.approvalKind === "edit"
-                        ? `文件「${String(s.payload?.path ?? "").split("/").pop() ?? ""}」`
-                        : "补充信息";
-                  return { ...s, status: "done" as const, title: `${label} · ${target}`, text: label };
+                  return { ...s, status: "done" as const, title: titleOf(s), text: label };
                 }),
               },
         ),
@@ -548,7 +430,38 @@ export default function App() {
       try {
         await resolveApproval(activeId, requestId, decision, reply);
       } catch (e) {
-        setError((e as Error).message);
+        const msg = (e as Error).message;
+        setError(msg);
+        // 提交失败（例如审批已过期）：把卡片标成失败态，按钮不再出现，避免被反复点击。
+        const failed = `提交失败：${msg}`;
+        const accNow = accRef.current;
+        if (accNow) {
+          accNow.resolvedApprovals.set(requestId, failed);
+          const step = accNow.steps.find(
+            (s) => s.kind === "approval" && s.requestId === requestId,
+          );
+          if (step) {
+            step.status = "error";
+            step.title = failed;
+            step.text = msg;
+          }
+        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role !== "assistant"
+              ? m
+              : {
+                  ...m,
+                  steps: m.steps.map((s) =>
+                    s.kind === "approval" && s.requestId === requestId
+                      ? { ...s, status: "error" as const, title: failed, text: msg }
+                      : s,
+                  ),
+                },
+          ),
+        );
+      } finally {
+        submittingApprovalsRef.current.delete(requestId);
       }
     },
     [activeId],
