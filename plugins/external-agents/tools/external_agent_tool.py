@@ -59,6 +59,14 @@ DEFAULT_JSON_TEXT_PATHS: list[str] = [
     "result",
 ]
 
+#: 默认只保留「最终结果」标签。外部平台（数据查询类智能体尤其明显）会把整段
+#: 推理过程、工具调用与工具返回全部塞进 ``<record_content>``，真正给用户的答案在
+#: ``<answer>`` 里；原样转发会让单次调用产生数十万字符，把 Web 前端卡死。
+DEFAULT_EXTRACT_TAGS: list[str] = ["answer"]
+
+#: 流式进度默认最多转发多少字符（0 = 不限制）。
+DEFAULT_PROGRESS_MAX_CHARS = 4000
+
 
 class ExternalAgentError(Exception):
     """Raised when an external agent request fails."""
@@ -74,6 +82,9 @@ class AgentResponseConfig(BaseModel):
 
     mode: str = "auto"  # auto | sse | ndjson | text
     json_text_paths: list[str] = Field(default_factory=lambda: list(DEFAULT_JSON_TEXT_PATHS))
+    #: 只保留这些标签内的内容作为最终报告（默认 ``["answer"]``）。
+    #: 设为空列表可关闭提取、原样返回解析结果。
+    extract_tags: list[str] = Field(default_factory=lambda: list(DEFAULT_EXTRACT_TAGS))
 
 
 class AgentConfig(BaseModel):
@@ -91,6 +102,9 @@ class AgentConfig(BaseModel):
     conversation_id: str = "auto"
     timeout_seconds: float = 180.0
     max_response_chars: int = 200_000
+    #: 流式进度转发给宿主的字符上限（0 = 不限制）。防止一次调用把巨量中间日志
+    #: （推理过程 / 工具调用回显）推给前端。
+    progress_max_chars: int = DEFAULT_PROGRESS_MAX_CHARS
     response: AgentResponseConfig = Field(default_factory=AgentResponseConfig)
     config: dict[str, Any] = Field(default_factory=dict)
 
@@ -323,6 +337,95 @@ def _truncate(text: str, max_chars: int) -> str:
     return text
 
 
+def extract_tag_blocks(text: str, tags: list[str]) -> str | None:
+    """返回每个标签**最后一次**出现的内容（按 ``tags`` 顺序拼接）。
+
+    取最后一次而不是第一次：部分平台每帧返回「到目前为止的全部文本」，越早出现的
+    越不完整。标签未闭合（流被中途截断）时按剩余全文兜底。没有任何标签命中返回
+    ``None``，由调用方决定是否回退到原文。
+    """
+    blocks: list[str] = []
+    for tag in tags:
+        name = re.escape(tag)
+        matches = re.findall(rf"<{name}>(.*?)</{name}>", text, flags=re.DOTALL)
+        if not matches:
+            tail = re.search(rf"<{name}>(.*)$", text, flags=re.DOTALL)
+            if tail is None:
+                continue
+            matches = [tail.group(1)]
+        block = next((match.strip() for match in reversed(matches) if match.strip()), "")
+        if block:
+            blocks.append(block)
+    return "\n\n".join(blocks) if blocks else None
+
+
+def finalize_report(text: str, response: AgentResponseConfig) -> str:
+    """把解析结果收敛为「最终报告」。
+
+    外部智能体（尤其问数类）会把推理过程、工具调用与工具返回一并塞进外层标签，
+    单次调用可达数十万字符；这里只保留 ``extract_tags``（默认 ``answer``）内的
+    内容，其余中间日志一律丢弃。未命中标签时原样返回，避免误伤普通回复。
+    """
+    report = text.strip()
+    if not response.extract_tags:
+        return report
+    extracted = extract_tag_blocks(report, response.extract_tags)
+    return extracted if extracted else report
+
+
+class ProgressRelay:
+    """把外部 Agent 的流式文本转发给宿主，带两层保护：
+
+    - **累计快照去重**：部分平台每帧返回「到目前为止的全部文本」，原样转发会让前端
+      收到成倍重复的内容（平方级膨胀）。
+    - **总量上限**：超过 ``max_chars`` 后停止转发并补一句提示，避免一次调用把几十万
+      字符的中间日志推给前端（会直接卡死页面）。
+
+    注意：这里只影响**进度展示**，权威报告仍由 :func:`parse_stream` 从完整原始响应
+    解析，不会因为限流而丢失。
+    """
+
+    OMITTED_NOTICE = "\n…（后续进度已省略，仅保留最终结果）"
+
+    def __init__(
+        self,
+        emit: Callable[[str], Awaitable[None]] | None,
+        max_chars: int = DEFAULT_PROGRESS_MAX_CHARS,
+    ) -> None:
+        self._emit = emit
+        self._max_chars = max(0, max_chars)
+        self._sent = 0
+        self._last = ""
+        self._closed = False
+
+    async def feed(self, delta: str) -> None:
+        """转发一个增量片段（自动去重、限流）。"""
+        if self._emit is None or self._closed or not delta:
+            return
+        # 累计快照：新片段以旧片段开头时，只转发增长出来的部分。
+        growth = delta[len(self._last) :] if self._last and delta.startswith(self._last) else delta
+        self._last = delta
+        if not growth:
+            return
+        if self._max_chars:
+            remaining = self._max_chars - self._sent
+            if remaining <= 0:
+                await self._close()
+                return
+            if len(growth) > remaining:
+                self._sent += remaining
+                await self._emit(growth[:remaining])
+                await self._close()
+                return
+        self._sent += len(growth)
+        await self._emit(growth)
+
+    async def _close(self) -> None:
+        self._closed = True
+        if self._emit is not None:
+            await self._emit(self.OMITTED_NOTICE)
+
+
 # ---------------------------------------------------------------------------
 # Transports
 # ---------------------------------------------------------------------------
@@ -390,13 +493,16 @@ class HttpAgentTransport(AgentTransport):
                 resp.raise_for_status()
                 # Stream the body line by line so we can surface incremental
                 # progress, while accumulating the raw text for parse_stream.
+                # 进度转发经 ProgressRelay 去重 + 限流：外部平台常常逐帧回吐
+                # 「到目前为止的全部文本」，原样转发会成倍膨胀并卡死前端。
+                relay = ProgressRelay(stream_text, agent.progress_max_chars)
                 chunks: list[str] = []
                 async for line in resp.aiter_lines():
                     chunks.append(line)
                     if stream_text is not None:
                         delta = _line_stream_delta(line, agent.response)
                         if delta:
-                            await stream_text(delta)
+                            await relay.feed(delta)
                 raw = "\n".join(chunks)
         except httpx.TimeoutException as exc:
             raise ExternalAgentError(f"timeout after {agent.timeout_seconds}s: {exc}") from exc
@@ -577,5 +683,10 @@ class ExternalAgentTool(BaseTool):
         except ExternalAgentError as exc:
             return ToolResult(output=f"external_agent failed: {exc}", is_error=True)
 
-        report = _truncate(parse_stream(text, agent.response), agent.max_response_chars)
+        # 先提取「最终结果」再截断：外部问数类智能体的原始响应常达数十万字符
+        # （推理过程 + 工具调用 + 工具返回），若先截断可能把 <answer> 截掉。
+        report = _truncate(
+            finalize_report(parse_stream(text, agent.response), agent.response),
+            agent.max_response_chars,
+        )
         return ToolResult(output=f"Agent: {agent.id}\n{UNTRUSTED_BANNER}\n\n{report}")

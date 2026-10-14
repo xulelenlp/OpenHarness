@@ -46,6 +46,7 @@
       "conversation_id": "auto",
       "timeout_seconds": 300,
       "max_response_chars": 220000,
+      "progress_max_chars": 4000,
       "response": {
         "mode": "auto",
         "json_text_paths": [
@@ -61,7 +62,8 @@
           "text",
           "output",
           "result"
-        ]
+        ],
+        "extract_tags": ["answer"]
       },
       "config": {
         "endpoint": "http://192.168.139.144:18094/chat_agent_roll",
