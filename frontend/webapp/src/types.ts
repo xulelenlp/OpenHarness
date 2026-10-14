@@ -18,11 +18,30 @@ export interface ConversationSummary {
   preview?: string;
 }
 
-export interface ToolCallEvent {
-  tool_name?: string;
-  input?: unknown;
-  output?: unknown;
-  is_read_only?: boolean;
+/** 执行轨迹中的单个操作步骤（对应一次工具调用 / 审批 / 状态 / 思考 / 错误）。 */
+export type StepKind = "status" | "tool" | "approval" | "error" | "reasoning";
+
+export type StepStatus = "running" | "done" | "error";
+
+export interface Step {
+  /** 前端递增唯一键（同一 turn 内不重复）。 */
+  key: string;
+  kind: StepKind;
+  status: StepStatus;
+  /** 标题：工具名 / 状态文字 / 错误文案。 */
+  title: string;
+  ts?: number;
+  // tool
+  toolName?: string;
+  toolInput?: unknown;
+  toolOutput?: unknown;
+  toolProgress?: string;
+  // approval
+  requestId?: string;
+  approvalKind?: "permission" | "edit" | "question";
+  payload?: Record<string, unknown>;
+  // status / error
+  text?: string;
 }
 
 export interface ApprovalEvent {
@@ -37,7 +56,8 @@ export interface ChatMessage {
   content: string;
   agentName?: string;
   turnId?: string;
-  toolEvents?: ToolCallEvent[];
+  /** 该轮的执行轨迹步骤序列（替代旧的 toolEvents）。 */
+  steps: Step[];
   approval?: ApprovalEvent | null;
   error?: boolean;
   streaming?: boolean;

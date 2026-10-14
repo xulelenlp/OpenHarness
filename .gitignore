@@ -40,3 +40,4 @@ react_tui_smoke.txt
 .DS_Store
 Thumbs.db
 uv.lock
+.tmp-e2e/*

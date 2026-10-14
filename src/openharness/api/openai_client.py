@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, AsyncIterator
 from urllib.parse import urlsplit, urlunsplit
 
@@ -15,6 +16,7 @@ from openai import AsyncOpenAI
 from openharness.api.client import (
     ApiMessageCompleteEvent,
     ApiMessageRequest,
+    ApiReasoningDeltaEvent,
     ApiRetryEvent,
     ApiStreamEvent,
     ApiTextDeltaEvent,
@@ -341,6 +343,9 @@ class OpenAICompatibleClient:
         # Buffer to strip inline <think>…</think> blocks across streaming chunks.
         _think_buf = ""
 
+        _stream_started = time.monotonic()
+        log.info("openai stream start: model=%s tools=%d", request.model, len(request.tools))
+
         stream = await self._client.chat.completions.create(**params)
         async for chunk in stream:
             if not chunk.choices:
@@ -358,20 +363,27 @@ class OpenAICompatibleClient:
             if chunk_finish:
                 finish_reason = chunk_finish
 
-            # Accumulate reasoning_content from thinking models (not shown to user)
+            # Stream reasoning_content from thinking models so the UI can show
+            # the model's chain-of-thought as a collapsible "thinking" section.
             reasoning_piece = getattr(delta, "reasoning_content", None) or ""
             if reasoning_piece:
                 collected_reasoning += reasoning_piece
+                yield ApiReasoningDeltaEvent(text=reasoning_piece)
 
-            # Stream text content to user, stripping inline <think> blocks
+            # Stream text content to user, surfacing inline <think> blocks as
+            # reasoning instead of silently dropping them.
             if delta.content:
                 _think_buf += delta.content
-                visible, _think_buf = _strip_think_blocks(_think_buf)
+                visible, think_text, _think_buf = _strip_think_blocks(_think_buf)
+                if think_text:
+                    yield ApiReasoningDeltaEvent(text=think_text)
                 if visible:
                     collected_content += visible
                     yield ApiTextDeltaEvent(text=visible)
 
-            # Accumulate tool calls
+            # Accumulate tool calls, streaming their generation as progress so
+            # the UI shows what the model is preparing (instead of a blank
+            # spinner while it writes out a large tool argument like a script).
             if delta.tool_calls:
                 for tc_delta in delta.tool_calls:
                     idx = tc_delta.index
@@ -385,10 +397,12 @@ class OpenAICompatibleClient:
                     if tc_delta.id:
                         entry["id"] = tc_delta.id
                     if tc_delta.function:
-                        if tc_delta.function.name:
+                        if tc_delta.function.name and tc_delta.function.name != entry["name"]:
                             entry["name"] = tc_delta.function.name
+                            yield ApiReasoningDeltaEvent(text=f"\n[准备调用工具 {tc_delta.function.name}]\n")
                         if tc_delta.function.arguments:
                             entry["arguments"] += tc_delta.function.arguments
+                            yield ApiReasoningDeltaEvent(text=tc_delta.function.arguments)
 
             # Usage in chunk (if provider sends it)
             if chunk.usage:
@@ -398,6 +412,14 @@ class OpenAICompatibleClient:
                 }
 
         # Build the final ConversationMessage
+        log.info(
+            "openai stream done: model=%s elapsed=%.1fs content=%d chars reasoning=%d chars tool_calls=%d",
+            request.model,
+            time.monotonic() - _stream_started,
+            len(collected_content),
+            len(collected_reasoning),
+            len(collected_tool_calls),
+        )
         content: list[ContentBlock] = []
         if collected_content:
             content.append(TextBlock(text=collected_content))
@@ -453,25 +475,34 @@ class OpenAICompatibleClient:
         return RequestFailure(msg)
 
 
-# Matches complete <think>…</think> blocks (DOTALL so newlines are included).
-_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+# Matches complete <think>…</think> blocks (DOTALL so newlines are included);
+# the capture group extracts the block's inner text so it can be surfaced as reasoning.
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 _THINK_OPEN_TAG = "<think>"
 
 
-def _strip_think_blocks(buf: str) -> tuple[str, str]:
-    """Strip complete ``<think>…</think>`` blocks and return ``(visible_text, leftover)``.
+def _strip_think_blocks(buf: str) -> tuple[str, str, str]:
+    """Strip complete ``<think>…</think>`` blocks.
 
-    Complete pairs are removed via regex.  An unclosed ``<think>`` is held in
-    *leftover* so it can be re-evaluated once the closing tag arrives in the
-    next streaming chunk.
+    Returns ``(visible_text, think_text, leftover)``.  ``think_text`` is the
+    concatenated content of fully-closed think blocks so callers can surface
+    it as reasoning.  An unclosed ``<think>`` is held in *leftover* so it can
+    be re-evaluated once the closing tag arrives in the next streaming chunk.
     """
-    # Remove fully-closed blocks.
-    cleaned = _THINK_RE.sub("", buf)
+    think_parts: list[str] = []
+
+    def _collect(match: re.Match[str]) -> str:
+        think_parts.append(match.group(1))
+        return ""
+
+    # Remove fully-closed blocks, capturing their content.
+    cleaned = _THINK_RE.sub(_collect, buf)
+    think_text = "".join(think_parts)
 
     # Hold back any unclosed <think> for the next chunk.
     open_idx = cleaned.find(_THINK_OPEN_TAG)
     if open_idx != -1:
-        return cleaned[:open_idx], cleaned[open_idx:]
+        return cleaned[:open_idx], think_text, cleaned[open_idx:]
 
     # Streaming providers may split the opening tag itself across chunk
     # boundaries (e.g. ``"<thi"`` then ``"nk>..."``). Hold back the longest
@@ -479,6 +510,6 @@ def _strip_think_blocks(buf: str) -> tuple[str, str]:
     max_prefix = min(len(cleaned), len(_THINK_OPEN_TAG) - 1)
     for prefix_len in range(max_prefix, 0, -1):
         if _THINK_OPEN_TAG.startswith(cleaned[-prefix_len:]):
-            return cleaned[:-prefix_len], cleaned[-prefix_len:]
+            return cleaned[:-prefix_len], think_text, cleaned[-prefix_len:]
 
-    return cleaned, ""
+    return cleaned, think_text, ""

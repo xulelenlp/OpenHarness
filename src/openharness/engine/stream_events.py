@@ -17,6 +17,17 @@ class AssistantTextDelta:
 
 
 @dataclass(frozen=True)
+class AssistantReasoningDelta:
+    """Incremental assistant reasoning / chain-of-thought text.
+
+    Surfaced so UIs can render the model's thinking as a collapsible section
+    rather than leaving the user on a blank "thinking…" spinner.
+    """
+
+    text: str
+
+
+@dataclass(frozen=True)
 class AssistantTurnComplete:
     """Completed assistant turn."""
 
@@ -93,6 +104,7 @@ class CompactProgressEvent:
 
 StreamEvent = (
     AssistantTextDelta
+    | AssistantReasoningDelta
     | AssistantTurnComplete
     | ToolExecutionStarted
     | ToolExecutionCompleted

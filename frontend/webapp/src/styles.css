@@ -186,27 +186,38 @@ body,
   background: #fee2e2;
 }
 
-.cursor {
-  animation: blink 1s step-start infinite;
-}
-
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
-}
-
-/* ---------- 工具轨迹 ---------- */
-.tools {
+/* ---------- 执行轨迹步骤 ---------- */
+.steps {
   width: 100%;
-  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-card {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--panel);
   overflow: hidden;
+  font-size: 12px;
 }
 
-.tools-toggle {
+.step-card.running {
+  border-left: 3px solid #3b82f6;
+}
+
+.step-card.done {
+  border-left: 3px solid #22c55e;
+}
+
+.step-card.error {
+  border-left: 3px solid #ef4444;
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 6px 10px;
@@ -214,26 +225,128 @@ body,
   background: var(--bg);
   cursor: pointer;
   font-size: 12px;
+  font-family: inherit;
+  color: var(--text);
 }
 
-.tool-entry {
-  border-top: 1px solid var(--border);
-  padding: 6px 10px;
+.step-head:hover {
+  background: #eef1f5;
 }
 
-.tool-name {
+.step-icon {
+  flex: 0 0 auto;
+}
+
+.step-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
-  color: var(--primary);
 }
 
-.tool-entry pre {
-  margin: 4px 0 0;
+.step-caret {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.step-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.step-badge.running {
+  background: #dbeafe;
+  color: #1d4ed8;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.step-badge.done {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.step-badge.error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.step-body {
+  border-top: 1px solid var(--border);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.step-detail-label {
   font-size: 11px;
-  max-height: 160px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.step-detail pre {
+  margin: 0;
+  font-size: 11px;
+  max-height: 200px;
   overflow: auto;
   background: #f8fafc;
   padding: 6px;
   border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.step-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.approval-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.approval-desc {
+  font-size: 12px;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 审批按钮下方的行为说明，避免用户误解「为什么又弹一次」 */
+.approval-hint {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.approval-question {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.approval-question input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
 }
 
 /* ---------- 审批 / 错误 / 输入 ---------- */

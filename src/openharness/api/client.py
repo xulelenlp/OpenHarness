@@ -56,6 +56,19 @@ class ApiTextDeltaEvent:
 
 
 @dataclass(frozen=True)
+class ApiReasoningDeltaEvent:
+    """Incremental model reasoning / chain-of-thought text.
+
+    Thinking models (e.g. DashScope qwen, Kimi k2.5, DeepSeek) emit an
+    internal reasoning stream alongside the visible answer.  This event lets
+    UIs surface that reasoning as a collapsible "thinking" section instead of
+    a blank spinner while the model plans.
+    """
+
+    text: str
+
+
+@dataclass(frozen=True)
 class ApiMessageCompleteEvent:
     """Terminal event containing the full assistant message."""
 
@@ -74,7 +87,7 @@ class ApiRetryEvent:
     delay_seconds: float
 
 
-ApiStreamEvent = ApiTextDeltaEvent | ApiMessageCompleteEvent | ApiRetryEvent
+ApiStreamEvent = ApiTextDeltaEvent | ApiReasoningDeltaEvent | ApiMessageCompleteEvent | ApiRetryEvent
 
 
 class SupportsStreamingMessages(Protocol):

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,6 +22,7 @@ from ohmo.workspace import get_workspace_root
 from openharness.config.settings import PermissionSettings
 from openharness.engine.messages import ConversationMessage, TextBlock
 from openharness.engine.stream_events import (
+    AssistantReasoningDelta,
     AssistantTextDelta,
     AssistantTurnComplete,
     CompactProgressEvent,
@@ -47,6 +49,12 @@ from qaapp.dangerous import DangerousActionGate, DangerousPermissionChecker
 from qaapp.trace import ConversationTraceStore
 
 logger = logging.getLogger(__name__)
+
+
+def _edit_key(path: str) -> str:
+    """本轮内「同一文件已批准编辑」的记忆键。"""
+    return f"edit:{path}"
+
 
 # 仓库根（qaapp 位于仓库根下），用于让仓库自带的 plugins 目录可被发现。
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +101,11 @@ class ConversationSession:
         self.pending: dict[str, PendingRequest] = {}
         self.last_tool_inputs: dict[str, dict] = {}
         self.always_approved: set[str] = set()
+        # 本轮（turn）内已批准过的工具/文件：避免同一任务里对同一工具反复弹窗。
+        # 每轮开始清空，因此新一轮任务仍会重新确认一次。
+        self.turn_approved: set[str] = set()
+        # 已处理过的审批 id（有界），用于把重复提交做成幂等，避免误报 404 红条。
+        self.resolved_approvals: deque[str] = deque(maxlen=200)
         self.last_error: str | None = None
 
     def emit(self, event: dict) -> None:
@@ -158,7 +171,10 @@ class QaWebService:
         restore_tool_metadata = snapshot.get("tool_metadata") if snapshot else None
 
         async def _permission_prompt(tool_name: str, reason: str) -> bool:
-            if tool_name in session.always_approved:
+            # 本会话「总是允许」、或本轮已批准过该工具 → 直接放行。
+            # 「开发脚本 + git 提交」这类任务会连续多次调用同一个工具，
+            # 若每次都弹窗会严重骚扰用户，故在本轮内记忆一次批准。
+            if tool_name in session.always_approved or tool_name in session.turn_approved:
                 return True
             payload = {
                 "tool": tool_name,
@@ -173,6 +189,9 @@ class QaWebService:
             return str(value or "")
 
         async def _edit_approval_prompt(path: str, diff: str, added: int, removed: int) -> str:
+            # 本轮已批准过该文件 → 不再重复确认（同一文件多轮编辑很常见）。
+            if _edit_key(path) in session.turn_approved:
+                return "once"
             value = await self._request_approval(
                 session, "edit", {"path": path, "diff": diff, "added": added, "removed": removed}
             )
@@ -242,6 +261,14 @@ class QaWebService:
 
     def _emit(self, session: ConversationSession, type_: str, data: dict | None = None) -> dict:
         event = self._event(session, type_, data)
+        # 观测日志：记录每个 SSE 事件，便于排查"前端只有思考中…"时定位事件断在哪一环。
+        logger.info(
+            "sse emit: type=%s conversation=%s turn=%s text_len=%d",
+            type_,
+            session.conversation_id,
+            event.get("turn_id"),
+            len(data.get("text") or "") if data else 0,
+        )
         session.emit(event)
         self.trace_store.append(session.conversation_id, event)
         return event
@@ -281,18 +308,29 @@ class QaWebService:
     ) -> None:
         request = session.pending.pop(request_id, None)
         if request is None:
+            # 重复提交（用户连点两次 / 前端重试）：该审批已是终态则幂等成功，
+            # 不再抛 404 让前端弹「审批请求不存在或已过期」红条。
+            if request_id in session.resolved_approvals:
+                return
             raise KeyError(request_id)
+        session.resolved_approvals.append(request_id)
+
+        approved = decision in {"approve", "always"}
         if request.kind == "permission":
+            tool = str(request.payload.get("tool", ""))
             if decision == "always":
-                session.always_approved.add(str(request.payload.get("tool", "")))
-            request.future.set_result(decision in {"approve", "always"})
+                session.always_approved.add(tool)
+            if approved and tool:
+                # 本轮内同一工具不再重复确认（下一轮任务仍会重新确认一次）
+                session.turn_approved.add(tool)
+            request.future.set_result(approved)
         elif request.kind == "edit":
-            if decision == "always":
-                request.future.set_result("always")
-            elif decision == "deny":
+            if decision == "deny":
                 request.future.set_result("reject")
             else:
-                request.future.set_result("once")
+                # once / always 都在本轮内记忆该文件，避免同一文件被反复确认。
+                session.turn_approved.add(_edit_key(str(request.payload.get("path", ""))))
+                request.future.set_result("always" if decision == "always" else "once")
         else:  # question
             request.future.set_result(reply or "")
 
@@ -310,6 +348,8 @@ class QaWebService:
             "turn_id": uuid4().hex[:12],
             "message_id": uuid4().hex[:12],
         }
+        # 新一轮对话开始：重置本轮审批记忆，保证新任务里同工具/同文件仍会确认一次。
+        session.turn_approved.clear()
         try:
             resolved = await resolve_agent(
                 content,
@@ -404,6 +444,8 @@ class QaWebService:
     async def _handle_stream_event(self, session: ConversationSession, event: StreamEvent) -> None:
         if isinstance(event, AssistantTextDelta):
             self._emit(session, "assistant_delta", {"text": event.text})
+        elif isinstance(event, AssistantReasoningDelta):
+            self._emit(session, "reasoning_delta", {"text": event.text})
         elif isinstance(event, AssistantTurnComplete):
             self._emit(session, "assistant_complete", {"text": event.message.text})
         elif isinstance(event, ToolExecutionStarted):
@@ -665,7 +707,10 @@ class QaWebService:
                     session.busy = False
                     session.current_task = None
 
-            return EventSourceResponse(gen())
+            # SSE 帧分隔符显式指定为 "\n"：sse-starlette 默认用 "\r\n"，
+            # 前端若按 "\n\n" 分帧会永远匹配不到，导致事件全部积压在缓冲区、
+            # 直到整个响应结束才一次性显示（表现为长时间"思考中…"，审批也收不到）。
+            return EventSourceResponse(gen(), sep="\n")
 
         async def resolve_approval_route(request: Request):
             denied = await _auth(request)
@@ -762,6 +807,15 @@ class QaWebService:
 
     def run(self, host: str | None = None, port: int | None = None) -> None:
         import uvicorn
+
+        # 确保观测日志输出到控制台（默认 root logger 是 WARNING，info 会被吞掉），
+        # 便于定位"前端只有思考中…"时事件断在哪一环。
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+        )
+        logging.getLogger("openharness.api.openai_client").setLevel(logging.INFO)
+        logging.getLogger("qaapp.service").setLevel(logging.INFO)
 
         uvicorn.run(
             self.app,

@@ -14,6 +14,7 @@ from uuid import uuid4
 from openharness.api.client import (
     ApiMessageCompleteEvent,
     ApiMessageRequest,
+    ApiReasoningDeltaEvent,
     ApiRetryEvent,
     ApiTextDeltaEvent,
     SupportsStreamingMessages,
@@ -28,6 +29,7 @@ from openharness.engine.messages import (
     ToolResultBlock,
 )
 from openharness.engine.stream_events import (
+    AssistantReasoningDelta,
     AssistantTextDelta,
     AssistantTurnComplete,
     CompactProgressEvent,
@@ -738,6 +740,9 @@ async def run_query(
             ):
                 if isinstance(event, ApiTextDeltaEvent):
                     yield AssistantTextDelta(text=event.text), None
+                    continue
+                if isinstance(event, ApiReasoningDeltaEvent):
+                    yield AssistantReasoningDelta(text=event.text), None
                     continue
                 if isinstance(event, ApiRetryEvent):
                     yield StatusEvent(

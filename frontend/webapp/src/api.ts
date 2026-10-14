@@ -44,15 +44,64 @@ export function resolveApproval(
   conversationId: string,
   requestId: string,
   decision: "approve" | "deny" | "always",
+  reply?: string,
 ): Promise<unknown> {
   return request(`/api/v1/conversations/${conversationId}/approvals/${requestId}`, {
     method: "POST",
-    body: JSON.stringify({ decision }),
+    body: JSON.stringify({ decision, reply }),
   });
 }
 
 export function interruptConversation(conversationId: string): Promise<unknown> {
   return request(`/api/v1/conversations/${conversationId}/interrupt`, { method: "POST" });
+}
+
+/** SSE 帧分隔符：SSE 规范允许 \r\n / \n / \r，sse-starlette 默认输出 \r\n。 */
+const SSE_FRAME_SEP = /\r\n\r\n|\n\n|\r\r/;
+
+/** 解析单个 SSE 帧（`event:` 与 `data:` 两种字段行）。 */
+function dispatchSseFrame(
+  frame: string,
+  onEvent: (event: Record<string, unknown>) => void,
+): void {
+  let eventName = "message";
+  for (const line of frame.split(/\r\n|\n|\r/)) {
+    if (line.startsWith("event:")) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      const raw = line.slice(5).trim();
+      if (!raw) continue;
+      try {
+        onEvent({ type: eventName, ...(JSON.parse(raw) as Record<string, unknown>) });
+      } catch {
+        // 忽略无法解析的数据行
+      }
+    }
+  }
+}
+
+/**
+ * 从 SSE 缓冲区里取出所有**完整帧**并派发，返回尚未消费的残留缓冲。
+ *
+ * 必须用正则匹配三种换行组合：若只按 `"\n\n"` 分帧，而服务端（sse-starlette
+ * 默认 sep=`"\r\n"`）输出的帧以 `\r\n\r\n` 结尾，则永远匹配不到，全部事件会
+ * 积压在缓冲区里、直到整个响应结束才一次性显示——表现为长时间停在"思考中…"，
+ * 审批请求也因此无法及时送达用户。
+ *
+ * 导出以便单测/自检。
+ */
+export function consumeSseBuffer(
+  buffer: string,
+  onEvent: (event: Record<string, unknown>) => void,
+): string {
+  for (;;) {
+    const match = SSE_FRAME_SEP.exec(buffer);
+    if (!match) break;
+    const frame = buffer.slice(0, match.index);
+    buffer = buffer.slice(match.index + match[0].length);
+    if (frame.trim()) dispatchSseFrame(frame, onEvent);
+  }
+  return buffer;
 }
 
 /**
@@ -86,31 +135,12 @@ export async function streamMessage(
   const decoder = new TextDecoder();
   let buffer = "";
 
-  // 解析 SSE 帧（event: xxx\ndata: {...}\n\n）
-  const dispatch = (chunk: string) => {
-    let eventName = "message";
-    for (const line of chunk.split("\n")) {
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        const raw = line.slice(5).trim();
-        if (!raw) continue;
-        try {
-          onEvent({ type: eventName, ...(JSON.parse(raw) as Record<string, unknown>) });
-        } catch {
-          // 忽略无法解析的数据行
-        }
-      }
-    }
-  };
-
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) dispatch(frame);
+    buffer = consumeSseBuffer(buffer, onEvent);
   }
-  if (buffer.trim()) dispatch(buffer);
+  // 兜底：流结束时若仍有未闭合的残留帧，补一个分隔符强制解析。
+  if (buffer.trim()) consumeSseBuffer(`${buffer}\n\n`, onEvent);
 }

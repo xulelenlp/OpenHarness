@@ -417,6 +417,16 @@ npm run build    # 生产构建，产物在 dist/
 2. **独立托管**：把 `dist/` 部署到 Nginx/CDN，前端 `api.ts` 里把 `BASE` 改成 API
    地址，并在 `webapp.json` 的 `cors_origins` 里加入前端域名。
 
+### 8.1 改动生效规则（很容易踩）
+
+| 改了什么 | 必须做什么 | 为什么 |
+| --- | --- | --- |
+| `qaapp/` 或 `src/openharness/` 的 **Python 代码** | **重启服务**（前台 Ctrl+C 重跑，或 `abcqa webapp stop && abcqa webapp start`） | 后端没有热重载，进程内跑的是启动时加载的代码 |
+| `frontend/webapp/src/` 的**前端代码** | `npm run build` 后**刷新浏览器**（同源托管）；`npm run dev` 模式则自动热更新 | 同源托管加载的是 `dist/` 构建产物，不重新构建就仍是旧代码 |
+| 仅改 `~/.ohmo/*.json` 的**配置** | 重启服务 | agent 注册表 / 危险操作策略在服务启动时加载 |
+
+> 排查「改了没生效」时，先确认这两条：**后端重启了吗？前端重新构建并刷新了吗？**
+
 ---
 
 ## 9. 部署与运维注意事项（重点）
@@ -520,13 +530,72 @@ workspace 下：
 | 重启后历史在，但流/审批丢了 | 正常：订阅与审批在进程内存，见 §9.2 |
 | SSE 中途断流 | 反向代理缓冲/超时；关 buffering、调大 read_timeout（§9.3） |
 | 后台启动后端口没起来 | 看 `<workspace>/logs/webapp.log`；`abcqa webapp status` 看 pid |
+| 长时间只显示「思考中…」，看不到思考过程/工具步骤/审批 | 用 §10.1 的三层日志定位；最常见是 SSE 分帧不兼容或反向代理缓冲 |
+
+### 10.1 排查「只有思考中…、看不到中间过程」
+
+> 现象：发送任务后前端长时间停在「思考中…」，模型的思考过程、工具执行步骤、
+> 以及需要用户确认的审批卡片都不出现。
+
+按顺序看三层日志，即可定位断在哪一环：
+
+**① 后端日志**（前台 stdout；后台模式下见 `<workspace>/logs/webapp.log`）
+
+- `sse emit: type=...`：后端**实际发出**了哪些事件
+  （`agent_routed` / `reasoning_delta` / `assistant_delta` / `tool_started` / `tool_completed` / `approval_required` …）。
+- `openai stream done: model=... elapsed=...s content=N chars reasoning=N chars tool_calls=N`：
+  这一轮模型**到底返回了什么**。
+  - `content` 数值很大、耗时较长 → 模型在写长正文或工具参数（如整份脚本），属正常耗时；
+    期间前端会通过 `reasoning_delta` 展示「准备调用工具 xxx」与参数生成进度。
+  - 大量 `reasoning_delta` → 模型把思考写在 `<think>` 块里，会渲染成可收起的「💭 思考」卡片。
+  - `tool_calls=0` 且 `content=0` → 模型没输出任何内容，检查 system_prompt 与工具注册。
+
+**② 浏览器控制台**（F12 → Console）
+
+- `[sse] <type>`：前端**实际收到**的事件。
+  **关键判据**：若后端有 `sse emit` 而控制台没有对应的 `[sse]`，说明事件没送达前端，
+  重点查反向代理缓冲（§9.3）与 SSE 分帧兼容性（见下）。
+
+**③ 前端渲染**
+
+- `reasoning_delta` → 默认展开、可收起的「💭 思考」卡片（流式追加）。
+- `tool_started` / `tool_completed` → 工具执行卡片（默认折叠，可展开看输入输出）。
+- `approval_required` → 内联「允许 / 总是允许 / 拒绝」卡片，用户可直接参与。
+
+**已知坑（已修复并双向加固）**
+
+`sse-starlette` 的默认帧分隔符是 `\r\n`（即帧间为 `\r\n\r\n`）。
+若前端只用 `split("\n\n")` 分帧，将**永远匹配不到**任何帧，所有事件会一直积压在缓冲区里，
+直到整个响应结束才一次性显示——表现正是「一直停在思考中…，且审批请求永远不出现」。
+现在：服务端显式 `EventSourceResponse(gen(), sep="\n")`，
+前端 `consumeSseBuffer()` 同时兼容 `\r\n\r\n` / `\n\n` / `\r\r` 三种换行，任一端单独都能工作。
+
+### 10.2 审批行为：为什么不会反复弹窗
+
+「开发脚本 + 提交 git」这类任务会连续调用同一个工具（如 `bash` 四五次）。
+若每次都弹审批，用户会被反复打断。qaapp 用两层记忆解决：
+
+| 层级 | 触发方式 | 生效范围 | 说明 |
+| --- | --- | --- | --- |
+| **本轮记忆** | 点「允许」 | 当前这一轮（turn） | 同一轮内**同一工具 / 同一文件只确认一次**；任务中连续多次 `bash` 不会重复弹 |
+| **会话记忆** | 点「总是允许」 | 整个会话 | 后续所有轮次都不再询问该工具 |
+| 超时 | 不响应 | 单次 | 超过 `approval_timeout_seconds`（默认 300s）按**拒绝**处理，并推一条 status 事件 |
+
+要点：
+
+- **新一轮对话会重置「本轮记忆」**：所以新任务里同一工具仍会确认一次（安全兜底，不会一放到底）。
+- **「拒绝」不会被记忆**：只影响当次调用，后续仍会正常询问。
+- **重复提交是幂等的**：同一审批 id 再提交返回 200，不会再出现「审批请求不存在或已过期」红条；
+  只有从未存在过的 id 才返回 404（真实错误仍然暴露）。
+- **前端只展开待处理的审批**：已处理的审批卡片自动折叠，避免长任务中卡片刷屏；
+  处理完成后标题会变成「已允许 · 工具「bash」」这类可读文案。
 
 ---
 
 ## 附：测试与校验
 
 ```bash
-pytest tests/test_qaapp -q        # 30 个用例
+pytest tests/test_qaapp -q        # 35 个用例
 ruff check qaapp tests/test_qaapp # 静态检查
 cd frontend/webapp && npm run build
 ```
