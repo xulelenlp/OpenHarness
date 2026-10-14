@@ -29,6 +29,7 @@ from openharness.engine.stream_events import (
     StatusEvent,
     StreamEvent,
     ToolExecutionCompleted,
+    ToolExecutionProgress,
     ToolExecutionStarted,
 )
 from openharness.output_styles import load_output_styles
@@ -311,6 +312,15 @@ class ReactBackendHost:
                             tool_name=event.tool_name,
                             tool_input=event.tool_input,
                         ),
+                    )
+                )
+                return
+            if isinstance(event, ToolExecutionProgress):
+                await self._emit(
+                    BackendEvent(
+                        type="tool_progress",
+                        tool_name=event.tool_name,
+                        message=event.text,
                     )
                 )
                 return

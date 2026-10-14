@@ -509,9 +509,11 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 					)}
 				</Static>
 
-				{/* Streaming assistant text + welcome banner (live, tail-capped). */}
+				{/* Streaming assistant text + live tool progress + welcome banner
+				    (all live, tail-capped). */}
 				<StreamingView
 					assistantBuffer={session.assistantBuffer}
+					toolProgressBuffer={session.toolProgressBuffer}
 					showWelcome={session.ready && session.transcript.length === 0 && outputStyle !== 'codex'}
 					outputStyle={outputStyle}
 					productName={productName}

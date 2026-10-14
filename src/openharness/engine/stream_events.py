@@ -43,6 +43,18 @@ class ToolExecutionCompleted:
 
 
 @dataclass(frozen=True)
+class ToolExecutionProgress:
+    """Incremental text emitted by a tool while it is running.
+
+    Tools that stream their work (e.g. a long-running external agent call) emit
+    these so the UI can show intermediate progress instead of a blank spinner.
+    """
+
+    tool_name: str
+    text: str
+
+
+@dataclass(frozen=True)
 class ErrorEvent:
     """An error that should be surfaced to the user."""
 
@@ -84,6 +96,7 @@ StreamEvent = (
     | AssistantTurnComplete
     | ToolExecutionStarted
     | ToolExecutionCompleted
+    | ToolExecutionProgress
     | ErrorEvent
     | StatusEvent
     | CompactProgressEvent

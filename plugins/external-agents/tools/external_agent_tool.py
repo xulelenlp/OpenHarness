@@ -28,6 +28,8 @@ import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+from typing import Awaitable
+from typing import Callable
 
 import httpx
 from pydantic import BaseModel, Field
@@ -251,6 +253,25 @@ def _sse_payload(line: str) -> str | None:
     return stripped[len("data:") :].strip()
 
 
+def _line_stream_delta(line: str, response: AgentResponseConfig) -> str:
+    """Extract a displayable text delta from one streamed response line.
+
+    Used only for live progress previews; the authoritative report still comes
+    from :func:`parse_stream` over the full accumulated text.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return ""
+    payload = _sse_payload(line)
+    if payload is not None:
+        if payload == "[DONE]":
+            return ""
+        return extract_text_from_chunk(payload, response.json_text_paths)
+    # NDJSON or plain-text line: keep line separation so previews stay readable.
+    delta = extract_text_from_chunk(stripped, response.json_text_paths)
+    return (delta + "\n") if delta else ""
+
+
 def _looks_like_ndjson(lines: list[str]) -> bool:
     """Return True if every non-empty line parses as JSON."""
     non_empty = [line for line in lines if line.strip()]
@@ -325,8 +346,13 @@ class AgentTransport(ABC):
         message: str,
         conversation_id: str,
         cwd: Path,
+        stream_text: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
-        """Run the agent and return its raw response text."""
+        """Run the agent and return its raw response text.
+
+        ``stream_text``, when provided, is called with incremental text as the
+        agent's response arrives, so the host can show live progress.
+        """
 
 
 class HttpTransportConfig(BaseModel):
@@ -350,6 +376,7 @@ class HttpAgentTransport(AgentTransport):
         message: str,
         conversation_id: str,
         cwd: Path,
+        stream_text: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
         del cwd
         cfg = HttpTransportConfig.model_validate(config)
@@ -361,14 +388,23 @@ class HttpAgentTransport(AgentTransport):
                 method, cfg.endpoint, json=body, headers=dict(cfg.headers)
             ) as resp:
                 resp.raise_for_status()
-                raw = await resp.aread()
+                # Stream the body line by line so we can surface incremental
+                # progress, while accumulating the raw text for parse_stream.
+                chunks: list[str] = []
+                async for line in resp.aiter_lines():
+                    chunks.append(line)
+                    if stream_text is not None:
+                        delta = _line_stream_delta(line, agent.response)
+                        if delta:
+                            await stream_text(delta)
+                raw = "\n".join(chunks)
         except httpx.TimeoutException as exc:
             raise ExternalAgentError(f"timeout after {agent.timeout_seconds}s: {exc}") from exc
         except httpx.HTTPStatusError as exc:
             raise ExternalAgentError(f"HTTP {exc.response.status_code}: {exc}") from exc
         except httpx.HTTPError as exc:
             raise ExternalAgentError(f"{exc}") from exc
-        return raw.decode("utf-8", errors="replace")
+        return raw
 
 
 class StdioTransportConfig(BaseModel):
@@ -393,7 +429,9 @@ class StdioAgentTransport(AgentTransport):
         message: str,
         conversation_id: str,
         cwd: Path,
+        stream_text: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
+        del stream_text  # stdio reports only at completion; no incremental output
         cfg = StdioTransportConfig.model_validate(config)
         payload = build_request_body(cfg.input_json, message, conversation_id)
         workdir = Path(cfg.cwd).expanduser() if cfg.cwd else cwd
@@ -529,7 +567,12 @@ class ExternalAgentTool(BaseTool):
         conversation_id = resolve_conversation_id(agent, arguments.conversation_id)
         try:
             text = await transport.invoke(
-                agent, agent.config, arguments.message, conversation_id, context.cwd
+                agent,
+                agent.config,
+                arguments.message,
+                conversation_id,
+                context.cwd,
+                stream_text=context.stream_text,
             )
         except ExternalAgentError as exc:
             return ToolResult(output=f"external_agent failed: {exc}", is_error=True)

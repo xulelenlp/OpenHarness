@@ -32,12 +32,14 @@ export function StaticTranscriptItem({
 
 export function StreamingView({
 	assistantBuffer,
+	toolProgressBuffer,
 	showWelcome,
 	outputStyle,
 	productName,
 	slogan,
 }: {
 	assistantBuffer: string;
+	toolProgressBuffer: string;
 	showWelcome: boolean;
 	outputStyle: string;
 	productName?: string;
@@ -45,6 +47,23 @@ export function StreamingView({
 }): React.JSX.Element {
 	const {theme} = useTheme();
 	const isCodexStyle = outputStyle === 'codex';
+
+	// Live progress emitted by a running tool (e.g. an external agent's streamed
+	// report). Rendered as plain, tail-capped text so the live layout never grows
+	// past the terminal height — this is the "intermediate execution process"
+	// that used to be invisible behind a static spinner.
+	if (toolProgressBuffer) {
+		const {lines, truncated} = tailLines(toolProgressBuffer, MAX_STREAM_LINES);
+		return (
+			<Box marginTop={0} flexDirection="column">
+				<Box marginLeft={4} flexDirection="column">
+					<Text dimColor>{theme.icons.tool.trim()} streaming…</Text>
+					<Text>{lines}</Text>
+					{truncated ? <Text dimColor>… (older output scrolled)</Text> : null}
+				</Box>
+			</Box>
+		);
+	}
 
 	if (!assistantBuffer) {
 		return showWelcome ? (

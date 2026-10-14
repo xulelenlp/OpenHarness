@@ -26,6 +26,7 @@ const stableStringify = (value: unknown): string => JSON.stringify(value);
 export function useBackendSession(config: FrontendConfig, onExit: (code?: number | null) => void) {
 	const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
 	const [assistantBuffer, setAssistantBuffer] = useState('');
+	const [toolProgressBuffer, setToolProgressBuffer] = useState('');
 	const [status, setStatus] = useState<Record<string, unknown>>({});
 	const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
 	const [commands, setCommands] = useState<string[]>([]);
@@ -54,6 +55,11 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 	const assistantFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
 	const pendingTranscriptItemsRef = useRef<TranscriptItem[]>([]);
 	const transcriptFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
+	// Tool progress streams (e.g. external_agent report text) are buffered and
+	// flushed with the same cadence so long-running tools show live progress.
+	const toolProgressBufferRef = useRef('');
+	const pendingToolProgressRef = useRef('');
+	const toolProgressFlushTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 	const flushAssistantDelta = (): void => {
 		const pending = pendingAssistantDeltaRef.current;
@@ -92,6 +98,26 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			assistantFlushTimerRef.current = null;
 		}
 		setAssistantBuffer('');
+	};
+
+	const flushToolProgress = (): void => {
+		const pending = pendingToolProgressRef.current;
+		if (!pending) {
+			return;
+		}
+		pendingToolProgressRef.current = '';
+		toolProgressBufferRef.current += pending;
+		setToolProgressBuffer(toolProgressBufferRef.current);
+	};
+
+	const clearToolProgress = (): void => {
+		pendingToolProgressRef.current = '';
+		toolProgressBufferRef.current = '';
+		if (toolProgressFlushTimerRef.current) {
+			clearTimeout(toolProgressFlushTimerRef.current);
+			toolProgressFlushTimerRef.current = null;
+		}
+		setToolProgressBuffer('');
 	};
 
 	const clearPendingTranscriptItems = (): void => {
@@ -158,6 +184,10 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			if (assistantFlushTimerRef.current) {
 				clearTimeout(assistantFlushTimerRef.current);
 				assistantFlushTimerRef.current = null;
+			}
+			if (toolProgressFlushTimerRef.current) {
+				clearTimeout(toolProgressFlushTimerRef.current);
+				toolProgressFlushTimerRef.current = null;
 			}
 			clearPendingTranscriptItems();
 		};
@@ -281,6 +311,8 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			if (!delta) {
 				return;
 			}
+			// The assistant is now answering: tool progress has served its purpose.
+			clearToolProgress();
 			const isCodexStyle = String(statusRef.current.output_style ?? 'default') === 'codex';
 			if (isCodexStyle) {
 				// Keep collecting text for assistant_complete fallback, but avoid
@@ -327,12 +359,32 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 		if (event.type === 'line_complete') {
 			// Final end-of-turn: clear everything, stop spinner.
 			clearAssistantDelta();
+			clearToolProgress();
 			setBusy(false);
 			setBusyLabel(undefined);
 			return;
 		}
+		if (event.type === 'tool_progress') {
+			const delta = event.message ?? '';
+			if (!delta) {
+				return;
+			}
+			pendingToolProgressRef.current += delta;
+			if (pendingToolProgressRef.current.length >= ASSISTANT_DELTA_FLUSH_CHARS) {
+				flushToolProgress();
+				return;
+			}
+			if (!toolProgressFlushTimerRef.current) {
+				toolProgressFlushTimerRef.current = setTimeout(() => {
+					toolProgressFlushTimerRef.current = null;
+					flushToolProgress();
+				}, ASSISTANT_DELTA_FLUSH_MS);
+			}
+			return;
+		}
 		if ((event.type === 'tool_started' || event.type === 'tool_completed') && event.item) {
 			if (event.type === 'tool_started') {
+				clearToolProgress();
 				setBusy(true);
 				setBusyLabel(`Running ${event.tool_name ?? 'tool'}...`);
 			} else {
@@ -352,6 +404,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			clearPendingTranscriptItems();
 			setTranscript([]);
 			clearAssistantDelta();
+			clearToolProgress();
 			setBusyLabel(undefined);
 			// The transcript is rendered via <Static>, whose output is written to
 			// the real terminal and never re-rendered. Clear the screen (and the
@@ -379,6 +432,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			flushTranscriptItems();
 			queueTranscriptItem({role: 'system', text: `error: ${event.message ?? 'unknown error'}`});
 			clearAssistantDelta();
+			clearToolProgress();
 			setBusy(false);
 			setBusyLabel(undefined);
 			return;
@@ -417,6 +471,7 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 		() => ({
 			transcript,
 			assistantBuffer,
+			toolProgressBuffer,
 			status,
 			tasks,
 			commands,
@@ -436,6 +491,6 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			setBusyLabel,
 			sendRequest,
 		}),
-		[assistantBuffer, bridgeSessions, busy, busyLabel, commands, mcpServers, modal, ready, selectRequest, status, swarmNotifications, swarmTeammates, tasks, todoMarkdown, transcript]
+		[assistantBuffer, bridgeSessions, busy, busyLabel, commands, mcpServers, modal, ready, selectRequest, status, swarmNotifications, swarmTeammates, tasks, todoMarkdown, toolProgressBuffer, transcript]
 	);
 }

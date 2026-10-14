@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from typing import Awaitable
+from typing import Callable
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -21,6 +23,9 @@ class ToolExecutionContext:
     cwd: Path
     metadata: dict[str, Any] = field(default_factory=dict)
     hook_executor: HookExecutor | None = None
+    #: Optional callback a tool can use to stream incremental progress text to
+    #: the UI while it is running (None in headless/non-streaming hosts).
+    stream_text: Callable[[str], Awaitable[None]] | None = None
 
 
 @dataclass(frozen=True)

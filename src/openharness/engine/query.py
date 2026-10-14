@@ -35,6 +35,7 @@ from openharness.engine.stream_events import (
     StatusEvent,
     StreamEvent,
     ToolExecutionCompleted,
+    ToolExecutionProgress,
     ToolExecutionStarted,
 )
 from openharness.hooks import HookEvent, HookExecutor
@@ -822,8 +823,25 @@ async def run_query(
             # Single tool: sequential (stream events immediately)
             tc = tool_calls[0]
             yield ToolExecutionStarted(tool_name=tc.name, tool_input=tc.input), None
+
+            progress_queue: asyncio.Queue[ToolExecutionProgress] = asyncio.Queue()
+
+            async def _emit_progress(text: str) -> None:
+                await progress_queue.put(ToolExecutionProgress(tool_name=tc.name, text=text))
+
             try:
-                result = await _execute_tool_call(context, tc.name, tc.id, tc.input)
+                result_task = asyncio.create_task(
+                    _execute_tool_call(context, tc.name, tc.id, tc.input, _emit_progress)
+                )
+                while True:
+                    try:
+                        yield await asyncio.wait_for(progress_queue.get(), timeout=0.05), None
+                    except asyncio.TimeoutError:
+                        if result_task.done():
+                            break
+                while not progress_queue.empty():
+                    yield progress_queue.get_nowait(), None
+                result = await result_task
             except Exception as exc:
                 log.exception("tool execution raised: name=%s id=%s", tc.name, tc.id)
                 result = ToolResultBlock(
@@ -839,20 +857,37 @@ async def run_query(
             ), None
             tool_results = [result]
         else:
-            # Multiple tools: execute concurrently, emit events after
+            # Multiple tools: execute concurrently, stream progress as it arrives
             for tc in tool_calls:
                 yield ToolExecutionStarted(tool_name=tc.name, tool_input=tc.input), None
 
+            progress_queue: asyncio.Queue[ToolExecutionProgress] = asyncio.Queue()
+
+            def _make_emit(name: str) -> Callable[[str], Awaitable[None]]:
+                async def _emit(text: str) -> None:
+                    await progress_queue.put(ToolExecutionProgress(tool_name=name, text=text))
+
+                return _emit
+
             async def _run(tc):
-                return await _execute_tool_call(context, tc.name, tc.id, tc.input)
+                return await _execute_tool_call(
+                    context, tc.name, tc.id, tc.input, _make_emit(tc.name)
+                )
 
             # Use return_exceptions=True so a single failing tool does not abandon
             # its siblings as cancelled coroutines and leave the conversation with
             # un-replied tool_use blocks (Anthropic's API rejects the next request
             # on the session if any tool_use is missing a matching tool_result).
-            raw_results = await asyncio.gather(
-                *[_run(tc) for tc in tool_calls], return_exceptions=True
-            )
+            gather_future = asyncio.gather(*[_run(tc) for tc in tool_calls], return_exceptions=True)
+            while True:
+                try:
+                    yield await asyncio.wait_for(progress_queue.get(), timeout=0.05), None
+                except asyncio.TimeoutError:
+                    if gather_future.done():
+                        break
+            while not progress_queue.empty():
+                yield progress_queue.get_nowait(), None
+            raw_results = await gather_future
             tool_results = []
             for tc, result in zip(tool_calls, raw_results):
                 if isinstance(result, BaseException):
@@ -889,6 +924,7 @@ async def _execute_tool_call(
     tool_name: str,
     tool_use_id: str,
     tool_input: dict[str, object],
+    stream_text: Callable[[str], Awaitable[None]] | None = None,
 ) -> ToolResultBlock:
     if context.hook_executor is not None:
         pre_hooks = await context.hook_executor.execute(
@@ -977,6 +1013,7 @@ async def _execute_tool_call(
                 **(context.tool_metadata or {}),
             },
             hook_executor=context.hook_executor,
+            stream_text=stream_text,
         ),
     )
     elapsed = time.monotonic() - t0

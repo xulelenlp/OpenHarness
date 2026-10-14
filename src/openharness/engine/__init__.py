@@ -17,6 +17,7 @@ if TYPE_CHECKING:  # pragma: no cover
         AssistantTextDelta,
         AssistantTurnComplete,
         ToolExecutionCompleted,
+        ToolExecutionProgress,
         ToolExecutionStarted,
     )
 
@@ -28,6 +29,7 @@ __all__ = [
     "QueryEngine",
     "TextBlock",
     "ToolExecutionCompleted",
+    "ToolExecutionProgress",
     "ToolExecutionStarted",
     "ToolResultBlock",
     "ToolUseBlock",
@@ -61,12 +63,14 @@ def __getattr__(name: str):
         "AssistantTextDelta",
         "AssistantTurnComplete",
         "ToolExecutionCompleted",
+        "ToolExecutionProgress",
         "ToolExecutionStarted",
     }:
         from openharness.engine.stream_events import (
             AssistantTextDelta,
             AssistantTurnComplete,
             ToolExecutionCompleted,
+            ToolExecutionProgress,
             ToolExecutionStarted,
         )
 
@@ -74,6 +78,7 @@ def __getattr__(name: str):
             "AssistantTextDelta": AssistantTextDelta,
             "AssistantTurnComplete": AssistantTurnComplete,
             "ToolExecutionCompleted": ToolExecutionCompleted,
+            "ToolExecutionProgress": ToolExecutionProgress,
             "ToolExecutionStarted": ToolExecutionStarted,
         }[name]
 

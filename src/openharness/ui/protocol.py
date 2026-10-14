@@ -101,6 +101,7 @@ class BackendEvent(BaseModel):
         "line_complete",
         "tool_started",
         "tool_completed",
+        "tool_progress",
         "clear_transcript",
         "modal_request",
         "select_request",

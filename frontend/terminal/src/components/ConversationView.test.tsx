@@ -48,7 +48,11 @@ async function waitForOutputToStabilize(getOutput: () => string): Promise<string
 	throw new Error(`Ink output did not stabilize: ${JSON.stringify(previous)}`);
 }
 
-async function renderStreaming(assistantBuffer: string, showWelcome = false): Promise<string> {
+async function renderStreaming(
+	assistantBuffer: string,
+	showWelcome = false,
+	toolProgressBuffer = '',
+): Promise<string> {
 	const stdout = createTestStdout();
 
 	let output = '';
@@ -60,6 +64,7 @@ async function renderStreaming(assistantBuffer: string, showWelcome = false): Pr
 		<ThemeProvider initialTheme="default">
 			<StreamingView
 				assistantBuffer={assistantBuffer}
+				toolProgressBuffer={toolProgressBuffer}
 				showWelcome={showWelcome}
 				outputStyle="default"
 				productName="test"
@@ -102,4 +107,19 @@ test('renders the welcome banner when idle', async () => {
 	const output = await renderStreaming('', true);
 
 	assert.match(output, /test/);
+});
+
+test('renders live tool progress with a streaming marker', async () => {
+	const output = await renderStreaming('', false, 'report line one\nreport line two');
+
+	assert.match(output, /streaming…/);
+	assert.match(output, /report line one/);
+	assert.match(output, /report line two/);
+});
+
+test('tool progress takes priority over the assistant buffer', async () => {
+	const output = await renderStreaming('assistant text', false, 'tool progress text');
+
+	assert.match(output, /tool progress text/);
+	assert.doesNotMatch(output, /assistant text/);
 });
