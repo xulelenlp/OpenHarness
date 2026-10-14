@@ -49,11 +49,7 @@ async function waitForOutputToStabilize(getOutput: () => string): Promise<string
 	throw new Error(`Ink output did not stabilize: ${JSON.stringify(previous)}`);
 }
 
-async function renderToolCall(
-	item: TranscriptItem,
-	resultItem?: TranscriptItem,
-	outputStyle?: string,
-): Promise<string> {
+async function renderToolCall(item: TranscriptItem, outputStyle?: string): Promise<string> {
 	const stdout = createTestStdout();
 
 	let output = '';
@@ -63,7 +59,7 @@ async function renderToolCall(
 
 	const instance = render(
 		<ThemeProvider initialTheme="default">
-			<ToolCallDisplay item={item} resultItem={resultItem} outputStyle={outputStyle} />
+			<ToolCallDisplay item={item} outputStyle={outputStyle} />
 		</ThemeProvider>,
 		{stdout: stdout as unknown as NodeJS.WriteStream, debug: true, patchConsole: false},
 	);
@@ -78,7 +74,7 @@ async function renderToolCall(
 	return stripAnsi(stableOutput);
 }
 
-test('shows a running indicator for an in-flight tool without a result', async () => {
+test('renders a tool call with its name and input summary', async () => {
 	const item: TranscriptItem = {
 		role: 'tool',
 		text: 'bash {"command":"ls -la"}',
@@ -90,24 +86,17 @@ test('shows a running indicator for an in-flight tool without a result', async (
 
 	assert.match(output, /bash/);
 	assert.match(output, /ls -la/);
-	assert.match(output, /… running/);
 });
 
 test('shows a bounded preview of a successful tool result', async () => {
 	const item: TranscriptItem = {
-		role: 'tool',
-		text: 'read {"file_path":"/tmp/a.txt"}',
-		tool_name: 'read',
-		tool_input: {file_path: '/tmp/a.txt'},
-	};
-	const resultItem: TranscriptItem = {
 		role: 'tool_result',
 		text: 'first line\nsecond line\nthird line',
 		tool_name: 'read',
 		is_error: false,
 	};
 
-	const output = await renderToolCall(item, resultItem);
+	const output = await renderToolCall(item);
 
 	assert.match(output, /→ 3L/);
 	assert.match(output, /first line/);
@@ -117,19 +106,13 @@ test('shows a bounded preview of a successful tool result', async () => {
 
 test('truncates a successful result preview to three lines and reports the total', async () => {
 	const item: TranscriptItem = {
-		role: 'tool',
-		text: 'read {"file_path":"/tmp/a.txt"}',
-		tool_name: 'read',
-		tool_input: {file_path: '/tmp/a.txt'},
-	};
-	const resultItem: TranscriptItem = {
 		role: 'tool_result',
 		text: 'one\ntwo\nthree\nfour\nfive',
 		tool_name: 'read',
 		is_error: false,
 	};
 
-	const output = await renderToolCall(item, resultItem);
+	const output = await renderToolCall(item);
 
 	assert.match(output, /→ 5L/);
 	assert.match(output, /one/);
@@ -142,40 +125,28 @@ test('truncates a successful result preview to three lines and reports the total
 test('truncates overly long result preview lines', async () => {
 	const longLine = 'x'.repeat(500);
 	const item: TranscriptItem = {
-		role: 'tool',
-		text: 'bash {"command":"cat big.txt"}',
-		tool_name: 'bash',
-		tool_input: {command: 'cat big.txt'},
-	};
-	const resultItem: TranscriptItem = {
 		role: 'tool_result',
 		text: longLine,
 		tool_name: 'bash',
 		is_error: false,
 	};
 
-	const output = await renderToolCall(item, resultItem);
+	const output = await renderToolCall(item);
 
 	// A 500-char line must be cut to the preview cap plus an ellipsis.
 	assert.ok(output.includes('…'), `Expected a truncated ellipsis in output: ${JSON.stringify(output)}`);
 	assert.ok(output.length < longLine.length + 200, 'Preview output should be far shorter than the full result line');
 });
 
-test('still renders error results as error lines', async () => {
+test('renders error results as error lines', async () => {
 	const item: TranscriptItem = {
-		role: 'tool',
-		text: 'bash {"command":"false"}',
-		tool_name: 'bash',
-		tool_input: {command: 'false'},
-	};
-	const resultItem: TranscriptItem = {
 		role: 'tool_result',
 		text: 'command not found',
 		tool_name: 'bash',
 		is_error: true,
 	};
 
-	const output = await renderToolCall(item, resultItem);
+	const output = await renderToolCall(item);
 
 	assert.match(output, /command not found/);
 });

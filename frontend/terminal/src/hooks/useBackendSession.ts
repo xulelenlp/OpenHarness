@@ -18,6 +18,8 @@ const PROTOCOL_PREFIX = 'OHJSON:';
 const ASSISTANT_DELTA_FLUSH_MS = 50;
 const ASSISTANT_DELTA_FLUSH_CHARS = 384;
 const TRANSCRIPT_EVENT_FLUSH_MS = 50;
+// Matches Ink's clearTerminal: erase screen + erase scrollback + cursor home.
+const CLEAR_TERMINAL = '\x1B[2J\x1B[3J\x1B[H';
 
 const stableStringify = (value: unknown): string => JSON.stringify(value);
 
@@ -351,6 +353,13 @@ export function useBackendSession(config: FrontendConfig, onExit: (code?: number
 			setTranscript([]);
 			clearAssistantDelta();
 			setBusyLabel(undefined);
+			// The transcript is rendered via <Static>, whose output is written to
+			// the real terminal and never re-rendered. Clear the screen (and the
+			// scrollback) so a /clear actually blanks the conversation. The
+			// subsequent live render re-establishes at the top of the terminal.
+			if (process.stdout.isTTY) {
+				process.stdout.write(CLEAR_TERMINAL);
+			}
 			return;
 		}
 		if (event.type === 'select_request') {

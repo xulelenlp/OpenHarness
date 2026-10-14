@@ -4,13 +4,14 @@ import {Box, Text} from 'ink';
 import {useTheme} from '../theme/ThemeContext.js';
 import type {TranscriptItem} from '../types.js';
 
+// Each completed tool call and its result are rendered as separate static
+// history entries (see <Static> usage), so this component renders a single
+// transcript item rather than a paired tool/result.
 export function ToolCallDisplay({
 	item,
-	resultItem,
 	outputStyle,
 }: {
 	item: TranscriptItem;
-	resultItem?: TranscriptItem;
 	outputStyle?: string;
 }): React.JSX.Element {
 	const {theme} = useTheme();
@@ -20,49 +21,10 @@ export function ToolCallDisplay({
 		const toolName = item.tool_name ?? 'tool';
 		const summary = summarizeInput(toolName, item.tool_input, item.text).replace(/\s+/g, ' ').trim();
 
-		let statusNode: React.ReactNode = null;
-		let errorLines: string[] | null = null;
-		let resultPreview: string[] | null = null;
-
-		if (resultItem) {
-			if (resultItem.is_error) {
-				statusNode = isCodexStyle
-					? <Text color={theme.colors.error}> error</Text>
-					: <Text color={theme.colors.error}> {theme.icons.error.trim()}</Text>;
-				const lines = resultItem.text.split('\n').filter((l) => l.trim());
-				const maxErrLines = isCodexStyle ? 8 : 5;
-				errorLines = lines.length > maxErrLines
-					? [...lines.slice(0, maxErrLines), `... (${lines.length - maxErrLines} more lines)`]
-					: lines;
-			} else if (!isCodexStyle) {
-				const lineCount = resultItem.text.split('\n').filter((l) => l.trim()).length;
-				const resultLabel = lineCount > 0 ? `${lineCount}L` : theme.icons.success.trim();
-				statusNode = <Text dimColor> → {resultLabel}</Text>;
-				resultPreview = previewResult(resultItem.text);
-			} else {
-				const lineCount = resultItem.text.split('\n').filter((l) => l.trim()).length;
-				statusNode = <Text dimColor>{lineCount > 0 ? ` ${lineCount}L` : ''}</Text>;
-			}
-		} else {
-			// Tool started but not yet finished — surface a running indicator so
-			// users can follow the intermediate execution process.
-			statusNode = <Text dimColor> … running</Text>;
-		}
-
 		if (isCodexStyle) {
-			const verb = resultItem ? 'Ran' : 'Running';
 			return (
 				<Box marginLeft={0} flexDirection="column">
-					<Text dimColor>{`• ${verb} ${toolName}${summary ? ` ${summary}` : ''}`}{statusNode}</Text>
-					{errorLines?.map((line, i) => {
-						const prefix = i === errorLines.length - 1 ? '└ ' : '│ ';
-						return (
-							<Text key={i} color={theme.colors.error}>
-								{prefix}
-								{line}
-							</Text>
-						);
-					})}
+					<Text dimColor>{`• ${toolName}${summary ? ` ${summary}` : ''}`}</Text>
 				</Box>
 			);
 		}
@@ -73,50 +35,60 @@ export function ToolCallDisplay({
 					<Text color={theme.colors.accent} bold>{theme.icons.tool}</Text>
 					<Text color={theme.colors.accent} bold>{toolName}</Text>
 					<Text dimColor> {summary}</Text>
-					{statusNode}
 				</Text>
-				{resultPreview?.map((line, i) => (
-					<Box key={i} marginLeft={4}>
-						<Text dimColor>{line}</Text>
-					</Box>
-				))}
-				{errorLines?.map((line, i) => (
-					<Box key={i} marginLeft={4}>
-						<Text color={theme.colors.error}>{line}</Text>
-					</Box>
-				))}
 			</Box>
 		);
 	}
 
 	if (item.role === 'tool_result') {
-		if (!item.is_error) {
-			return <></>;
-		}
-		const lines = item.text.length > 0
-			? item.text.split('\n').filter((l) => l.trim())
-			: [''];
-		const maxLines = isCodexStyle ? 8 : 5;
-		const display = lines.length > maxLines ? [...lines.slice(0, maxLines), `... (${lines.length - maxLines} more lines)`] : lines;
-		if (isCodexStyle) {
+		const lines = item.text.split('\n').filter((line) => line.trim());
+
+		if (item.is_error) {
+			const maxErrLines = isCodexStyle ? 8 : 5;
+			const display = lines.length > maxErrLines
+				? [...lines.slice(0, maxErrLines), `... (${lines.length - maxErrLines} more lines)`]
+				: lines;
+
+			if (isCodexStyle) {
+				return (
+					<Box marginLeft={0} flexDirection="column">
+						{display.map((line, i) => {
+							const prefix = i === display.length - 1 ? '└ ' : '│ ';
+							return (
+								<Text key={i} color={theme.colors.error}>
+									{prefix}
+									{line}
+								</Text>
+							);
+						})}
+					</Box>
+				);
+			}
+
 			return (
-				<Box marginLeft={0} flexDirection="column">
-					{display.map((line, i) => {
-						const prefix = i === display.length - 1 ? '└ ' : '│ ';
-						return (
-							<Text key={i} color={theme.colors.error}>
-								{prefix}
-								{line}
-							</Text>
-						);
-					})}
+				<Box marginLeft={4} flexDirection="column">
+					{display.map((line, i) => (
+						<Text key={i} color={theme.colors.error}>{line}</Text>
+					))}
 				</Box>
 			);
 		}
+
+		// Successful result — show a bounded preview so users can follow the
+		// intermediate execution process without dumping the full output.
+		if (isCodexStyle) {
+			return <Text dimColor>{lines.length > 0 ? `${lines.length}L` : ''}</Text>;
+		}
+
+		const lineCount = lines.length;
+		const resultLabel = lineCount > 0 ? `${lineCount}L` : theme.icons.success.trim();
+		const preview = previewResult(item.text);
+
 		return (
 			<Box marginLeft={4} flexDirection="column">
-				{display.map((line, i) => (
-					<Text key={i} color={theme.colors.error}>{line}</Text>
+				<Text dimColor> → {resultLabel}</Text>
+				{preview?.map((line, i) => (
+					<Text key={i} dimColor>{line}</Text>
 				))}
 			</Box>
 		);
@@ -128,8 +100,7 @@ export function ToolCallDisplay({
 const RESULT_PREVIEW_MAX_LINES = 3;
 const RESULT_PREVIEW_MAX_LINE_LENGTH = 200;
 
-// Bounded preview of a successful tool result so users can follow the
-// intermediate execution process without dumping the full (possibly huge) output.
+// Bounded preview of a successful tool result.
 function previewResult(text: string): string[] | null {
 	const lines = text.split('\n').map((line) => line.trimEnd()).filter((line) => line.trim());
 	if (lines.length === 0) {

@@ -1,9 +1,9 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Box, Text, useApp, useInput} from 'ink';
+import {Box, Static, Text, useApp, useInput} from 'ink';
 
 import {readClipboardImage, type ImageAttachment} from './clipboardImage.js';
 import {CommandPicker} from './components/CommandPicker.js';
-import {ConversationView} from './components/ConversationView.js';
+import {StaticTranscriptItem, StreamingView} from './components/ConversationView.js';
 import {ModalHost} from './components/ModalHost.js';
 import {PromptInput} from './components/PromptInput.js';
 import {SelectModal, type SelectOption} from './components/SelectModal.js';
@@ -499,10 +499,20 @@ function AppInner({config}: {config: FrontendConfig}): React.JSX.Element {
 		<Box flexDirection="column" paddingX={1} height="100%">
 			{/* Conversation area */}
 			<Box flexDirection="column" flexGrow={1}>
-				<ConversationView
-					items={session.transcript}
+				{/* Completed transcript is rendered through <Static>: each item is
+				    written to the terminal once and never re-rendered. This keeps the
+				    live layout short so Ink never has to clear and fully redraw the
+				    screen (which caused the flicker and viewport reset). */}
+				<Static items={session.transcript}>
+					{(item, index) => (
+						<StaticTranscriptItem key={index} item={item} outputStyle={outputStyle} />
+					)}
+				</Static>
+
+				{/* Streaming assistant text + welcome banner (live, tail-capped). */}
+				<StreamingView
 					assistantBuffer={session.assistantBuffer}
-					showWelcome={session.ready && outputStyle !== 'codex'}
+					showWelcome={session.ready && session.transcript.length === 0 && outputStyle !== 'codex'}
 					outputStyle={outputStyle}
 					productName={productName}
 					slogan={slogan}
