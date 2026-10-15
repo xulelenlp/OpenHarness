@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { makeAccumulator, reduceEvent } from "./turn";
 import type { TurnAccumulator } from "./turn";
+import { MarkdownView, useThrottledText } from "./markdown";
 import type { AgentInfo, ChatMessage, ConversationSummary, Step } from "./types";
 
 interface AgentListResponseShape {
@@ -33,6 +34,67 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
+/**
+ * 复制文本。
+ *
+ * 注意：`navigator.clipboard` 只在**安全上下文**（https / localhost）可用，而本页
+ * 常见部署方式是局域网 `http://<ip>:8787`，此时它不存在，必须回退到
+ * `document.execCommand("copy")`，否则「复制」按钮会静默失效。
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // 落到下面的兜底实现
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+interface AssistantBubbleProps {
+  content: string;
+  streaming: boolean;
+  /** true = 按 Markdown 渲染；false = 显示原始文本（源码）。 */
+  markdown: boolean;
+  error?: boolean;
+}
+
+/**
+ * 助手气泡。
+ *
+ * 流式期间对 Markdown 渲染做节流（见 `useThrottledText`）：每个 SSE 增量都重新解析
+ * 整篇 Markdown + 重建 React 树，是页面卡顿的主因；节流后按 ~150ms 合并渲染。
+ */
+function AssistantBubble({ content, streaming, markdown, error }: AssistantBubbleProps) {
+  const throttled = useThrottledText(content, streaming ? 150 : 0);
+  const text = streaming ? throttled : content;
+  // 出错文案按纯文本显示：那是系统消息，不该被当成 Markdown 解释。
+  const asMarkdown = markdown && !error;
+  const cls = `bubble${asMarkdown && text ? " md" : ""}${error ? " error" : ""}`;
+
+  if (!text) return <div className={cls}>{streaming ? "思考中…" : ""}</div>;
+  if (!asMarkdown) return <div className={cls}>{text}</div>;
+  return (
+    <div className={cls}>
+      <MarkdownView content={text} />
+    </div>
+  );
+}
 
 /** 从 snapshot.messages 的 content 提取纯文本（兼容 TextBlock 数组与字符串）。 */
 function extractText(content: unknown): string {
@@ -198,6 +260,14 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string>("");
   const [stepOpen, setStepOpen] = useState<Record<string, boolean>>({});
+  /** 助手回答是否按 Markdown 渲染（全局默认，存本地）。 */
+  const [markdownDefault, setMarkdownDefault] = useState<boolean>(
+    () => localStorage.getItem("qaapp_render_markdown") !== "0",
+  );
+  /** 单条消息的渲染模式覆盖：true = 强制 Markdown，false = 强制源码。 */
+  const [renderOverride, setRenderOverride] = useState<Record<number, boolean>>({});
+  /** 刚复制过的消息下标（用于按钮上的短暂反馈）。 */
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const assistantIndexRef = useRef<number>(-1);
@@ -209,6 +279,17 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("qaapp_token", token);
   }, [token]);
+
+  useEffect(() => {
+    localStorage.setItem("qaapp_render_markdown", markdownDefault ? "1" : "0");
+  }, [markdownDefault]);
+
+  const handleCopyMessage = useCallback(async (index: number, text: string) => {
+    if (await copyText(text)) {
+      setCopiedIndex(index);
+      window.setTimeout(() => setCopiedIndex((prev) => (prev === index ? null : prev)), 1500);
+    }
+  }, []);
 
   const refreshAgents = useCallback(async () => {
     try {
@@ -523,6 +604,18 @@ export default function App() {
               ))}
             </select>
           </div>
+          <label className="md-toggle" title="助手回答按 Markdown 渲染（表格 / 代码块 / 列表）；关闭后显示原文">
+            <input
+              type="checkbox"
+              checked={markdownDefault}
+              onChange={(e) => {
+                setMarkdownDefault(e.target.checked);
+                setRenderOverride({});
+              }}
+              disabled={streaming}
+            />
+            Markdown 渲染
+          </label>
           {streaming && (
             <button className="btn warn" onClick={() => void handleInterrupt()}>
               中断
@@ -531,40 +624,69 @@ export default function App() {
         </header>
 
         <div className="messages">
-          {messages.map((m, i) => (
-            <div key={i} className={`message ${m.role}`}>
-              <div className="message-head">
-                <span className="role">{m.role === "user" ? "我" : m.agentName || "助手"}</span>
-                {m.turnId && <span className="turn-id">turn #{shortId(m.turnId)}</span>}
-              </div>
-
-              {m.role === "assistant" && m.steps.length > 0 && (
-                <div className="steps">
-                  {m.steps.map((s) => {
-                    const openKey = `${i}:${s.key}`;
-                    // 待处理的审批必须展开（需用户操作）；思考默认展开便于看过程；
-                    // 其余（含已处理的审批）默认折叠，避免重复卡片刷屏。
-                    const needsAction = s.kind === "approval" && s.status === "running";
-                    const collapsed =
-                      needsAction || s.kind === "reasoning" ? false : !stepOpen[openKey];
-                    return (
-                      <StepCard
-                        key={s.key}
-                        step={s}
-                        collapsed={collapsed}
-                        onToggle={() => toggleStep(openKey)}
-                        onApproval={handleApproval}
-                      />
-                    );
-                  })}
+          {messages.map((m, i) => {
+            const isAssistant = m.role === "assistant";
+            const useMarkdown = renderOverride[i] ?? markdownDefault;
+            return (
+              <div key={i} className={`message ${m.role}`}>
+                <div className="message-head">
+                  <span className="role">{isAssistant ? m.agentName || "助手" : "我"}</span>
+                  {m.turnId && <span className="turn-id">turn #{shortId(m.turnId)}</span>}
+                  {isAssistant && m.content && (
+                    <span className="msg-actions">
+                      <button
+                        className="mini-btn"
+                        title={useMarkdown ? "查看 Markdown 原文" : "按 Markdown 渲染"}
+                        onClick={() => setRenderOverride((prev) => ({ ...prev, [i]: !useMarkdown }))}
+                      >
+                        {useMarkdown ? "源码" : "预览"}
+                      </button>
+                      <button
+                        className="mini-btn"
+                        title="复制 Markdown 原文"
+                        onClick={() => void handleCopyMessage(i, m.content)}
+                      >
+                        {copiedIndex === i ? "已复制" : "复制"}
+                      </button>
+                    </span>
+                  )}
                 </div>
-              )}
 
-              <div className={`bubble ${m.error ? "error" : ""}`}>
-                {m.content || (m.streaming ? "思考中…" : "")}
+                {isAssistant && m.steps.length > 0 && (
+                  <div className="steps">
+                    {m.steps.map((s) => {
+                      const openKey = `${i}:${s.key}`;
+                      // 待处理的审批必须展开（需用户操作）；思考默认展开便于看过程；
+                      // 其余（含已处理的审批）默认折叠，避免重复卡片刷屏。
+                      const needsAction = s.kind === "approval" && s.status === "running";
+                      const collapsed =
+                        needsAction || s.kind === "reasoning" ? false : !stepOpen[openKey];
+                      return (
+                        <StepCard
+                          key={s.key}
+                          step={s}
+                          collapsed={collapsed}
+                          onToggle={() => toggleStep(openKey)}
+                          onApproval={handleApproval}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {isAssistant ? (
+                  <AssistantBubble
+                    content={m.content}
+                    streaming={Boolean(m.streaming)}
+                    markdown={useMarkdown}
+                    error={m.error}
+                  />
+                ) : (
+                  <div className={`bubble ${m.error ? "error" : ""}`}>{m.content}</div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {error && (

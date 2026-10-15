@@ -343,6 +343,13 @@ settings 的 `allowed_tools` → 基础权限模式。
 > 完整示例见 [`qaapp/examples/`](examples/)。`abcqa init` 只写入三份 qaapp 配置；
 > `external-agents.json` 需按 `qaapp/examples/external-agents.json` 手工放置。
 
+> **问数类智能体只取最终结果**：数据查询类智能体的流式响应会把推理过程、工具调用与
+> 工具返回全部包在外层标签里（单次可达数十万字符），给前端会造成页面卡死。插件默认
+> 只保留 `<answer>` 标签内的最终结果（`response.extract_tags`，取最后一次出现），并把
+> 流式进度限制在 `progress_max_chars`（默认 4000）字符内。需要图表数据时可配
+> `"response": {"extract_tags": ["answer", "extractData"]}`；详见
+> [`plugins/external-agents/README.md`](../plugins/external-agents/README.md)。
+
 ---
 
 ## 6. 命令行速查
@@ -405,7 +412,10 @@ POST /api/v1/conversations/{id}/approvals/{request_id}
 ## 8. 前端部署
 
 参考前端在 `frontend/webapp/`（React + Vite + TS），演示流式问答、工具轨迹折叠、
-审批弹窗、中断等交互。
+审批弹窗、中断等交互。**助手回答默认按 Markdown 渲染**（GFM 表格/代码块/列表，整体被
+` ```markdown ` 包住时自动解包），顶栏可切换全局默认、单条消息可切源码或复制原文；
+渲染层不开 `rehype-raw`、不自动加载远程图片（详见
+[`frontend/webapp/README.md`](../frontend/webapp/README.md)）。
 
 ```bash
 cd frontend/webapp

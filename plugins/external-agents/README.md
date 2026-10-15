@@ -43,8 +43,9 @@
 | `enabled` | 否 | `false` 禁用 |
 | `conversation_id` | 否 | `"auto"`（每次随机生成）或固定字符串 |
 | `timeout_seconds` | 否 | 超时（HTTP 读超时 / stdio 执行超时），默认 180 |
-| `max_response_chars` | 否 | 报告最大字符数，超出截断 |
-| `response` | 否 | 响应解析：`mode`（`auto`/`sse`/`ndjson`/`text`）+ `json_text_paths` |
+| `max_response_chars` | 否 | 报告最大字符数，超出截断（默认 `200000`） |
+| `progress_max_chars` | 否 | 流式**进度**转发上限，默认 `4000`；`0` = 不限制 |
+| `response` | 否 | 响应解析：`mode`（`auto`/`sse`/`ndjson`/`text`）、`json_text_paths`、`extract_tags`（默认 `["answer"]`） |
 | `config` | 是 | transport 专有配置（见下） |
 
 ### `type: "http"` 的 `config`
@@ -92,6 +93,34 @@
   ]
 }
 ```
+
+## 只取「最终结果」：为什么默认要提取 `<answer>`
+
+数据查询类智能体（如 `smart-data-query`）的流式响应会把**整段推理过程、工具调用与工具
+返回**一并塞进外层标签，真正给用户的答案只在 `<answer>` 里：
+
+```text
+<record_id>7717</record_id>
+<record_content> 推理过程…… <callTool><toolResult>…</toolResult></callTool>
+  <answer>最终答案</answer><extractData>[{"xData": [...]}]</extractData>
+</record_content>
+```
+
+再叠加「每帧回吐到目前为止的全部文本」的推送方式，一次问数会产生 **20 万字符以上**的
+内容。这些内容若原样进入 Web 前端（逐帧 SSE + 每帧重渲染 Markdown），页面会直接卡死。
+
+因此插件做两层收敛：
+
+1. **只保留 `extract_tags` 标签内的内容**（默认 `["answer"]`）。取标签**最后一次**出现，
+   因此对「累计快照」和「流被截断、标签未闭合」两种情形都成立；要图表数据可配
+   `["answer", "extractData"]`，设 `[]` 关闭提取（未命中任何标签时原样返回，不误伤普通回复）。
+   提取发生在 `max_response_chars` 截断**之前**，所以不会把答案截掉。
+2. **进度转发限流**：`progress_max_chars`（默认 4000）封顶，并对累计快照自动去重（只转发
+   增长的部分）。这只影响实时进度预览——`parse_stream` 仍基于完整原始响应解析，报告内容
+   不会因限流丢失。
+
+> 改完配置无需改代码；改的是插件源码时需要重新 `abc plugin install plugins/external-agents`
+> 并重启长驻会话（或 `/reload-plugins`）才生效。
 
 ## 扩展新 transport（代码，约 20 行）
 
