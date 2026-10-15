@@ -50,7 +50,7 @@
           ]
         },
         "config": {
-          "endpoint": "http://127.0.0.1:18812/api/chat/stream",
+          "endpoint": "http://192.168.139.144:18081/api/chat/stream",
           "method": "POST",
           "headers": {
             "content-type": "application/json"
