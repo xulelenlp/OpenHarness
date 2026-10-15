@@ -30,6 +30,13 @@
 2. `~/.openharness/external-agents.json`（用户级覆盖，`OPENHARNESS_CONFIG_DIR` 可改目录）
 3. 插件内置 `<plugin>/external-agents.json`（默认值）
 
+> **qaapp 用户注意**：qaapp 的 Agent **只在 workspace 的 `agents.json` 里维护**——
+> `kind=external` 的 Agent 用 `external` 字段内联 endpoint / request_body / response，
+> qaapp 会在会话启动时注入本插件的 `external_agent` 工具（同名以 agents.json 为准）。
+> 因此本插件目录里的 `external-agents.json` 已在仓库中清空为占位，避免同一份配置放两处。
+> 只有 `abc` / `abcag` 这类不读 agents.json 的入口，才需要在这里（或用户级位置）配置。
+
+
 ### Agent 条目结构
 
 **公共字段（所有 transport 通用）：**

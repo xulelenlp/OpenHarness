@@ -1,6 +1,8 @@
 {
   "_comment": "Agent 注册表。放置到 ~/.ohmo/agents.json。kind 取值：external / subagent / harness。",
-  "_comment_arch": "默认架构：harness 总控自动编排——开放问答由通用助手(general)直接回答，需要专业 Agent 时由其自动调用 external_agent 工具；三个专业 Agent 仍注册、前端可显式指定。",
+  "_comment_single_file": "所有 Agent（含外部 Agent 的 endpoint / method / headers / request_body / response）都只在本文件维护——不再需要 external-agents.json。qaapp 启动后会把 external 内联配置注入 external_agent 工具。",
+  "_comment_arch": "默认架构：harness 总控自动编排——开放问答由通用助手(general)直接回答，需要专业 Agent 时由其自动调用 external_agent 工具；专业 Agent 仍注册、前端可显式指定。",
+  "_comment_external": "kind=external 两种写法：① 推荐 external 内联完整访问配置（见 power-grid-analysis）；② 兼容 external_ref（指向 external-agents.json 里的 id，仅旧配置迁移时用）。external.conversation_id=auto 表示用 qaapp 的会话 ID；填固定值则每次复用该会话（对端报「会话创建失败」时可用）。",
   "default_agent": "general",
   "routing": {
     "mode": "explicit",
@@ -24,21 +26,78 @@
       "kind": "external",
       "name": "电网指标数据分析",
       "description": "售电量、线损等电网经营与技术指标的分析报告",
-      "external_ref": "power-grid-analysis"
+      "external": {
+        "type": "http",
+        "enabled": true,
+        "conversation_id": "auto",
+        "timeout_seconds": 300,
+        "max_response_chars": 220000,
+        "response": {
+          "mode": "auto",
+          "json_text_paths": ["choices[0].delta.content", "delta", "content", "answer", "message", "data", "text", "output", "result"],
+          "extract_tags": ["answer"]
+        },
+        "config": {
+          "endpoint": "http://your-agent-host:18081/api/chat/stream",
+          "method": "POST",
+          "headers": { "content-type": "application/json" },
+          "request_body": {
+            "message": "{message}",
+            "conversation_id": "{conversation_id}",
+            "context": {},
+            "chat_type": 4
+          }
+        }
+      }
     },
     {
       "id": "smart-data-query",
       "kind": "external",
       "name": "智能问数",
       "description": "业务数据明细查询与数值查询",
-      "external_ref": "smart-data-query"
+      "external": {
+        "type": "http",
+        "conversation_id": "auto",
+        "timeout_seconds": 300,
+        "response": { "mode": "auto", "extract_tags": ["answer"] },
+        "config": {
+          "endpoint": "http://your-agent-host:18094/chat_agent_roll",
+          "method": "POST",
+          "headers": { "content-type": "application/json" },
+          "request_body": {
+            "query": "{message}",
+            "session": "{conversation_id}",
+            "user_id": "YOUR_USER_ID",
+            "domain_id": 1,
+            "use_direct": 1
+          }
+        }
+      }
     },
     {
       "id": "knowledge-qa",
       "kind": "external",
       "name": "知识问答",
-      "description": "通用知识问答",
-      "external_ref": "knowledge-qa"
+      "description": "知识/政策/文件解读",
+      "external": {
+        "type": "http",
+        "conversation_id": "auto",
+        "timeout_seconds": 300,
+        "response": { "mode": "auto", "extract_tags": ["answer"] },
+        "config": {
+          "endpoint": "http://your-agent-host:18094/chat_agent_roll",
+          "method": "POST",
+          "headers": { "content-type": "application/json" },
+          "request_body": {
+            "query": "{message}",
+            "session": "{conversation_id}",
+            "user_id": "YOUR_USER_ID",
+            "domain_id": 6,
+            "use_direct": 1
+          }
+        }
+      }
     }
   ]
 }
+

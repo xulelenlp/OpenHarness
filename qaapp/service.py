@@ -71,6 +71,7 @@ from qaapp.documents import (
     save_extracted_text,
     suffix_of,
 )
+from qaapp.external_agents import external_conversation_id, install_external_agent_tool
 from qaapp.script_tool import CONVERSATION_DIR_KEY, RunScriptTool
 from qaapp.trace import ConversationTraceStore
 
@@ -262,6 +263,11 @@ class QaWebService:
         await start_runtime(bundle)
         # 会话级脚本工具：把模型生成的脚本固定写到本会话的 scripts/ 目录再执行。
         bundle.tool_registry.register(RunScriptTool(self.webapp.conversation_workspace))
+        # 外部 Agent：agents.json 是唯一维护文件，内联配置在这里注入 external_agent
+        # （内存注入，不生成第二份配置文件；插件原有的文件发现仍作为兜底）。
+        # 同时把 conversation_id 统一成「一个 qaapp 会话 = 一个对端会话」，避免
+        # harness 把 external_agent 当工具调用时插件每次退化成一个随机 uuid。
+        install_external_agent_tool(bundle, self.registry, session.conversation_id)
         # 把会话目录通过 tool_metadata 传给工具执行上下文（run_script 依赖它）。
         bundle.engine.tool_metadata[CONVERSATION_DIR_KEY] = str(session.paths.root)
         # 记录 bundle 创建时的默认系统提示：每轮会在此基础上追加「会话工作区」上下文，
@@ -628,9 +634,13 @@ class QaWebService:
         )
 
         arguments = tool.input_model(
-            agent=agent.external_ref,
+            agent=agent.external_agent_id,
             message=effective_message,
-            conversation_id=session.conversation_id,
+            # 默认用 qaapp 的会话 ID（一个会话一个对端会话）；agents.json 里把
+            # external.conversation_id 配成固定值时改为复用该值。
+            conversation_id=external_conversation_id(
+                self.registry, agent, session.conversation_id
+            ),
         )
         context = ToolExecutionContext(cwd=Path(session.cwd), stream_text=_stream)
         result = await tool.execute(arguments, context)

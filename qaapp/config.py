@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ohmo.workspace import get_workspace_root
 
@@ -174,12 +174,48 @@ class RoutingConfig(BaseModel):
         return value
 
 
+class ExternalAgentSpec(BaseModel):
+    """``kind=external`` 的**内联**访问配置。
+
+    目的是让 ``agents.json`` 成为**唯一需要维护的 Agent 文件**：外部 Agent 的
+    endpoint / method / headers / request_body 直接写在这里，qaapp 在会话 bundle
+    建好后注入 ``external_agent`` 工具（内存注入，不再生成第二份配置文件）。
+
+    字段名与 ``plugins/external-agents`` 的 ``AgentConfig`` 对齐，因此旧的
+    ``external-agents.json`` 里的 ``config`` / ``response`` 两段可以整段拷过来。
+    """
+
+    #: 传输类型：http | stdio（与插件 transport 注册表一致）。
+    type: str = "http"
+    enabled: bool = True
+    #: auto（默认）= 用 qaapp 的会话 ID；固定值 = 每次都复用该 ID。
+    #: 对端「会话创建失败」时，填一个已知可用的会话 ID 即可绕过创建过程。
+    conversation_id: str = "auto"
+    timeout_seconds: float = 180.0
+    max_response_chars: int = 200_000
+    progress_max_chars: int = 4_000
+    #: 响应解析：{"mode": "auto|sse|ndjson|text", "json_text_paths": [...], "extract_tags": [...]}
+    response: dict[str, Any] = Field(default_factory=dict)
+    #: 传输配置：http 需要 endpoint/method/headers/request_body；stdio 需要 command。
+    config: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_transport(self) -> ExternalAgentSpec:
+        if self.type == "http" and not str(self.config.get("endpoint") or "").strip():
+            raise ValueError("external.type=http 时必须提供 external.config.endpoint")
+        if self.type == "stdio" and not str(self.config.get("command") or "").strip():
+            raise ValueError("external.type=stdio 时必须提供 external.config.command")
+        return self
+
+
 class AgentEntry(BaseModel):
     """一个可接入的 Agent 定义。
 
     ``kind`` 决定派发方式：
-    - ``external`` —— 复用 ``plugins/external-agents`` 的 transport 与
-      ``external-agents.json``（``external_ref`` 指向其中的 agent id）
+
+    - ``external`` —— 调用外部智能体。**推荐**直接用 ``external`` 内联完整的
+      访问配置（唯一维护文件 = ``agents.json``）；``external_ref`` 仅用于兼容
+      旧的 ``external-agents.json``（指向其中的 agent id）。
     - ``subagent`` —— 复用 ``coordinator.agent_definitions``（``subagent_type``
       指向 AgentDefinition 名）
     - ``harness``  —— 以 ``system_prompt``/``tools``/``permission_mode`` 内联运行
@@ -192,7 +228,10 @@ class AgentEntry(BaseModel):
     enabled: bool = True
 
     # kind=external
+    #: 兼容旧配置：指向 external-agents.json 里的 agent id（与 id 不同时才需要）。
     external_ref: str = ""
+    #: 推荐：内联外部 Agent 的完整访问配置（endpoint/request_body/response…）。
+    external: ExternalAgentSpec | None = None
     # kind=subagent
     subagent_type: str = ""
     # kind=harness
@@ -203,6 +242,13 @@ class AgentEntry(BaseModel):
     model: str = ""
     max_turns: int | None = None
     permission_mode: str | None = None
+
+    @property
+    def external_agent_id(self) -> str:
+        """调用 external_agent 时使用的 id（内联优先，其次 external_ref，最后 id）。"""
+        if self.external is not None:
+            return self.external_ref or self.id
+        return self.external_ref or self.id
 
     @field_validator("kind")
     @classmethod
@@ -358,8 +404,11 @@ def validate_agent_registry(workspace: str | Path | None = None) -> list[str]:
         if agent.id in ids:
             errors.append(f"{path}: agent id 重复: {agent.id}")
         ids.add(agent.id)
-        if agent.kind == KIND_EXTERNAL and not agent.external_ref:
-            errors.append(f"{path}: agent '{agent.id}' 为 external 但缺少 external_ref")
+        if agent.kind == KIND_EXTERNAL and not agent.external_ref and agent.external is None:
+            errors.append(
+                f"{path}: agent '{agent.id}' 为 external 但既没有 external 内联配置，"
+                "也没有 external_ref"
+            )
         if agent.kind == KIND_SUBAGENT and not agent.subagent_type:
             errors.append(f"{path}: agent '{agent.id}' 为 subagent 但缺少 subagent_type")
 
@@ -414,6 +463,7 @@ __all__ = [
     "ConversationWorkspaceConfig",
     "DangerousActions",
     "DangerousRule",
+    "ExternalAgentSpec",
     "RoutingConfig",
     "RoutingRule",
     "WebappConfig",

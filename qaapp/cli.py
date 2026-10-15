@@ -100,8 +100,8 @@ def init_cmd(
         target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"写入 {target}")
     print(f"\n配置已就绪，workspace={root}")
-    print("提示：external-agents.json 属于 OpenHarness 插件配置，")
-    print("      请参考 qaapp/examples/external-agents.json 放到 ~/.openharness/ 下。")
+    print("提示：所有 Agent（含外部 Agent 的 endpoint / 请求体 / 响应解析）统一在 agents.json 里维护，")
+    print("      不再需要 external-agents.json。见 examples/agents.json 的 external 字段示例。")
 
 
 # ---------------------------------------------------------------------------

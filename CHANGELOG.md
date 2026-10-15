@@ -14,6 +14,8 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 - qaapp 支持**每会话独立临时目录**：`~/.ohmo/conversations/<conversation_id>/{uploads,extracted,scripts,tmp,outputs}`（`conversation_workspace.root` 可覆盖），配套 `GET /workspace`（列出文件）与 `GET /files/{相对路径}`（下载，越界 404）；目录内 `write_file` / `edit_file` / `notebook_edit` 免审批（敏感路径与硬拒绝仍优先，可用 `conversation_workspace.auto_allow_write_tools` 关闭）。
 - qaapp 新增内置工具 **`run_script`**：把模型生成的脚本按会话写入 `scripts/`，用共享 conda 环境（自带 pandas/openpyxl/python-docx）的 `python` 或 `node` 执行，工作目录为会话目录根，产物约定写到 `outputs/`；默认走危险操作门禁审批，可用 `{"tool": "run_script", "action": "allow"}` 放开。参考前端同步补齐上传按钮 / 拖拽 / 附件芯片 / 会话文件抽屉与 `npm run check:attachments` 自检。
 - 所有带 `{conversation_id}` 的 HTTP/WebSocket 路由新增 ID 格式白名单校验（`^[0-9a-f]{12}$`），修掉「用 `../` 构造会话 ID 造成快照 / 会话目录路径穿越」的隐患。
+- qaapp 统一外部 Agent 的会话 ID 映射为「一个 qaapp 会话 = 一个对端会话」：`external_agent` 无论是由外部 Agent 直接派发，还是被 harness 总控当作工具调用，都会固定注入 `conversation_id`（配置为固定值时用该值）。修掉插件在调用方未传 ID 时**每次生成随机 uuid、导致对端每次新建会话**的问题——这会把对端会话存储的抖动放大成「会话创建失败」。
+- qaapp 的 Agent 配置**收敛到唯一维护文件 `agents.json`**：`kind=external` 可用新增的 `external` 字段内联 `type` / `conversation_id` / `timeout_seconds` / `response` / `config`（endpoint、method、headers、request_body），qaapp 在会话启动时把这些配置注入 `external_agent` 工具（内存注入，不生成第二份文件）；同名以 `agents.json` 为准，插件原有的 `external-agents.json` 文件发现继续作为兜底。`external.conversation_id` 支持配固定值以复用对端已有会话（对端报「会话创建失败」时可用）。`qaapp/examples/external-agents.json`（过时占位副本）删除，`plugins/external-agents/external-agents.json` 清空为占位并注明已迁移。
 
 ### Changed
 

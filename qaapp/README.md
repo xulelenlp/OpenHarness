@@ -186,7 +186,7 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 | --- | --- | --- | --- |
 | ① OpenHarness 主配置 | `settings.json` | `~/.openharness/` 等（见 §5.1） | 模型 / API Key / 权限 / 沙箱 / MCP |
 | ② qaapp 三份配置 | `webapp.json`、`agents.json`、`dangerous-actions.json` | ohmo workspace（`~/.ohmo/`） | 服务、Agent 注册、高危策略 |
-| ③ 外部 Agent 配置 | `external-agents.json` | 见 §5.3 | `kind=external` 的 Agent 端点 |
+| ③ 外部 Agent 配置 | **内联在 `agents.json`** | 见 §5.3 | `kind=external` 的 Agent 端点（唯一维护文件） |
 
 ### 5.1 ① settings.json（OpenHarness 主配置）
 
@@ -279,9 +279,14 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
       "system_prompt": "你是通用助手：开放问答直接回答；涉及电网分析/数据查询/知识问答时调用 external_agent 工具",
       "tools": ["*"], "permission_mode": "default"
     },
-    { "id": "power-grid-analysis", "kind": "external", "external_ref": "power-grid-analysis" },
-    { "id": "smart-data-query",    "kind": "external", "external_ref": "smart-data-query" },
-    { "id": "knowledge-qa",        "kind": "external", "external_ref": "knowledge-qa" }
+    // 外部 Agent 直接内联访问配置（endpoint/请求体/响应解析），不再另建文件
+    { "id": "power-grid-analysis", "kind": "external", "name": "电网指标数据分析",
+      "description": "售电量/线损等指标分析",
+      "external": { "type": "http", "conversation_id": "auto",
+        "config": { "endpoint": "http://192.168.139.144:18081/api/chat/stream",
+                    "method": "POST", "headers": { "content-type": "application/json" },
+                    "request_body": { "message": "{message}", "conversation_id": "{conversation_id}" } },
+        "response": { "mode": "auto", "extract_tags": ["answer"] } } }
   ]
 }
 ```
@@ -290,7 +295,7 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 
 | kind | 说明 | 关键字段 |
 | --- | --- | --- |
-| `external` | 调用外部 HTTP/stdio 智能体（复用 external-agents 插件） | `external_ref`（对应 §5.3 的 agent id） |
+| `external` | 调用外部 HTTP/stdio 智能体（transport 由 external-agents 插件提供） | `external`（内联 endpoint/请求体/响应解析，推荐）；旧配置可仍用 `external_ref` |
 | `subagent` | 复用 OpenHarness 的 AgentDefinition | `subagent_type` |
 | `harness` | 内联运行，具备完整工具能力（**含 `external_agent` 工具，可自动编排其它 Agent**） | `system_prompt` / `system_prompt_file` / `tools` / `model` / `max_turns` / `permission_mode` |
 
@@ -333,42 +338,80 @@ settings 的 `allowed_tools` → 基础权限模式。
 > `web_search` 等。**没有独立的「删除文件」工具**——删除由 `bash` 的 `rm` 完成，因此
 > 用 `deny_commands: ["rm -rf *"]` 拦截。完整工具名见 §9.8。
 
-### 5.3 ③ external-agents.json（外部 Agent 配置）
+### 5.3 ③ 外部 Agent：内联在 agents.json（唯一维护文件）
 
-`kind=external` 的 Agent，其真实端点在这里声明。查找顺序：
-
-1. `<cwd>/.openharness/external-agents.json`（cwd = `abcqa webapp run --cwd`，默认当前目录）
-2. `~/.openharness/external-agents.json`（或 `OPENHARNESS_CONFIG_DIR` 下）
-3. 插件自带的 `plugins/external-agents/external-agents.json`
-
-示例：
+**所有 Agent 只在一个文件里维护：`agents.json`**（`~/.ohmo/agents.json`）。
+`kind=external` 的 Agent 直接内联它的访问配置，qaapp 在会话启动时把它注入
+`external_agent` 工具（内存注入，不再生成第二份配置文件）：
 
 ```jsonc
 {
   "agents": [
     {
-      "id": "power-grid-analysis",           // ← agents.json 里的 external_ref 指向这里
-      "type": "http",
-      "name": "电网专业数据洞察",
-      "config": {
-        "endpoint": "https://your-gateway/chat",
-        "method": "POST",
-        "headers": { "content-type": "application/json", "authorization": "Bearer xxx" },
-        "request_body": { "message": "{message}", "conversation_id": "{conversation_id}" }
-      },
-      "response": { "mode": "auto" }          // text | sse | ndjson | auto
+      "id": "power-grid-analysis",
+      "kind": "external",
+      "name": "电网指标数据分析",
+      "description": "售电量、线损等指标的分析报告",   // 模型据此路由，要写清楚触发场景
+      "external": {
+        "type": "http",                  // http | stdio
+        "enabled": true,
+        "conversation_id": "auto",       // auto = 用 qaapp 会话 ID；固定值 = 每次复用该会话
+        "timeout_seconds": 300,
+        "max_response_chars": 220000,
+        "progress_max_chars": 4000,      // 流式进度最多转发多少字符（防刷屏/卡死）
+        "response": {                    // 响应解析（与插件 AgentResponseConfig 同构）
+          "mode": "auto",                // auto | sse | ndjson | text
+          "json_text_paths": ["choices[0].delta.content", "content", "answer", "message", "data", "text"],
+          "extract_tags": ["answer"]     // 只保留这些标签里的最终结果；[] = 关闭提取
+        },
+        "config": {                      // 传输配置（与插件 HttpTransportConfig 同构）
+          "endpoint": "http://192.168.139.144:18081/api/chat/stream",
+          "method": "POST",
+          "headers": { "content-type": "application/json" },
+          "request_body": {
+            "message": "{message}",
+            "conversation_id": "{conversation_id}",
+            "context": {},
+            "chat_type": 4
+          }
+        }
+      }
     }
   ]
 }
 ```
 
-> 完整示例见 [`qaapp/examples/`](examples/)。`abcqa init` 只写入三份 qaapp 配置；
-> `external-agents.json` 需按 `qaapp/examples/external-agents.json` 手工放置。
+要点：
+
+- **占位符**：`request_body` 里的 `{message}` = 用户原话（有附件时前面会拼上解析内容），
+  `{conversation_id}` = 下面这条规则算出来的会话 ID；stdio 类型用 `input_json` + `command`，
+  见插件 README。
+- **会话 ID 映射（很重要）**：qaapp 统一按「**一个 qaapp 会话 = 一个对端会话**」注入
+  `conversation_id`，**harness 总控把 `external_agent` 当工具调用时也一样**：
+
+  | `external.conversation_id` | 实际发出 |
+  | --- | --- |
+  | `auto`（默认）或空 | 本 qaapp 会话 ID（同一对话的多次调用复用同一个对端会话） |
+  | 固定值 | 该固定值（每个 qaapp 会话都复用它，用于跳过对端的会话创建流程） |
+
+  > 为什么要强制注入：插件本身在调用方没传 `conversation_id` 时会**每次生成一个随机
+  > uuid**，对端就要为每次调用**新建会话**——平台侧会话存储不稳时，用户看到的就是
+  > 「会话创建失败: ... Connection reset by peer」。固定成 qaapp 会话 ID 后，同一个对话只在
+  > 第一次调用时创建会话、后续复用。若对端仍然报错，说明问题在对端（**qaapp 侧没有任何
+  > Redis / 会话存储依赖**），可让对端排查，或配一个已知可用的固定会话 ID。
+- **兼容旧配置**：仍支持 `external_ref`（指向 `external-agents.json` 里的 id），此时会话 ID
+  取文件里该 Agent 的配置（同为 `auto`/空时也用 qaapp 会话 ID）。插件原有的
+  文件发现顺序不变：`<cwd>/.openharness/external-agents.json` → `~/.openharness/external-agents.json`
+  → 插件自带的 `plugins/external-agents/external-agents.json`（**仓库自带那份已清空为占位**，
+  避免和 agents.json 放两份真实地址）。qaapp 的规则是：**同名以内联配置优先**，其余文件里的
+  Agent 依然可用。
+- 旧的示例文件 `qaapp/examples/external-agents.json` 已删除；需要给 `abc` / `abcag`
+  等不读 agents.json 的入口配置时，才在插件目录那份里添加。
 
 > **问数类智能体只取最终结果**：数据查询类智能体的流式响应会把推理过程、工具调用与
-> 工具返回全部包在外层标签里（单次可达数十万字符），给前端会造成页面卡死。插件默认
-> 只保留 `<answer>` 标签内的最终结果（`response.extract_tags`，取最后一次出现），并把
-> 流式进度限制在 `progress_max_chars`（默认 4000）字符内。需要图表数据时可配
+> 工具返回全部包在外层标签里（单次可达数十万字符），给前端会造成页面卡死。默认只保留
+> `<answer>` 标签内的最终结果（`response.extract_tags`，取最后一次出现），并把流式进度
+> 限制在 `progress_max_chars`（默认 4000）字符内。需要图表数据时可配
 > `"response": {"extract_tags": ["answer", "extractData"]}`；详见
 > [`plugins/external-agents/README.md`](../plugins/external-agents/README.md)。
 
@@ -719,7 +762,9 @@ workspace 下：
 | 发送消息 404 `agent_not_found` | 请求指定的 `agent` 或路由命中的 agent 未在 `agents.json` 注册 |
 | 发送消息 404 `no_default_agent` | 无关键词命中且未设 `default_agent` |
 | 外部 Agent 报「工具未加载（插件缺失）」 | `plugins/external-agents` 未加载；检查 `extra_plugin_roots` 与插件目录 |
-| 外部 Agent 报找不到 agent id | `external_ref` 与 `external-agents.json` 里的 `id` 不一致，或配置放错位置（§5.3） |
+| 外部 Agent 调用报「会话创建失败 / Connection reset by peer」 | 这是**对端平台**自己的日志（它内部的会话存储，例如 Redis）报错，qaapp 侧没有 Redis；可让对端排查，或把 `external.conversation_id` 配成已知可用的固定会话 ID 复用（§5.3） |
+| 修改了 agents.json 但外部 Agent 没变 | 重启服务：agents.json 在启动时加载（§8.2） |
+| 外部 Agent 报找不到 agent id | 内联写法检查 `id` 是否与模型调用的 agent 一致；`external_ref` 写法检查它与 `external-agents.json` 里的 `id` 是否一致（§5.3） |
 | 审批一直不生效/工具被拒 | 审批超时（默认 300s）按拒绝处理；前端未及时响应 |
 | 重启后历史在，但流/审批丢了 | 正常：订阅与审批在进程内存，见 §9.2 |
 | SSE 中途断流 | 反向代理缓冲/超时；关 buffering、调大 read_timeout（§9.3） |
