@@ -1,17 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, DragEvent } from "react";
 import {
   createConversation,
+  fetchConversationFile,
   getConversation,
   interruptConversation,
   listAgents,
+  listConversationFiles,
   listConversations,
   resolveApproval,
   streamMessage,
+  uploadAttachments,
 } from "./api";
+import {
+  MAX_FILES,
+  SUPPORTED_SUFFIXES,
+  formatBytes,
+  isPreviewableText,
+  parseStatusLabel,
+  pickWithinLimit,
+  workspaceLabel,
+} from "./attachments";
 import { makeAccumulator, reduceEvent } from "./turn";
 import type { TurnAccumulator } from "./turn";
 import { MarkdownView, useThrottledText } from "./markdown";
-import type { AgentInfo, ChatMessage, ConversationSummary, Step } from "./types";
+import type {
+  AgentInfo,
+  AttachmentInfo,
+  ChatMessage,
+  ConversationSummary,
+  ConversationWorkspace,
+  Step,
+  WorkspaceFile,
+} from "./types";
 
 interface AgentListResponseShape {
   agents: AgentInfo[];
@@ -29,6 +50,9 @@ interface ConversationDetailShape {
 }
 
 type ApprovalAction = (requestId: string, decision: "approve" | "deny" | "always", reply?: string) => void;
+
+/** 文本预览只取前 2000 字符：大 CSV 全量渲染会卡死页面。 */
+const PREVIEW_CHARS = 2000;
 
 function shortId(id: string): string {
   return id.slice(0, 8);
@@ -92,6 +116,60 @@ function AssistantBubble({ content, streaming, markdown, error }: AssistantBubbl
   return (
     <div className={cls}>
       <MarkdownView content={text} />
+    </div>
+  );
+}
+
+/** 附件类型小图标：只为一眼区分 Word / Excel / 文本，不追求覆盖所有 kind。 */
+function kindIcon(kind: string): string {
+  if (kind === "word") return "📘";
+  if (kind === "excel") return "📗";
+  if (kind === "text" || kind === "markdown" || kind === "csv" || kind === "log") return "📄";
+  return "📎";
+}
+
+/**
+ * 附件芯片列表。
+ *
+ * 同一组件复用于两处：输入框上方（可删除、受 streaming 禁用）与用户气泡下方
+ * （只读历史）。`onRemove` 不传即为只读态。
+ */
+function AttachmentChips({
+  items,
+  onRemove,
+  disabled,
+}: {
+  items: AttachmentInfo[];
+  onRemove?: (attachmentId: string) => void;
+  disabled?: boolean;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="att-chips">
+      {items.map((a) => (
+        <span
+          key={a.attachment_id}
+          className={`att-chip ${a.parse_status}`}
+          title={`${a.stored_path}\n${parseStatusLabel(a)}`}
+        >
+          <span className="att-icon">{kindIcon(a.kind)}</span>
+          <span className="att-name">{a.name}</span>
+          <span className="att-size">{formatBytes(a.size)}</span>
+          <span className="att-status">{parseStatusLabel(a)}</span>
+          {onRemove && (
+            <button
+              type="button"
+              className="att-remove"
+              title="移除该附件"
+              aria-label={`移除附件 ${a.name}`}
+              disabled={disabled}
+              onClick={() => onRemove(a.attachment_id)}
+            >
+              ×
+            </button>
+          )}
+        </span>
+      ))}
     </div>
   );
 }
@@ -269,7 +347,24 @@ export default function App() {
   /** 刚复制过的消息下标（用于按钮上的短暂反馈）。 */
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
+  // ---- 附件相关状态 ----
+  /** 已上传但还没随消息发出的附件（输入框上方的 chip 列表）。 */
+  const [attachments, setAttachments] = useState<AttachmentInfo[]>([]);
+  /** 上传请求进行中：此时按钮禁用并显示「解析中…」。 */
+  const [uploading, setUploading] = useState(false);
+  /** 拖拽文件悬停在消息区 / 输入区时的整块高亮。 */
+  const [dragging, setDragging] = useState(false);
+  // ---- 会话文件抽屉 ----
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [workspace, setWorkspace] = useState<ConversationWorkspace | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  /** 文本文件预览弹窗内容（只放前 2000 字符）。 */
+  const [preview, setPreview] = useState<{ name: string; text: string; truncated: boolean } | null>(null);
+  /** 「复制路径」按钮的短暂反馈。 */
+  const [copiedDir, setCopiedDir] = useState(false);
+
   const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const assistantIndexRef = useRef<number>(-1);
   /** 本轮流式事件的累加器；供审批处理同步修改，避免被后续事件覆盖。 */
   const accRef = useRef<TurnAccumulator | null>(null);
@@ -322,9 +417,12 @@ export default function App() {
     setActiveId(id);
     setMessages([]);
     setStepOpen({});
+    // 附件挂在会话上，切会话必须清空，否则会把 A 会话的附件发进 B 会话。
+    setAttachments([]);
+    setWorkspace(null);
     try {
       const detail = (await getConversation(id)) as ConversationDetailShape;
-      // 用户消息文本来自 snapshot.messages；步骤序列来自 turns[].events。
+      // 用户消息文本来自 snapshot.messages；步骤序列与附件来自 turns[].events。
       const userTexts: string[] = [];
       for (const m of detail.messages ?? []) {
         if (m.role === "user") userTexts.push(extractText(m.content));
@@ -334,8 +432,15 @@ export default function App() {
         const acc = makeAccumulator();
         for (const evt of turn.events ?? []) reduceEvent(acc, evt);
         const userText = userTexts[i] ?? "";
-        if (userText) {
-          rebuilt.push({ role: "user", content: userText, turnId: turn.turn_id, steps: [] });
+        // 只发附件不写文字是合法的一轮，此时 content 为空但必须仍然渲染气泡与芯片。
+        if (userText || acc.attachments?.length) {
+          rebuilt.push({
+            role: "user",
+            content: userText,
+            turnId: turn.turn_id,
+            steps: [],
+            attachments: acc.attachments,
+          });
         }
         rebuilt.push({
           role: "assistant",
@@ -357,14 +462,217 @@ export default function App() {
       await refreshConversations();
       setActiveId(conversation_id);
       setMessages([]);
+      setAttachments([]);
+      setWorkspace(null);
     } catch (e) {
       setError((e as Error).message);
     }
   }, [refreshConversations]);
 
+  // ---- 会话文件抽屉 ----
+
+  const refreshWorkspace = useCallback(async () => {
+    if (!activeId) return;
+    setWorkspaceLoading(true);
+    try {
+      setWorkspace(await listConversationFiles(activeId));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }, [activeId]);
+
+  // 抽屉打开（或切换会话）时拉取一次；关闭时不动，省掉无谓请求。
+  useEffect(() => {
+    if (drawerOpen && activeId) void refreshWorkspace();
+  }, [drawerOpen, activeId, refreshWorkspace]);
+
+  // 每轮流式结束（turn_complete → streaming 置回 false）后自动刷新，
+  // 这样 Agent 新生成的脚本无需手动刷新就能出现在面板里。
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (wasStreamingRef.current && !streaming && drawerOpen) void refreshWorkspace();
+    wasStreamingRef.current = streaming;
+  }, [streaming, drawerOpen, refreshWorkspace]);
+
+  const handleCopyDir = useCallback(async () => {
+    const dir = workspace?.dir;
+    if (!dir) return;
+    if (await copyText(dir)) {
+      setCopiedDir(true);
+      window.setTimeout(() => setCopiedDir(false), 1500);
+    }
+  }, [workspace?.dir]);
+
+  /**
+   * 下载：必须 fetch 成 Blob 再触发 <a download>。
+   * 立刻 revokeObjectURL 会让部分浏览器（Safari / Firefox）取消下载，故延后释放。
+   */
+  const downloadFile = useCallback(
+    async (file: WorkspaceFile) => {
+      if (!activeId) return;
+      try {
+        const { blob, filename } = await fetchConversationFile(activeId, file.path);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [activeId],
+  );
+
+  /** 文本类文件点击预览：读 Blob 文本，只留前 2000 字符。 */
+  const openPreview = useCallback(
+    async (file: WorkspaceFile) => {
+      if (!activeId) return;
+      try {
+        const { blob } = await fetchConversationFile(activeId, file.path);
+        const text = await blob.text();
+        setPreview({
+          name: file.path,
+          text: text.slice(0, PREVIEW_CHARS),
+          truncated: text.length > PREVIEW_CHARS,
+        });
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [activeId],
+  );
+
+  // ---- 附件上传 ----
+
+  /**
+   * 处理用户选中 / 拖入的文件。
+   *
+   * 顺序很关键：先本地校验（超量 / 类型不支持都写进错误条，不静默丢弃）→
+   * 没有会话就先建（附件必须挂在某个会话下）→ 再上传。
+   */
+  const handleFilesPicked = useCallback(
+    async (incoming: File[]) => {
+      // streaming 期间不触发上传：那一轮的消息体已经发出，附件会挂错轮次。
+      if (streaming || uploading || incoming.length === 0) return;
+
+      const { accepted, rejected } = pickWithinLimit(attachments.length, incoming);
+      if (rejected.length > 0) {
+        setError(
+          rejected
+            .map((r) =>
+              r.reason === "limit"
+                ? `最多上传 ${MAX_FILES} 个文件，「${r.name}」未添加`
+                : `不支持的文件类型：「${r.name}」（支持 ${SUPPORTED_SUFFIXES.join(" ")}）`,
+            )
+            .join("；"),
+        );
+      }
+      if (accepted.length === 0) return;
+
+      let conversationId = activeId;
+      if (!conversationId) {
+        try {
+          conversationId = (await createConversation()).conversation_id;
+          setActiveId(conversationId);
+          await refreshConversations();
+        } catch (e) {
+          setError((e as Error).message);
+          return;
+        }
+      }
+
+      setUploading(true);
+      try {
+        const resp = await uploadAttachments(conversationId, accepted);
+        setAttachments((prev) => [...prev, ...(resp.attachments ?? [])].slice(0, MAX_FILES));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [activeId, attachments.length, refreshConversations, streaming, uploading],
+  );
+
+  const removeAttachment = useCallback((attachmentId: string) => {
+    setAttachments((prev) => prev.filter((a) => a.attachment_id !== attachmentId));
+  }, []);
+
+  const handleFileInputChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      // 清空 value：否则再次选择同一个文件不会触发 change。
+      e.target.value = "";
+      void handleFilesPicked(files);
+    },
+    [handleFilesPicked],
+  );
+
+  // ---- 拖拽上传 ----
+
+  const handleDragOver = useCallback(
+    (e: DragEvent<HTMLElement>) => {
+      if (streaming || uploading) return;
+      // 只接管文件拖拽，避免干扰输入框里拖选文本。
+      if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      setDragging(true);
+    },
+    [streaming, uploading],
+  );
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
+    // 在子元素之间移动也会触发 dragleave，只有真正离开容器才取消高亮。
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragging(false);
+      if (streaming || uploading) return;
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length > 0) void handleFilesPicked(files);
+    },
+    [handleFilesPicked, streaming, uploading],
+  );
+
+  /** 会话文件按目录分组；顺序固定，未知目录排最后。 */
+  const fileGroups = useMemo(() => {
+    const ORDER = ["uploads", "extracted", "scripts", "tmp", "outputs"];
+    const map = new Map<string, WorkspaceFile[]>();
+    for (const f of workspace?.files ?? []) {
+      const dir = f.dir && f.dir !== "." ? f.dir : "根目录";
+      const list = map.get(dir);
+      if (list) list.push(f);
+      else map.set(dir, [f]);
+    }
+    return [...map.entries()].sort((a, b) => {
+      const ia = ORDER.indexOf(a[0]);
+      const ib = ORDER.indexOf(b[0]);
+      return (ia < 0 ? ORDER.length : ia) - (ib < 0 ? ORDER.length : ib);
+    });
+  }, [workspace]);
+
   const handleSend = useCallback(async () => {
     const content = input.trim();
-    if (!content || streaming) return;
+    // 已就绪（非 pending）的附件可以独立支撑一次发送：只传文件、不写文字是合法的。
+    const ready = attachments.filter((a) => a.parse_status !== "pending");
+    // 上传还没结束就发：此时 attachment_id 还没拿到，发出去会丢掉附件。
+    if (streaming || uploading || (!content && ready.length === 0)) return;
+    // 但真正发出去的是**当前全部**附件：用户已经把它放进这一轮了，
+    // 不该因为某个还在解析就静默丢掉（pending 只影响"能否单独靠附件发送"）。
+    const sending = attachments;
+
     let conversationId = activeId;
     if (!conversationId) {
       try {
@@ -378,10 +686,17 @@ export default function App() {
     }
 
     setInput("");
+    setAttachments([]);
     setError("");
     setStreaming(true);
 
-    const userMsg: ChatMessage = { role: "user", content, steps: [] };
+    const userMsg: ChatMessage = {
+      role: "user",
+      content,
+      steps: [],
+      // 本地先挂上附件：气泡立刻出现芯片，无需等服务端事件回传。
+      attachments: sending.length > 0 ? sending : undefined,
+    };
     const assistantMsg: ChatMessage = { role: "assistant", content: "", streaming: true, steps: [] };
     const assistantIndex = messages.length + 1;
     assistantIndexRef.current = assistantIndex;
@@ -410,6 +725,13 @@ export default function App() {
       if (type === "error") {
         setError((evt.text as string) ?? "出错了");
       }
+      // 服务端回传的解析结果更权威（本地挂的是上传时的快照），用它刷新用户气泡。
+      if (type === "attachments_ready") {
+        const list = evt.attachments as AttachmentInfo[] | undefined;
+        if (list?.length && idx > 0) {
+          updateMessage(idx - 1, (m) => (m.role === "user" ? { ...m, attachments: list } : m));
+        }
+      }
       updateMessage(idx, (m) => ({
         ...m,
         content: acc.content,
@@ -420,7 +742,14 @@ export default function App() {
     };
 
     try {
-      await streamMessage(conversationId, content, selectedAgent || undefined, onEvent, controller.signal);
+      await streamMessage(
+        conversationId,
+        content,
+        selectedAgent || undefined,
+        onEvent,
+        controller.signal,
+        sending.map((a) => a.attachment_id),
+      );
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         updateMessage(assistantIndexRef.current, (m) => ({
@@ -435,7 +764,17 @@ export default function App() {
       abortRef.current = null;
       void refreshConversations();
     }
-  }, [activeId, input, messages.length, refreshConversations, selectedAgent, streaming, updateMessage]);
+  }, [
+    activeId,
+    attachments,
+    input,
+    messages.length,
+    refreshConversations,
+    selectedAgent,
+    streaming,
+    updateMessage,
+    uploading,
+  ]);
 
   const handleInterrupt = useCallback(async () => {
     if (!activeId) return;
@@ -552,6 +891,12 @@ export default function App() {
     setStepOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  // 有文字，或至少有一个"已就绪"的附件，即可发送。
+  const canSend =
+    !streaming && !uploading && (input.trim().length > 0 || attachments.some((a) => a.parse_status !== "pending"));
+  // 流式回答期间（以及上传中）禁止增删附件：附件必须属于下一轮，中途变更会挂错轮次。
+  const attachmentsLocked = streaming || uploading;
+
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -621,9 +966,21 @@ export default function App() {
               中断
             </button>
           )}
+          <button
+            className={`btn drawer-toggle${drawerOpen ? " active" : ""}`}
+            title="列出本会话临时目录里的文件（含 Agent 生成的脚本），可下载 / 预览"
+            onClick={() => setDrawerOpen((v) => !v)}
+          >
+            📁 会话文件
+          </button>
         </header>
 
-        <div className="messages">
+        <div
+          className={`messages${dragging ? " drag-active" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {messages.map((m, i) => {
             const isAssistant = m.role === "assistant";
             const useMarkdown = renderOverride[i] ?? markdownDefault;
@@ -682,7 +1039,12 @@ export default function App() {
                     error={m.error}
                   />
                 ) : (
-                  <div className={`bubble ${m.error ? "error" : ""}`}>{m.content}</div>
+                  <>
+                    {/* 内容为空（只发附件）时不渲染空气泡，避免多出一块空白。 */}
+                    {m.content ? <div className={`bubble ${m.error ? "error" : ""}`}>{m.content}</div> : null}
+                    {/* 气泡下方渲染本轮附件芯片：实时发送用本地状态，历史回放来自 attachments_ready 事件。 */}
+                    <AttachmentChips items={m.attachments ?? []} />
+                  </>
                 )}
               </div>
             );
@@ -698,24 +1060,123 @@ export default function App() {
           </div>
         )}
 
-        <div className="composer">
-          <textarea
-            value={input}
-            placeholder="输入问题，回车发送（Shift+回车换行）"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-            disabled={streaming}
-          />
-          <button className="btn primary send" onClick={() => void handleSend()} disabled={streaming || !input.trim()}>
-            发送
-          </button>
+        <div
+          className={`composer-wrap${dragging ? " drag-active" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <AttachmentChips items={attachments} onRemove={removeAttachment} disabled={attachmentsLocked} />
+
+          <div className="composer">
+            {/* 隐藏的原生选择框：样式受限且各浏览器不一，统一用左边的按钮触发。 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              accept={SUPPORTED_SUFFIXES.join(",")}
+              onChange={handleFileInputChange}
+            />
+            <button
+              className="btn attach-btn"
+              title={`上传附件（最多 ${MAX_FILES} 个：Word / Excel / TXT 等），也可以直接把文件拖进页面`}
+              disabled={attachmentsLocked}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? "解析中…" : "📎 附件"}
+            </button>
+            <textarea
+              value={input}
+              placeholder="输入问题，回车发送（Shift+回车换行）；可拖入文件作为附件"
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+              disabled={streaming}
+            />
+            <button className="btn primary send" onClick={() => void handleSend()} disabled={!canSend}>
+              发送
+            </button>
+          </div>
         </div>
       </main>
+
+      {drawerOpen && (
+        <aside className="file-drawer">
+          <div className="drawer-head">
+            <strong>会话文件</strong>
+            <button className="mini-btn" title="关闭面板" onClick={() => setDrawerOpen(false)}>
+              关闭
+            </button>
+          </div>
+
+          <div className="drawer-dir">
+            <code title={workspace?.dir || ""}>{workspace?.dir || "（未加载）"}</code>
+            <button className="mini-btn" disabled={!workspace?.dir} onClick={() => void handleCopyDir()}>
+              {copiedDir ? "已复制" : "复制路径"}
+            </button>
+          </div>
+
+          <div className="drawer-body">
+            {!activeId && <p className="muted">请先新建或选择一个会话</p>}
+            {activeId && workspaceLoading && <p className="muted">加载中…</p>}
+            {activeId && !workspaceLoading && workspace && workspace.files.length === 0 && (
+              <p className="muted">该会话目录暂无文件</p>
+            )}
+            {activeId && !workspaceLoading && !workspace && <p className="muted">暂无数据</p>}
+
+            {fileGroups.map(([dir, files]) => (
+              <div className="ws-group" key={dir}>
+                <div className="ws-group-title">
+                  {dir}（{files.length}）
+                </div>
+                {files.map((f) => (
+                  <div className="ws-file" key={f.path}>
+                    <button
+                      className="ws-file-name"
+                      title={isPreviewableText(f.path) ? `${f.path}（点击预览）` : f.path}
+                      disabled={!isPreviewableText(f.path)}
+                      onClick={() => void openPreview(f)}
+                    >
+                      {f.path.split("/").pop()}
+                    </button>
+                    <button className="mini-btn" title="下载该文件" onClick={() => void downloadFile(f)}>
+                      下载
+                    </button>
+                    <div className="ws-file-meta">{workspaceLabel(f)}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <div className="drawer-foot muted">
+            共 {workspace?.files.length ?? 0} 个文件 · {formatBytes(workspace?.total_bytes ?? 0)}
+            {workspace?.truncated ? "（文件过多，未列全）" : ""}
+            {workspaceLoading ? " · 刷新中…" : ""}
+          </div>
+        </aside>
+      )}
+
+      {preview && (
+        <div className="preview-mask" onClick={() => setPreview(null)}>
+          {/* 点面板内部不该关掉弹窗，所以拦住冒泡 */}
+          <div className="preview-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="preview-head">
+              <strong title={preview.name}>{preview.name}</strong>
+              <button className="mini-btn" onClick={() => setPreview(null)}>
+                关闭
+              </button>
+            </div>
+            <pre>{preview.text}</pre>
+            {preview.truncated && <div className="muted">仅预览前 {PREVIEW_CHARS} 个字符</div>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

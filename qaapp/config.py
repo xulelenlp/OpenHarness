@@ -59,6 +59,65 @@ class ConversationPoolConfig(BaseModel):
     idle_timeout_seconds: int = 86400
 
 
+#: 允许上传的文档后缀（解析器支持的范围）。
+DEFAULT_ATTACHMENT_SUFFIXES = [
+    ".txt",
+    ".md",
+    ".csv",
+    ".docx",
+    ".xlsx",
+    ".xls",
+    ".json",
+    ".log",
+    ".yaml",
+    ".yml",
+    ".xml",
+]
+
+#: 会话目录内「写文件」默认免确认的工具（执行类工具 bash / run_script 不在此列）。
+DEFAULT_AUTO_ALLOW_WRITE_TOOLS = ["write_file", "edit_file", "notebook_edit"]
+
+
+class AttachmentsConfig(BaseModel):
+    """``webapp.json:attachments`` —— 会话附件上传与解析配置。"""
+
+    enabled: bool = True
+    #: 单条消息（单次上传请求）最多几个文件。
+    max_files_per_message: int = 2
+    #: 单个文件大小上限（MB）。
+    max_file_mb: float = 20.0
+    #: 单个会话累计附件数上限（防止磁盘被写满）。
+    max_files_per_conversation: int = 50
+    allowed_suffixes: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_ATTACHMENT_SUFFIXES)
+    )
+    #: 解析出的纯文本落盘上限（字符）；超出部分截断。
+    max_extract_chars: int = 400_000
+    #: 每个附件注入提示词的节选长度（字符）。
+    preview_chars: int = 1_500
+    #: 「会话上下文块」总长度上限（字符）。
+    context_max_chars: int = 8_000
+    #: Excel/CSV 每个工作表最多解析多少行（超出截断并标注）。
+    max_excel_rows_per_sheet: int = 2_000
+
+
+class ConversationWorkspaceConfig(BaseModel):
+    """``webapp.json:conversation_workspace`` —— 会话临时目录与脚本执行配置。"""
+
+    #: 会话目录根；空 = <OHMO_WORKSPACE>/conversations
+    root: str = ""
+    #: 会话目录内这些工具的写操作免确认（bash / run_script 默认仍需确认）。
+    auto_allow_write_tools: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_AUTO_ALLOW_WRITE_TOOLS)
+    )
+    #: 会话目录文件清单最多列几条给模型。
+    inventory_limit: int = 40
+    #: run_script 默认/最大超时（秒）。
+    script_timeout_seconds: int = 300
+    script_code_max_chars: int = 200_000
+    script_output_max_chars: int = 40_000
+
+
 class WebappConfig(BaseModel):
     """``webapp.json`` —— Web 服务配置。"""
 
@@ -74,6 +133,10 @@ class WebappConfig(BaseModel):
     static_dir: str = ""
     conversation: ConversationPoolConfig = Field(default_factory=ConversationPoolConfig)
     approval_timeout_seconds: int = 300
+    attachments: AttachmentsConfig = Field(default_factory=AttachmentsConfig)
+    conversation_workspace: ConversationWorkspaceConfig = Field(
+        default_factory=ConversationWorkspaceConfig
+    )
 
     @field_validator("port")
     @classmethod
@@ -346,7 +409,9 @@ def config_status(workspace: str | Path | None = None) -> dict[str, Any]:
 __all__ = [
     "AgentEntry",
     "AgentRegistry",
+    "AttachmentsConfig",
     "ConversationPoolConfig",
+    "ConversationWorkspaceConfig",
     "DangerousActions",
     "DangerousRule",
     "RoutingConfig",

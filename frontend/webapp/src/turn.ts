@@ -4,12 +4,19 @@
  * 抽成独立模块（纯函数、不依赖 React）以便自动化验证与复用。
  */
 
-import type { Step } from "./types";
+import type { AttachmentInfo, Step } from "./types";
 
 export interface TurnAccumulator {
   content: string;
   steps: Step[];
   agentName?: string;
+  /**
+   * 本轮携带的附件。
+   *
+   * 由 `attachments_ready` 事件赋值——历史回放时这是**唯一**能把附件还原到
+   * 对应轮次的来源（snapshot.messages 里只有文本）。
+   */
+  attachments?: AttachmentInfo[];
   seq: number;
   /** 正在执行的工具名 → 对应 step.key，用于 tool_progress / tool_completed 回填。 */
   currentTool: Map<string, string>;
@@ -50,6 +57,11 @@ export function reduceEvent(acc: TurnAccumulator, evt: Record<string, unknown>):
   switch (type) {
     case "agent_routed":
       acc.agentName = (evt.agent as string) ?? acc.agentName;
+      break;
+
+    // 服务端在本轮开始、agent_routed 之前发出；实时流与历史回放都走这里。
+    case "attachments_ready":
+      acc.attachments = (evt.attachments as AttachmentInfo[] | undefined) ?? acc.attachments;
       break;
 
     case "status": {

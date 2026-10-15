@@ -10,5 +10,29 @@
   "conversation": {
     "max_active_bundles": 100,
     "idle_timeout_seconds": 86400
+  },
+  "_attachments_comment": "对话框上传附件（Word/Excel/TXT 等）的解析与限额。max_files_per_message=单条消息最多文件数；max_file_mb=单文件大小上限；max_files_per_conversation=单会话累计上限；明确不支持旧版 .doc（请另存为 .docx）。",
+  "attachments": {
+    "enabled": true,
+    "max_files_per_message": 2,
+    "max_file_mb": 20.0,
+    "max_files_per_conversation": 50,
+    "allowed_suffixes": [
+      ".txt", ".md", ".csv", ".docx", ".xlsx", ".xls",
+      ".json", ".log", ".yaml", ".yml", ".xml"
+    ],
+    "max_extract_chars": 400000,
+    "preview_chars": 1500,
+    "context_max_chars": 8000,
+    "max_excel_rows_per_sheet": 2000
+  },
+  "_conversation_workspace_comment": "每个会话一个临时目录：<root>/<会话ID>/{uploads,extracted,scripts,tmp,outputs}。root 留空 = OHMO_WORKSPACE/conversations。auto_allow_write_tools 内的工具在会话目录里写文件免审批（bash/run_script 仍按 dangerous-actions 走审批）。",
+  "conversation_workspace": {
+    "root": "",
+    "auto_allow_write_tools": ["write_file", "edit_file", "notebook_edit"],
+    "inventory_limit": 40,
+    "script_timeout_seconds": 300,
+    "script_code_max_chars": 200000,
+    "script_output_max_chars": 40000
   }
 }

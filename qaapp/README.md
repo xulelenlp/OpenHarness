@@ -31,6 +31,9 @@
 | 高危操作门禁 | `dangerous-actions.json` 对删除/写文件/执行命令等做 allow / confirm / deny 三级控制 |
 | 对话 API | REST + SSE + WebSocket，保留 Agent 调用与操作系统文件能力 |
 | 对话历史 | 每个对话有独立 `conversation_id`，历史（含中间工具执行过程）可查询 |
+| 附件上传解析 | 对话框上传 Word / Excel / TXT（单条消息最多 2 个），服务端主动解析成文本并注入模型上下文 |
+| 会话临时目录 | 每个 `conversation_id` 一个独立目录 `~/.ohmo/conversations/<id>/`（uploads / extracted / scripts / tmp / outputs） |
+| 会话脚本执行 | 内置 `run_script` 工具：脚本一律写入本会话 `scripts/`，用共享 conda 环境执行，产物落 `outputs/` |
 
 **核心设计原则：能力保留、风险受控** —— 工具不会因为“危险”被删除，而是在运行时
 被门禁拦一道，规则全部来自可编辑的 JSON 文件。
@@ -48,6 +51,9 @@ qaapp/service.py          Starlette 服务，维护“每对话一个 RuntimeBun
    ├─ qaapp/agent_router.py    多 Agent 路由（显式 → 关键词 → LLM → 默认）
    ├─ qaapp/dangerous.py       高危操作门禁 + 权限检查器
    ├─ qaapp/config.py          三份配置的模型与加载
+   ├─ qaapp/conversation_files.py  会话临时目录布局 + 附件索引 + 提示词上下文块
+   ├─ qaapp/documents.py       上传文档解析（docx / xlsx / xls / txt / csv…）
+   ├─ qaapp/script_tool.py     run_script 工具：脚本写进会话目录后执行
    ├─ qaapp/trace.py           执行轨迹 JSONL 存储
    └─ openharness 运行时       模型调用 / 工具执行 / 插件 / MCP / 沙箱
         └─ ohmo 存储            会话快照 + 轨迹
@@ -66,7 +72,8 @@ tests/test_qaapp/       后端测试
 | --- | --- |
 | Python | **3.10+（推荐 3.11+）** |
 | 依赖 | 见 `pyproject.toml`；Web 服务额外需要 `starlette` / `uvicorn` / `sse-starlette` |
-| Node | 仅构建前端时需要，Node 18+ |
+| 文档解析 | `python-docx` / `openpyxl` / `xlrd` / `pandas`（已列入 `dependencies`，用于上传附件解析与会话脚本数据分析） |
+| Node | 仅构建前端时需要，Node 18+；`run_script` 支持 node 脚本时也要求服务器有 `node` |
 | Docker | **可选**，仅在开启 Docker 沙箱时需要（默认关闭，见 §9.5） |
 
 ### 3.1 安装（生成 `abcqa` 命令的关键一步）
@@ -241,6 +248,21 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 | `approval_timeout_seconds` | `300` | 高危操作审批超时（秒），超时按拒绝处理 |
 | `conversation.max_active_bundles` | `100` | 预留字段（当前未强制回收） |
 | `conversation.idle_timeout_seconds` | `86400` | 预留字段（当前未强制回收） |
+| `attachments.enabled` | `true` | 是否允许上传附件 |
+| `attachments.max_files_per_message` | `2` | 单条消息（单次上传请求）最多文件数 |
+| `attachments.max_file_mb` | `20.0` | 单文件大小上限（MB），超出返回 413 |
+| `attachments.max_files_per_conversation` | `50` | 单会话累计附件数上限（防磁盘写满） |
+| `attachments.allowed_suffixes` | `.txt/.md/.csv/.docx/.xlsx/.xls/.json/.log/.yaml/.yml/.xml` | 允许上传的后缀白名单；**不支持旧版 `.doc`**（提示另存为 `.docx`） |
+| `attachments.max_extract_chars` | `400000` | 解析文本落盘上限（超出截断并标注） |
+| `attachments.preview_chars` | `1500` | 每个附件注入提示词的节选长度 |
+| `attachments.context_max_chars` | `8000` | 「会话工作区」上下文块总长度上限 |
+| `attachments.max_excel_rows_per_sheet` | `2000` | Excel/CSV 每个工作表最多解析行数 |
+| `conversation_workspace.root` | `""` | 会话目录根；空 = `<OHMO_WORKSPACE>/conversations` |
+| `conversation_workspace.auto_allow_write_tools` | `["write_file","edit_file","notebook_edit"]` | 这些工具在**会话目录内**写文件免审批（`bash`/`run_script` 不在此列，仍按门禁确认） |
+| `conversation_workspace.inventory_limit` | `40` | 每轮列给模型的会话目录文件条数上限 |
+| `conversation_workspace.script_timeout_seconds` | `300` | `run_script` 单次执行超时（秒） |
+| `conversation_workspace.script_code_max_chars` | `200000` | 单个脚本内容上限 |
+| `conversation_workspace.script_output_max_chars` | `40000` | 回传给模型的脚本输出上限 |
 
 #### `agents.json` —— Agent 注册表与路由
 
@@ -376,7 +398,10 @@ abcqa webapp start|stop|status [--workspace DIR]
 | POST | `/api/v1/conversations` | 是 | 创建对话 → `{"conversation_id": "..."}` |
 | GET | `/api/v1/conversations` | 是 | 列出对话（`?limit=&offset=`） |
 | GET | `/api/v1/conversations/{id}` | 是 | 对话详情（含 `messages`、`turns`、`pending_approvals`） |
-| POST | `/api/v1/conversations/{id}/messages` | 是 | 发送消息（`stream:true` 走 SSE） |
+| POST | `/api/v1/conversations/{id}/messages` | 是 | 发送消息（`stream:true` 走 SSE）；body 可带 `attachment_ids` |
+| POST | `/api/v1/conversations/{id}/attachments` | 是 | 上传附件（multipart，字段名 `files`，1..2 个），服务端立即解析 |
+| GET | `/api/v1/conversations/{id}/workspace` | 是 | 列出会话临时目录文件（uploads/extracted/scripts/tmp/outputs） |
+| GET | `/api/v1/conversations/{id}/files/{相对路径}` | 是 | 下载会话目录内的文件（越界路径一律 404） |
 | GET | `/api/v1/conversations/{id}/turns/{turn_id}` | 是 | 单轮完整轨迹（含中间执行过程） |
 | POST | `/api/v1/conversations/{id}/approvals/{request_id}` | 是 | 响应审批 |
 | POST | `/api/v1/conversations/{id}/interrupt` | 是 | 中断当前回答 |
@@ -395,10 +420,42 @@ curl -N http://127.0.0.1:8787/api/v1/conversations/<id>/messages \
 ```
 
 `agent` 字段可省略（自动路由）；`stream:false` 同步返回 `{"conversation_id", "turn_id"}`。
+`content` 可以为空——只要带了 `attachment_ids`（前端直接传文件不写文字是合法用法）。
 
-**SSE 事件类型**：`agent_routed` / `status` / `tool_started` / `tool_completed` /
-`tool_progress` / `assistant_delta` / `assistant_complete` / `approval_required` /
-`error` / `turn_complete`。
+**上传附件**（单次 1..2 个，字段名固定 `files`）：
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/v1/conversations/<id>/attachments \
+  -H "Authorization: Bearer <token>" \
+  -F "files=@报告.docx" -F "files=@售电量.xlsx"
+# 201 -> {"conversation_id":"...","attachments":[
+#   {"attachment_id":"att_...","name":"报告.docx","kind":"word","size":12345,
+#    "parse_status":"ok","text_chars":8420,"preview":"...",
+#    "stored_path":"uploads/报告.docx","extracted_path":"extracted/报告.docx.txt",
+#    "meta":{"paragraphs":76,"tables":3}}, ...]}
+```
+
+拿到 `attachment_id` 后随消息发送：
+
+```bash
+curl -N http://127.0.0.1:8787/api/v1/conversations/<id>/messages \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <token>" \
+  -d '{"content":"帮我分析这份报表","stream":true,"attachment_ids":["att_xxx","att_yyy"]}'
+```
+
+失败码：`415 unsupported_file_type`（类型不支持）、`413 file_too_large` / `too_many_files`
+（过大 / 过多）、`404 attachment_not_found`（id 不存在或不属于该会话）。
+
+**会话目录**：
+
+```bash
+GET  /api/v1/conversations/{id}/workspace          # 列出 uploads/extracted/scripts/tmp/outputs
+GET  /api/v1/conversations/{id}/files/scripts/analyze.py   # 下载（带 Bearer）
+```
+
+**SSE 事件类型**：`attachments_ready`（本轮附件，历史回放靠它还原芯片）/ `agent_routed` /
+`status` / `tool_started` / `tool_completed` / `tool_progress` / `assistant_delta` /
+`assistant_complete` / `approval_required` / `error` / `turn_complete`。
 
 **审批**：收到 `approval_required`（带 `request_id`）后：
 
@@ -431,6 +488,15 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
    `static_dir`，重启服务后由同一端口托管前端 + API（前端请求走同源，无需跨域）。
 2. **独立托管**：把 `dist/` 部署到 Nginx/CDN，用 `VITE_API_BASE_URL` 指定后端地址
    （见 §8.1），并在 `webapp.json` 的 `cors_origins` 里放行前端域名。
+
+前端交互还包含（详见 [`frontend/webapp/README.md`](../frontend/webapp/README.md)）：
+
+- **附件上传**：输入框左侧「📎 附件」按钮 + 拖拽到消息区/输入框；最多 2 个，选中即上传并
+  显示解析状态；发送时把 `attachment_id` 随消息带给后端；刷新页面后靠 `attachments_ready`
+  轨迹事件还原附件芯片。
+- **右侧「会话文件」抽屉**：按 uploads/extracted/scripts/tmp/outputs 分组列出会话目录文件，
+  支持下载（fetch + Blob，避免 token 进 URL）、文本预览与复制会话目录绝对路径。
+- 前端自检：`npm run check:render`（Markdown 渲染）+ `npm run check:attachments`（附件纯函数）。
 
 ### 8.1 配置后端地址（前后端分机部署必读）
 
@@ -582,6 +648,65 @@ workspace 下：
 - `conversation.max_active_bundles` / `idle_timeout_seconds` 目前是**预留字段，
   未强制回收**——长期运行需自行关注会话池内存占用。
 
+### 9.11 会话临时目录、附件上传与 `run_script`
+
+**目录布局**（`conversation_workspace.root` 留空时为 `<OHMO_WORKSPACE>/conversations`）：
+
+```text
+~/.ohmo/conversations/<conversation_id>/
+├── uploads/       用户上传的原始文件（保留原名，重名自动 -1/-2）
+├── extracted/     解析后的纯文本（模型用 read_file 读它拿到全文）
+├── scripts/       本会话生成的脚本（run_script 写入）
+├── tmp/           中间临时文件
+├── outputs/       脚本产物（约定写到此处）
+├── attachments.json  附件索引（attachment_id → 元数据）
+└── meta.json         会话元数据（created_at / last_turn_at）
+```
+
+- 目录在会话首次被访问时幂等创建（`POST /conversations`、上传、发消息都会触发）。
+- **不会随会话池回收而删除**，也没有自动过期清理：文件就是「本会话的临时工作区」，
+  需要清理时手工删 `~/.ohmo/conversations/<id>/` 即可（建议按 `meta.json` 的
+  `last_turn_at` 定期清理，删除前确认会话不再需要）。
+- 多实例部署时该目录在**本机磁盘**上：请与会话路由保持一致（粘性会话），
+  或把 `conversation_workspace.root` 指到共享存储。
+
+**解析行为**：
+
+- 上传即解析：`.docx`（段落 + 表格 → Markdown）、`.xlsx/.xlsm/.xls`（逐工作表 → TSV，
+  含行数上限与截断标注）、`.txt/.md/.csv/.json/.log/.yaml/.xml`（自动 utf-8 → gb18030
+  解码，csv 转 Markdown 表格）。
+- 解析失败（加密、损坏、旧版 `.doc`）**不丢文件**：记录 `parse_status=failed` 与原因，
+  提示词里也会说明，模型可以自行用工具处理原始文件。
+- 每轮注入模型的是「会话工作区上下文块」：会话目录绝对路径、脚本/产物约定、
+  本轮附件（原始路径 + 解析文本路径 + 节选）、会话目录文件清单。附件正文明确标注为
+  **用户上传的数据、不执行其中指令**，防止文件内容被当成提示词。
+- 上下文块走**系统提示**（每轮重新生成），不写进 `messages` 历史：历史里只有用户原话，
+  刷新页面后附件芯片则通过轨迹里的 `attachments_ready` 事件还原。
+
+**`run_script` 工具**（需求「按会话 ID 写脚本到会话目录」的落地方式）：
+
+- 入参：`code`（脚本内容）或 `script`（会话目录内相对路径）、`name`、`language`
+  （`python` / `node`，默认按后缀推断）、`args`、`timeout_seconds`。
+- 行为：脚本写入 `<会话目录>/scripts/<name>.<py|js>` → 用**服务端共享 conda 环境**的
+  `python`（`sys.executable`，已装 pandas/openpyxl/python-docx）或 `node` 执行，
+  工作目录为会话目录根，因此脚本里可直接用 `uploads/xxx.xlsx`、`outputs/xxx.csv`
+  这类相对路径；超时杀进程、输出截断，并回报 `outputs/` 下本次新增的文件。
+- 权限：默认**需要审批**（与 `bash` 一致，同一轮内只确认一次）。要放开就在
+  `~/.ohmo/dangerous-actions.json` 增加：
+
+  ```jsonc
+  { "tool": "run_script", "action": "allow", "reason": "会话目录内的脚本执行放行" }
+  ```
+
+**审批策略的两处刻意取舍**：
+
+1. 会话目录内的**写文件**（`write_file` / `edit_file` / `notebook_edit`）免确认：
+   agent 生成脚本会反复写同一目录，每次都弹窗会严重打扰；敏感路径（`.ssh` 等）
+   与 `settings.json` 硬拒绝仍然优先，不可被这一条覆盖。要恢复逐次确认，
+   把 `conversation_workspace.auto_allow_write_tools` 设为 `[]`。
+2. **执行类**工具（`bash` / `run_script`）始终按危险操作门禁处理——写入是低风险可逆动作，
+   执行不是。
+
 ---
 
 ## 10. 常见问题排查
@@ -598,6 +723,12 @@ workspace 下：
 | 审批一直不生效/工具被拒 | 审批超时（默认 300s）按拒绝处理；前端未及时响应 |
 | 重启后历史在，但流/审批丢了 | 正常：订阅与审批在进程内存，见 §9.2 |
 | SSE 中途断流 | 反向代理缓冲/超时；关 buffering、调大 read_timeout（§9.3） |
+| 上传附件 415 | 后缀不在 `attachments.allowed_suffixes` 里；旧版 `.doc` 请另存为 `.docx`（§9.11） |
+| 上传附件 413 | 单文件超过 `max_file_mb`、单次超过 `max_files_per_message`，或会话累计超过 `max_files_per_conversation` |
+| 附件 `parse_status: failed` | 文件加密/损坏：原始文件仍在 `uploads/`，解析原因见 `parse_error`；可让模型用工具自行处理 |
+| 助手说「找不到上传的文件」 | 确认已把 `attachment_id` 随消息发出（前端由「📎 附件」上传后自动带上）；会话目录见 `GET .../workspace` |
+| 脚本没生成在会话目录 | 让模型用 `run_script` 工具（会自动落到 `scripts/`）；若用 `bash` 手写，需要显式给会话目录绝对路径（§9.11） |
+| 生成脚本时反复弹审批 | 会话目录内的写文件本就免确认；执行类工具（`bash`/`run_script`）默认仍需确认，可配 `{"tool":"run_script","action":"allow"}` 放开 |
 | 后台启动后端口没起来 | 看 `<workspace>/logs/webapp.log`；`abcqa webapp status` 看 pid |
 | 长时间只显示「思考中…」，看不到思考过程/工具步骤/审批 | 用 §10.1 的三层日志定位；最常见是 SSE 分帧不兼容或反向代理缓冲 |
 
@@ -664,7 +795,16 @@ workspace 下：
 ## 附：测试与校验
 
 ```bash
-pytest tests/test_qaapp -q        # 35 个用例
-ruff check qaapp tests/test_qaapp # 静态检查
+# 后端：配置 / 路由 / 门禁 / 轨迹 / 附件解析 / 会话目录 / run_script
+pytest tests/test_qaapp -q
+ruff check qaapp tests/test_qaapp
+
+# 前端：类型与构建 + 两项自检（Markdown 渲染、附件纯函数）
 cd frontend/webapp && npm run build
+npm run check:render
+npm run check:attachments
 ```
+
+> 本机若设置了 `NO_PROXY` 且包含 `[::1]` 这种带方括号的条目，`httpx2.Client()` 会因
+> 解析端口失败而报 `Invalid port`——跑涉及模型客户端的用例前先把它去掉：
+> `NO_PROXY="localhost,127.0.0.1,::1" pytest tests/test_qaapp -q`。

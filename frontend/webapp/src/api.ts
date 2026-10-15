@@ -1,4 +1,9 @@
-import type { AgentListResponse, ConversationSummary } from "./types";
+import type {
+  AgentListResponse,
+  AttachmentInfo,
+  ConversationSummary,
+  ConversationWorkspace,
+} from "./types";
 
 /**
  * 后端基址，按部署环境可配置（见 frontend/webapp/.env.example）：
@@ -50,6 +55,104 @@ export function listConversations(): Promise<{ conversations: ConversationSummar
 
 export function getConversation(conversationId: string): Promise<unknown> {
   return request(`/api/v1/conversations/${conversationId}`);
+}
+
+// ---------------------------------------------------------------------------
+// 会话附件 / 会话文件
+// ---------------------------------------------------------------------------
+
+/** 统一的错误提取：后端错误体是 `{ status, code, message }`。 */
+async function errorFrom(resp: Response): Promise<Error> {
+  const body = await resp.json().catch(() => ({}));
+  return new Error((body as { message?: string }).message || `HTTP ${resp.status}`);
+}
+
+/**
+ * 上传附件（1..2 个）。
+ *
+ * 不能用上面的 `request()`：它会强制 `Content-Type: application/json`，
+ * 而 multipart 必须让浏览器自己带上 `boundary`（手写会丢掉 boundary，后端直接解析失败）。
+ * 所以这里另写 fetch，并且**只**带 Authorization。
+ */
+export async function uploadAttachments(
+  conversationId: string,
+  files: File[],
+): Promise<{ conversation_id: string; attachments: AttachmentInfo[] }> {
+  const form = new FormData();
+  // 字段名固定 files，可重复；顺序即用户选择顺序。
+  for (const file of files) form.append("files", file);
+
+  const resp = await fetch(`${BASE}/api/v1/conversations/${conversationId}/attachments`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    body: form,
+  });
+  if (!resp.ok) throw await errorFrom(resp);
+  return (await resp.json()) as { conversation_id: string; attachments: AttachmentInfo[] };
+}
+
+/** 列出会话临时目录里的文件（含 Agent 生成的脚本 / 产出）。 */
+export function listConversationFiles(conversationId: string): Promise<ConversationWorkspace> {
+  return request<ConversationWorkspace>(`/api/v1/conversations/${conversationId}/workspace`);
+}
+
+/** 相对路径按 `/` 分段编码：文件名里的空格 / 中文 / `#` 都不会破坏 URL。 */
+function encodePath(relativePath: string): string {
+  return relativePath
+    .split("/")
+    .filter((seg) => seg.length > 0)
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+}
+
+/**
+ * 从 `Content-Disposition` 尽力解析文件名。
+ *
+ * 优先 RFC 5987 的 `filename*=UTF-8''%E6%8A%A5%E5%91%8A.docx`（后端返回中文名时
+ * 通常用这种写法，纯 `filename=` 放中文会变乱码），解析不到就用路径末段。
+ */
+function filenameFromDisposition(header: string | null, relativePath: string): string {
+  const fallback = relativePath.split("/").filter(Boolean).pop() ?? relativePath;
+  if (!header) return fallback;
+
+  const encoded = /filename\*\s*=\s*([^;]+)/i.exec(header);
+  if (encoded) {
+    let value = encoded[1].trim().replace(/^"|"$/g, "");
+    // 形如 UTF-8''%E6%8A%A5%E5%91%8A.docx，前面两段是 charset 与 language
+    const m = /^[^']*'[^']*'(.*)$/.exec(value);
+    if (m) value = m[1];
+    try {
+      const decoded = decodeURIComponent(value);
+      if (decoded) return decoded;
+    } catch {
+      if (value) return value;
+    }
+  }
+
+  const plain = /filename\s*=\s*"([^"]*)"|filename\s*=\s*([^;]+)/i.exec(header);
+  const raw = (plain?.[1] ?? plain?.[2] ?? "").trim();
+  return raw || fallback;
+}
+
+/**
+ * 下载会话文件。
+ *
+ * 必须走 fetch + Blob：下载接口要求 Bearer 鉴权，而 `<a href>` / `window.open`
+ * 带不了请求头，把 token 拼进 URL 又会泄漏到历史记录与日志里。
+ */
+export async function fetchConversationFile(
+  conversationId: string,
+  relativePath: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const resp = await fetch(
+    `${BASE}/api/v1/conversations/${conversationId}/files/${encodePath(relativePath)}`,
+    { headers: { Accept: "*/*", ...authHeaders() } },
+  );
+  if (!resp.ok) throw await errorFrom(resp);
+  return {
+    blob: await resp.blob(),
+    filename: filenameFromDisposition(resp.headers.get("Content-Disposition"), relativePath),
+  };
 }
 
 export function resolveApproval(
@@ -119,6 +222,9 @@ export function consumeSseBuffer(
 /**
  * 发送消息并以 SSE 流式读取。
  * 返回一个可取消的句柄；`onEvent` 收到服务端推送的每个事件对象。
+ *
+ * `attachmentIds` 是后加的第 6 个可选参数（前 5 个签名保持不变，老调用方不受影响）：
+ * 非空时 body 里带上 `attachment_ids`，告诉后端本轮引用了哪些已上传附件。
  */
 export async function streamMessage(
   conversationId: string,
@@ -126,6 +232,7 @@ export async function streamMessage(
   agent: string | undefined,
   onEvent: (event: Record<string, unknown>) => void,
   signal?: AbortSignal,
+  attachmentIds?: string[],
 ): Promise<void> {
   const resp = await fetch(`${BASE}/api/v1/conversations/${conversationId}/messages`, {
     method: "POST",
@@ -134,7 +241,12 @@ export async function streamMessage(
       Accept: "text/event-stream",
       ...authHeaders(),
     },
-    body: JSON.stringify({ content, agent, stream: true }),
+    body: JSON.stringify({
+      content,
+      agent,
+      stream: true,
+      ...(attachmentIds && attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+    }),
     signal,
   });
 

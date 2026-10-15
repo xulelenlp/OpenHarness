@@ -1,5 +1,6 @@
 {
   "_comment": "高危操作策略。放置到 ~/.ohmo/dangerous-actions.json。工具名为 OpenHarness 真实工具名（write_file / read_file / edit_file / bash 等）。",
+  "_run_script_comment": "qaapp 内置的会话脚本工具名为 run_script（脚本固定写入会话目录 scripts/ 后执行）。默认与 bash 一样需要审批；若要放开，追加规则 {\"tool\": \"run_script\", \"action\": \"allow\"}。会话目录内的 write_file/edit_file 本来就免确认（见 webapp.json 的 conversation_workspace.auto_allow_write_tools）。",
   "approval_timeout_seconds": 300,
   "rules": [
     {

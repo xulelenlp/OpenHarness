@@ -5,9 +5,10 @@
 
 ## Validation
 
-- [ ] `ruff check src tests scripts`
+- [ ] `ruff check src tests scripts qaapp`
 - [ ] `pytest -q`
-- [ ] `cd frontend/terminal && npx tsc --noEmit` (if frontend touched)
+- [ ] `cd frontend/terminal && npx tsc --noEmit` (if terminal frontend touched)
+- [ ] `cd frontend/webapp && npm run build` (if qaapp frontend touched)
 
 ## Notes
 

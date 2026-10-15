@@ -10,6 +10,10 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 - Hooks now support a `priority` field (default `0`). Within an event, hooks run highest-priority first, and hooks sharing a priority keep their registration order. This lets users order, for example, a security-check hook ahead of a logging hook regardless of where each is declared in settings or contributed by plugins.
 - `edit_file` and `write_file` in the React TUI now preview a unified diff before applying file changes, let users approve once or for the rest of the session, and skip the extra prompt automatically in `full_auto` mode.
+- qaapp 支持**对话框上传附件**：`POST /api/v1/conversations/{id}/attachments`（multipart，单次最多 2 个），服务端立即解析 `.docx` / `.xlsx` / `.xls` / `.txt` / `.md` / `.csv` / `.json` / `.log` / `.yaml` / `.xml` 并把内容注入模型上下文；`POST /messages` 通过 `attachment_ids` 引用附件，新增 SSE 事件 `attachments_ready`（写入轨迹，刷新页面后仍能还原附件芯片）。依赖新增 `python-docx` / `openpyxl` / `xlrd` / `pandas` / `python-multipart`。
+- qaapp 支持**每会话独立临时目录**：`~/.ohmo/conversations/<conversation_id>/{uploads,extracted,scripts,tmp,outputs}`（`conversation_workspace.root` 可覆盖），配套 `GET /workspace`（列出文件）与 `GET /files/{相对路径}`（下载，越界 404）；目录内 `write_file` / `edit_file` / `notebook_edit` 免审批（敏感路径与硬拒绝仍优先，可用 `conversation_workspace.auto_allow_write_tools` 关闭）。
+- qaapp 新增内置工具 **`run_script`**：把模型生成的脚本按会话写入 `scripts/`，用共享 conda 环境（自带 pandas/openpyxl/python-docx）的 `python` 或 `node` 执行，工作目录为会话目录根，产物约定写到 `outputs/`；默认走危险操作门禁审批，可用 `{"tool": "run_script", "action": "allow"}` 放开。参考前端同步补齐上传按钮 / 拖拽 / 附件芯片 / 会话文件抽屉与 `npm run check:attachments` 自检。
+- 所有带 `{conversation_id}` 的 HTTP/WebSocket 路由新增 ID 格式白名单校验（`^[0-9a-f]{12}$`），修掉「用 `../` 构造会话 ID 造成快照 / 会话目录路径穿越」的隐患。
 
 ### Changed
 

@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 import fnmatch
+from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 from openharness.config.settings import PermissionSettings
@@ -146,22 +148,48 @@ def _reason(rule: DangerousRule, prefix: str, detail: str | None) -> str:
     return base
 
 
+def _is_within(path: str | Path, root: Path) -> bool:
+    """判断 path 是否位于 root 目录内（解析符号链接后再比较，防越界）。"""
+    try:
+        resolved = Path(path).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return False
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 class DangerousPermissionChecker(PermissionChecker):
     """在基础权限检查之上叠加危险操作策略。
 
     优先级（从高到低）：
     1. 敏感路径（.ssh/.aws 等）—— 恒拒，不可覆盖
     2. settings.json 的 denied_tools / denied_commands / 路径拒绝规则 —— 恒拒
-    3. dangerous-actions 的 deny —— 拒
-    4. dangerous-actions 的 confirm —— 需确认
-    5. dangerous-actions 的 allow —— 放行
-    6. settings.json 的 allowed_tools —— 放行
-    7. 基础模式逻辑（full_auto 放行 / plan 阻断 / default 写操作需确认 / 只读放行）
+    3. 会话临时目录内的写操作 —— 免确认（可配置，见 ``conversation_workspace``）
+    4. dangerous-actions 的 deny —— 拒
+    5. dangerous-actions 的 confirm —— 需确认
+    6. dangerous-actions 的 allow —— 放行
+    7. settings.json 的 allowed_tools —— 放行
+    8. 基础模式逻辑（full_auto 放行 / plan 阻断 / default 写操作需确认 / 只读放行）
     """
 
-    def __init__(self, settings: PermissionSettings, gate: DangerousActionGate) -> None:
+    def __init__(
+        self,
+        settings: PermissionSettings,
+        gate: DangerousActionGate,
+        *,
+        conversation_root: str | Path | None = None,
+        auto_allow_tools: Iterable[str] = (),
+    ) -> None:
         super().__init__(settings)
         self._gate = gate
+        #: 会话临时目录：该目录内的「写文件」类工具免确认，避免每次生成脚本都弹窗。
+        self._conversation_root = (
+            Path(conversation_root).expanduser().resolve() if conversation_root else None
+        )
+        self._auto_allow_tools = frozenset(auto_allow_tools)
 
     def evaluate(
         self,
@@ -202,7 +230,20 @@ class DangerousPermissionChecker(PermissionChecker):
                             reason=f"Path {file_path} matches deny rule: {rule.pattern}",
                         )
 
-        # 3-5. dangerous-actions 策略
+        # 3. 会话临时目录内的写操作免确认
+        #    「写文件」是可逆的低风险动作，而 agent 生成脚本会反复写同一个目录；
+        #    执行类工具（bash / run_script）不在此名单内，仍走审批。
+        if (
+            self._conversation_root is not None
+            and file_path
+            and tool_name in self._auto_allow_tools
+            and _is_within(file_path, self._conversation_root)
+        ):
+            return PermissionDecision(
+                allowed=True, reason="会话临时目录内的文件写入免确认"
+            )
+
+        # 4-6. dangerous-actions 策略
         action = self._gate.evaluate(
             tool_name,
             is_read_only=is_read_only,
@@ -218,11 +259,11 @@ class DangerousPermissionChecker(PermissionChecker):
         if action == ACTION_ALLOW:
             return PermissionDecision(allowed=True, reason="高危操作策略允许")
 
-        # 6. settings allowed_tools
+        # 7. settings allowed_tools
         if tool_name in self._settings.allowed_tools:
             return PermissionDecision(allowed=True, reason=f"{tool_name} is explicitly allowed")
 
-        # 7. 基础模式逻辑
+        # 8. 基础模式逻辑
         if self._settings.mode == PermissionMode.FULL_AUTO:
             return PermissionDecision(allowed=True, reason="Auto mode allows all tools")
         if is_read_only:
