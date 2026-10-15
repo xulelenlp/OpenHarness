@@ -16,6 +16,7 @@ import re
 import time
 from collections import deque
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from ohmo.session_storage import OhmoSessionBackend
@@ -42,6 +43,9 @@ from qaapp.config import (
     KIND_EXTERNAL,
     KIND_SUBAGENT,
     AgentEntry,
+    get_agents_config_path,
+    get_dangerous_config_path,
+    get_webapp_config_path,
     load_agent_registry,
     load_dangerous_actions,
     load_webapp_config,
@@ -113,6 +117,34 @@ def _normalize_permission_mode(value: str | None) -> str:
     return _PERMISSION_MODE_ALIASES.get(value.strip().lower(), "default")
 
 
+def configure_logging() -> None:
+    """把观测日志输出到控制台（默认 root logger 是 WARNING，info 会被吞掉）。
+
+    必须在**构造 QaWebService 之前**调用：启动时会打印「实际生效的配置文件」等
+    INFO 日志，否则这些关键排查信息会被丢掉。
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+    )
+    logging.getLogger("openharness.api.openai_client").setLevel(logging.INFO)
+    logging.getLogger("qaapp.service").setLevel(logging.INFO)
+
+
+def _external_id_exists(cwd: Path, agent_id: str) -> bool:
+    """外部 Agent 的 id 是否能被 external_agent 工具解析到（插件文件发现）。"""
+    from qaapp.external_agents import _plugin_module_for
+
+    module = _plugin_module_for(object())
+    if module is None:
+        return False
+    try:
+        config = module.load_config(cwd)
+    except Exception:
+        logger.debug("读取 external-agents 配置失败", exc_info=True)
+        return False
+    return any(agent.id == agent_id for agent in getattr(config, "agents", []))
+
 class PendingRequest:
     """一个等待前端/API 响应的审批/提问。"""
 
@@ -172,6 +204,7 @@ class QaWebService:
         *,
         workspace: str | Path | None = None,
         cwd: str | Path | None = None,
+        config_dir: str | Path | None = None,
     ) -> None:
         self._workspace = workspace
         self.cwd = str(Path(cwd or Path.cwd()).resolve())
@@ -182,15 +215,52 @@ class QaWebService:
             os.environ["OPENHARNESS_DATA_DIR"] = str(root / "data")
         if not os.environ.get("OPENHARNESS_LOGS_DIR"):
             os.environ["OPENHARNESS_LOGS_DIR"] = str(root / "logs")
-        self.webapp = load_webapp_config(workspace)
-        self.registry = load_agent_registry(workspace)
-        self.dangerous = load_dangerous_actions(workspace)
+        # 配置解析：--config-dir / QAAPP_CONFIG_DIR → <cwd>/config/（随 git 走）→ workspace。
+        # 启动时把实际生效的文件打出来，避免「改了配置没生效」时无从判断。
+        self._config_kwargs: dict[str, Any] = {"cwd": self.cwd, "config_dir": config_dir}
+        self.webapp = load_webapp_config(workspace, **self._config_kwargs)
+        self.registry = load_agent_registry(workspace, **self._config_kwargs)
+        self.dangerous = load_dangerous_actions(workspace, **self._config_kwargs)
+        logger.info(
+            "配置来源：agents=%s（%s 个 agent）dangerous=%s webapp=%s",
+            get_agents_config_path(workspace, **self._config_kwargs),
+            len(self.registry.agents),
+            get_dangerous_config_path(workspace, **self._config_kwargs),
+            get_webapp_config_path(workspace, **self._config_kwargs),
+        )
         self.gate = DangerousActionGate(self.dangerous)
         self.trace_store = ConversationTraceStore(workspace)
         self.session_backend = OhmoSessionBackend(workspace)
         self._sessions: dict[str, ConversationSession] = {}
         self._lock = asyncio.Lock()
+        self._warn_unresolved_external_agents()
         self.app = self._build_app()
+
+    def _warn_unresolved_external_agents(self) -> None:
+        """启动时检查 external Agent 是否有可用配置，避免运行时才暴露成
+        「Unknown external agent ... (none configured)」这种难排查的错误。
+
+        典型场景：agents.json 里只写了 ``external_ref``，而对应的
+        ``external-agents.json`` 里没有该 id（例如插件目录那份已被清空、服务器上
+        的 workspace 配置又是旧的）。
+        """
+        missing: list[str] = []
+        for agent in self.registry.agents:
+            if agent.kind != KIND_EXTERNAL or agent.external is not None:
+                continue
+            if not agent.external_ref:
+                missing.append(agent.id)
+                continue
+            ref = agent.external_ref
+            if not _external_id_exists(Path(self.cwd), ref):
+                missing.append(f"{agent.id}(external_ref={ref})")
+        if missing:
+            logger.error(
+                "以下 external Agent 找不到访问配置：%s。"
+                "请在 agents.json 里改用 external 内联配置（推荐，随 git 走），"
+                "或补上 external-agents.json 里对应的 agent id。",
+                "、".join(missing),
+            )
 
     # ------------------------------------------------------------------
     # 会话管理
@@ -1214,14 +1284,7 @@ class QaWebService:
     def run(self, host: str | None = None, port: int | None = None) -> None:
         import uvicorn
 
-        # 确保观测日志输出到控制台（默认 root logger 是 WARNING，info 会被吞掉），
-        # 便于定位"前端只有思考中…"时事件断在哪一环。
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
-        )
-        logging.getLogger("openharness.api.openai_client").setLevel(logging.INFO)
-        logging.getLogger("qaapp.service").setLevel(logging.INFO)
+        configure_logging()
 
         resolved_host = host or self.webapp.host
         resolved_port = port if port is not None else self.webapp.port
@@ -1249,4 +1312,5 @@ __all__ = [
     "ConversationSession",
     "PendingRequest",
     "QaWebService",
+    "configure_logging",
 ]

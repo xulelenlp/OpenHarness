@@ -41,3 +41,4 @@ react_tui_smoke.txt
 Thumbs.db
 uv.lock
 .tmp-e2e/*
+.e2e-run/*

@@ -1,0 +1,188 @@
+{
+  "_comment": "所有 Agent 的唯一维护文件（可见、随 git 统一管理）。qaapp 按「--config-dir → <cwd>/config/agents.json → <ohmo workspace>/agents.json」顺序解析，因此服务器 git pull 后直接生效。",
+  "_comment_external": "kind=external：推荐用 external 内联完整访问配置（endpoint / method / headers / request_body / response）；conversation_id=auto 表示用 qaapp 会话 ID（同一对话复用同一个对端会话），填固定值则每个会话都复用它。",
+  "_comment_deploy": "改完本文件需重启服务（agents.json 在启动时加载）：abcqa webapp stop && abcqa webapp start。",
+  "default_agent": "general",
+  "routing": {
+    "mode": "explicit",
+    "llm_model": "",
+    "rules": []
+  },
+  "agents": [
+    {
+      "id": "general",
+      "kind": "harness",
+      "name": "通用助手",
+      "description": "任意领域开放问答，并可自动编排专业 Agent",
+      "system_prompt": "你是一个企业级智能助手。\n\n工作方式：\n1. 任意领域的开放问答（通用知识、文档、代码、写作、推理、日常任务等），优先使用你自身的能力回答；需要联网查证、读取本地文件或执行任务时，使用 web_search / read_file / bash 等内置工具。\n2. 当用户问题涉及以下专业领域时，调用 external_agent 工具获取专业结果（把用户原话作为 message，选择正确的 agent id）：\n   - power-grid-analysis：电网指标数据分析（售电量/线损/供电量等指标的分析、趋势、同比环比、影响因素）\n   - smart-data-query：业务数据明细与数值查询（“XX 是多少”“查一下 XX 明细”）\n   - knowledge-qa：知识/政策/文件解读（“是什么/为什么/如何理解”）\n\n原则：专业领域问题务必调用对应工具，不要凭空编造数据；其余问题用你自身知识直接回答。",
+      "tools": [
+        "*"
+      ],
+      "permission_mode": "default"
+    },
+    {
+      "id": "power-grid-analysis",
+      "kind": "external",
+      "name": "电网指标数据分析",
+      "description": "售电量、线损等电网经营与技术指标的分析报告",
+      "external_ref": "power-grid-analysis",
+      "external": {
+        "type": "http",
+        "enabled": true,
+        "conversation_id": "auto",
+        "timeout_seconds": 300,
+        "max_response_chars": 220000,
+        "progress_max_chars": 4000,
+        "response": {
+          "mode": "auto",
+          "json_text_paths": [
+            "choices[0].delta.content",
+            "choices[0].message.content",
+            "choices[0].text",
+            "delta",
+            "content",
+            "answer",
+            "message",
+            "data",
+            "text",
+            "output",
+            "result"
+          ]
+        },
+        "config": {
+          "endpoint": "http://127.0.0.1:18812/api/chat/stream",
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json"
+          },
+          "request_body": {
+            "message": "{message}",
+            "conversation_id": "{conversation_id}",
+            "context": {},
+            "chat_type": 4
+          }
+        }
+      }
+    },
+    {
+      "id": "smart-data-query",
+      "kind": "external",
+      "name": "智能问数",
+      "description": "业务数据明细查询与数值查询",
+      "external_ref": "smart-data-query",
+      "external": {
+        "type": "http",
+        "enabled": true,
+        "conversation_id": "auto",
+        "timeout_seconds": 300,
+        "max_response_chars": 220000,
+        "progress_max_chars": 4000,
+        "response": {
+          "mode": "auto",
+          "json_text_paths": [
+            "choices[0].delta.content",
+            "choices[0].message.content",
+            "choices[0].text",
+            "record_content",
+            "delta",
+            "content",
+            "answer",
+            "message",
+            "data",
+            "text",
+            "output",
+            "result"
+          ],
+          "extract_tags": [
+            "answer"
+          ]
+        },
+        "config": {
+          "endpoint": "http://192.168.139.144:18094/chat_agent_roll",
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json"
+          },
+          "request_body": {
+            "id": "",
+            "query": "{message}",
+            "user_id": "T00033995",
+            "session": "{conversation_id}",
+            "authInfo": {
+              "type": 3001,
+              "orgCode": "210000000000127",
+              "province": "福建",
+              "city": null,
+              "county": null,
+              "powers": "BUREAU LEVEL",
+              "majors": [],
+              "token": "",
+              "loginTime": 1790666313600
+            },
+            "domain_id": 1,
+            "use_direct": 1,
+            "chat_type": null
+          }
+        }
+      }
+    },
+    {
+      "id": "knowledge-qa",
+      "kind": "external",
+      "name": "知识问答",
+      "description": "通用知识问答",
+      "external_ref": "knowledge-qa",
+      "external": {
+        "type": "http",
+        "enabled": true,
+        "conversation_id": "auto",
+        "timeout_seconds": 300,
+        "max_response_chars": 220000,
+        "progress_max_chars": 4000,
+        "response": {
+          "mode": "auto",
+          "json_text_paths": [
+            "choices[0].delta.content",
+            "choices[0].message.content",
+            "choices[0].text",
+            "delta",
+            "content",
+            "answer",
+            "message",
+            "data",
+            "text",
+            "output",
+            "result"
+          ]
+        },
+        "config": {
+          "endpoint": "http://192.168.139.144:18094/chat_agent_roll",
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json"
+          },
+          "request_body": {
+            "id": "",
+            "query": "{message}",
+            "user_id": "T00033995",
+            "session": "{conversation_id}",
+            "authInfo": {
+              "type": 3001,
+              "orgCode": "210000000000127",
+              "province": "福建",
+              "city": null,
+              "county": null,
+              "powers": "BUREAU LEVEL",
+              "majors": [],
+              "token": "",
+              "loginTime": 1790666313600
+            },
+            "domain_id": 6,
+            "use_direct": 1,
+            "chat_type": null
+          }
+        }
+      }
+    }
+  ]
+}

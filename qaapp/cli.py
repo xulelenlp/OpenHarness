@@ -15,13 +15,14 @@ import typer
 from ohmo.workspace import get_logs_dir, get_workspace_root, initialize_workspace
 from qaapp.config import (
     config_status,
+    get_agents_config_path,
     load_agent_registry,
     load_dangerous_actions,
     load_webapp_config,
     validate_agent_registry,
     validate_dangerous_actions,
 )
-from qaapp.service import QaWebService
+from qaapp.service import QaWebService, configure_logging
 
 app = typer.Typer(
     name="abcqa",
@@ -38,6 +39,10 @@ app.add_typer(agents_app)
 app.add_typer(dangerous_app)
 
 _WORKSPACE_HELP = "ohmo workspace 路径（默认 OHMO_WORKSPACE / ~/.ohmo）"
+_CONFIG_DIR_HELP = (
+    "项目配置目录（默认自动识别 <cwd>/config；用它可显式指定，"
+    "等价于环境变量 QAAPP_CONFIG_DIR）。这是**随 git 管理**的可见配置位置"
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _EXAMPLES_DIR = Path(__file__).resolve().parent / "examples"
@@ -75,22 +80,40 @@ def _main(ctx: typer.Context) -> None:
 @app.command("config")
 def config_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
-    """查看三份配置的存在性与校验结果。"""
-    print(json.dumps(config_status(workspace), ensure_ascii=False, indent=2))
+    """查看三份配置的**实际解析路径**、存在性与校验结果。"""
+    print(
+        json.dumps(
+            config_status(workspace, cwd=cwd, config_dir=config_dir),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 @app.command("init")
 def init_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
     force: bool = typer.Option(False, "--force", help="覆盖已存在的配置文件"),
 ) -> None:
-    """将示例配置（webapp/agents/dangerous-actions）安装到 workspace。"""
+    """将示例配置安装到项目 config/ 目录（默认）或 workspace。
+
+    带 ``--config-dir`` 时写入该目录（**可见、随 git 管理**）；不带时写入 workspace，
+    其中 ``agents.json`` 是「所有 Agent 的唯一维护文件」。
+    """
     root = initialize_workspace(workspace)
+    if config_dir:
+        target_dir = Path(config_dir).expanduser().resolve()
+        target_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        target_dir = root
     targets = {
-        "webapp.json": root / "webapp.json",
-        "agents.json": root / "agents.json",
-        "dangerous-actions.json": root / "dangerous-actions.json",
+        "webapp.json": target_dir / "webapp.json",
+        "agents.json": target_dir / "agents.json",
+        "dangerous-actions.json": target_dir / "dangerous-actions.json",
     }
     for name, target in targets.items():
         src = _EXAMPLES_DIR / name
@@ -99,9 +122,12 @@ def init_cmd(
             continue
         target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"写入 {target}")
-    print(f"\n配置已就绪，workspace={root}")
+    print(f"\n配置已就绪，workspace={root}" + (f"，config_dir={target_dir}" if config_dir else ""))
     print("提示：所有 Agent（含外部 Agent 的 endpoint / 请求体 / 响应解析）统一在 agents.json 里维护，")
     print("      不再需要 external-agents.json。见 examples/agents.json 的 external 字段示例。")
+    print("      想让服务器 git pull 后直接生效，请把 agents.json 放在项目可见目录 config/ 下：")
+    print("        abcqa init --config-dir ./config --force   # 或手工放 config/agents.json")
+    print("      解析顺序：--config-dir / QAAPP_CONFIG_DIR → <cwd>/config/ → <workspace>/")
 
 
 # ---------------------------------------------------------------------------
@@ -112,20 +138,24 @@ def init_cmd(
 @webapp_app.command("run")
 def webapp_run_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
-    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录"),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
     host: str | None = typer.Option(None, "--host", help="覆盖 webapp.json 的 host"),
     port: int | None = typer.Option(None, "--port", help="覆盖 webapp.json 的 port"),
 ) -> None:
     """前台运行 Web 服务（Ctrl+C 退出）。"""
+    # 先配日志：服务构造时就会打印「实际生效的配置文件」，不能被 WARNING 级别吞掉。
+    configure_logging()
     initialize_workspace(workspace)
-    service = QaWebService(workspace=workspace, cwd=cwd)
+    service = QaWebService(workspace=workspace, cwd=cwd, config_dir=config_dir)
     service.run(host=host, port=port)
 
 
 @webapp_app.command("start")
 def webapp_start_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
-    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录"),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
 ) -> None:
     """后台启动 Web 服务（守护进程）。"""
     root = initialize_workspace(workspace)
@@ -167,6 +197,7 @@ def webapp_start_cmd(
                 cwd,
                 "--workspace",
                 str(root),
+                *(["--config-dir", str(config_dir)] if config_dir else []),
             ],
             **popen_kwargs,
         )
@@ -205,6 +236,8 @@ def webapp_stop_cmd(
 @webapp_app.command("status")
 def webapp_status_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
     """查看 Web 服务运行状态。"""
     pid_file = _pid_file(workspace)
@@ -215,7 +248,7 @@ def webapp_status_cmd(
             pid = int(pid_file.read_text().strip())
         if pid is not None and _pid_is_running(pid):
             running = True
-    webapp = load_webapp_config(workspace)
+    webapp = load_webapp_config(workspace, cwd=cwd, config_dir=config_dir)
     print(
         json.dumps(
             {
@@ -225,6 +258,9 @@ def webapp_status_cmd(
                 "port": webapp.port,
                 "provider_profile": webapp.provider_profile or "(inherit settings)",
                 "workspace": str(get_workspace_root(workspace)),
+                "agents_config": str(
+                    get_agents_config_path(workspace, cwd=cwd, config_dir=config_dir)
+                ),
             },
             ensure_ascii=False,
             indent=2,
@@ -240,9 +276,12 @@ def webapp_status_cmd(
 @agents_app.command("list")
 def agents_list_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
-    """列出注册表中所有 Agent。"""
-    registry = load_agent_registry(workspace)
+    """列出注册表中所有 Agent（含 external 内联配置的来源文件）。"""
+    print(f"# agents.json: {get_agents_config_path(workspace, cwd=cwd, config_dir=config_dir)}")
+    registry = load_agent_registry(workspace, cwd=cwd, config_dir=config_dir)
     rows = []
     for agent in registry.agents:
         rows.append(
@@ -260,9 +299,13 @@ def agents_list_cmd(
 @agents_app.command("validate")
 def agents_validate_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
-    """校验 agents.json。"""
-    errors = validate_agent_registry(workspace)
+    """校验 agents.json（含 external 内联配置）。"""
+    path = get_agents_config_path(workspace, cwd=cwd, config_dir=config_dir)
+    print(f"# agents.json: {path}")
+    errors = validate_agent_registry(workspace, cwd=cwd, config_dir=config_dir)
     if errors:
         for error in errors:
             print(f"✗ {error}")
@@ -278,23 +321,27 @@ def agents_validate_cmd(
 @dangerous_app.command("validate")
 def dangerous_validate_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
     """校验 dangerous-actions.json。"""
-    errors = validate_dangerous_actions(workspace)
+    errors = validate_dangerous_actions(workspace, cwd=cwd, config_dir=config_dir)
     if errors:
         for error in errors:
             print(f"✗ {error}")
         raise typer.Exit(code=1)
-    config = load_dangerous_actions(workspace)
+    config = load_dangerous_actions(workspace, cwd=cwd, config_dir=config_dir)
     print(f"dangerous-actions.json 校验通过（{len(config.rules)} 条规则）")
 
 
 @dangerous_app.command("show")
 def dangerous_show_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
     """打印当前高危操作策略。"""
-    config = load_dangerous_actions(workspace)
+    config = load_dangerous_actions(workspace, cwd=cwd, config_dir=config_dir)
     print(config.model_dump_json(indent=2))
 
 

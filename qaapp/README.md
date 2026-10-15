@@ -59,6 +59,7 @@ qaapp/service.py          Starlette 服务，维护“每对话一个 RuntimeBun
         └─ ohmo 存储            会话快照 + 轨迹
 
 仓库关键目录：
+config/                 可见配置目录（随 git 走）：agents.json 等见 §5.2
 qaapp/                  后端包（含 examples/ 示例配置、README.md）
 frontend/webapp/        参考前端（React + Vite + TS）
 tests/test_qaapp/       后端测试
@@ -227,13 +228,50 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 > 仓库 `.openharness/settings.json` 内含一个可用的 qwen 示例（**含明文 key，仅供
 > 本地开发**）。生产环境务必换成你自己的凭据，并注意 §9.9 的密钥安全提醒。
 
-### 5.2 ② qaapp 三份配置（ohmo workspace）
+### 5.2 ② qaapp 三份配置（**可见路径优先，随 git 走**）
 
-放置位置：`OHMO_WORKSPACE` 环境变量指向的目录，或 `~/.ohmo/`；也可用
-`abcqa --workspace <dir>` / `abcqa webapp run --workspace <dir>` 指定。
+三份文件按下面的顺序解析，**命中即用**（都不存在则回退内置默认值）：
+
+| 顺序 | 位置 | 用途 |
+| --- | --- | --- |
+| 1 | `--config-dir <dir>` / 环境变量 `QAAPP_CONFIG_DIR` | 显式指定（容器/多环境部署） |
+| 2 | **`<cwd>/config/<name>`** | **项目内、可见、可提交 git**；服务器 `git pull` + 重启即生效（`<cwd>` = `abcqa webapp run --cwd`，默认当前目录） |
+| 3 | `<ohmo workspace>/<name>`（`OHMO_WORKSPACE` / `~/.ohmo`） | 本机覆盖（可选）：端口、token 这类**不该进 git** 的配置放这里 |
+
+各文件的建议位置：
+
+| 文件 | 建议放哪 | 原因 |
+| --- | --- | --- |
+| `agents.json` | **`config/agents.json`（提交 git）** | 所有 Agent 的唯一维护文件，团队共用、随代码发布 |
+| `dangerous-actions.json` | `config/` 或 workspace 均可 | 属于团队策略就能进 git；含本机特例就放 workspace |
+| `webapp.json` | **建议只放 workspace**（`~/.ohmo/webapp.json`） | 里面有 `api_tokens`；文件级覆盖不做字段合并，放进 git 容易把 token 也提交上去 |
+
+启动日志会打印**实际生效的文件**，`abcqa config` 也会给出每个文件的路径与来源
+（`project` / `workspace` / `explicit`）：
+
+```bash
+abcqa config         # 看三份配置实际读了哪个文件
+abcqa agents list    # 第一行就是当前生效的 agents.json 路径
+```
+
+**服务器部署（推荐流程）**：
+
+```bash
+git pull                                   # agents.json 里的 Agent/端点随代码一起更新
+abcqa config                               # 确认 agents=/path/to/repo/config/agents.json
+abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须重启
+```
+
+> 历史坑：早期版本只认 `~/.ohmo/agents.json`（隐藏目录、**不在仓库里**），服务器
+> `git pull` 更新不到它，于是出现「模型说没配置 power-grid-analysis」或
+> `Unknown external agent ... (none configured)`。现在把 agents.json 放进项目可见的
+> `config/` 即可根治；`abcqa init --config-dir ./config` 可直接生成示例。
 
 三份文件缺失或非法时**回退到内置默认值**（不阻塞启动，仅在日志告警），所以
 「文件在但内容非法」要主动用 `abcqa config` 检查。
+
+> 启动时还会做一次外部 Agent 自检：`kind=external` 若只写了 `external_ref` 而对应配置
+> 找不到，会直接打 **ERROR** 日志（含 agent id 与修复建议），不会等到用户提问时才发现。
 
 #### `webapp.json` —— 服务配置
 
@@ -340,7 +378,9 @@ settings 的 `allowed_tools` → 基础权限模式。
 
 ### 5.3 ③ 外部 Agent：内联在 agents.json（唯一维护文件）
 
-**所有 Agent 只在一个文件里维护：`agents.json`**（`~/.ohmo/agents.json`）。
+**所有 Agent 只在一个文件里维护：`agents.json`**，仓库内推荐路径
+**`config/agents.json`（可见、提交 git、`git pull` 即生效）**；解析顺序见 §5.2
+（`--config-dir` → `<cwd>/config/` → `~/.ohmo/`）。
 `kind=external` 的 Agent 直接内联它的访问配置，qaapp 在会话启动时把它注入
 `external_agent` 工具（内存注入，不再生成第二份配置文件）：
 
@@ -588,6 +628,7 @@ VITE_API_BASE_URL=http://192.168.139.144:8787 npm run build
 | `qaapp/` 或 `src/openharness/` 的 **Python 代码** | **重启服务**（前台 Ctrl+C 重跑，或 `abcqa webapp stop && abcqa webapp start`） | 后端没有热重载，进程内跑的是启动时加载的代码 |
 | `frontend/webapp/src/` 的**前端代码** | `npm run build` 后**刷新浏览器**（同源托管）；`npm run dev` 模式则自动热更新 | 同源托管加载的是 `dist/` 构建产物，不重新构建就仍是旧代码 |
 | 仅改 `~/.ohmo/*.json` 的**配置** | 重启服务 | agent 注册表 / 危险操作策略在服务启动时加载 |
+| 改 `config/agents.json`（提交 git 的那份） | `git pull` + **重启服务** | 配置只在启动时读取；`abcqa config` 可确认实际生效路径（§5.2） |
 
 > 排查「改了没生效」时，先确认这两条：**后端重启了吗？前端重新构建并刷新了吗？**
 

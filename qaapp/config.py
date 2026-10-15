@@ -1,16 +1,22 @@
 """qaapp 配置模型与加载器。
 
-三份配置文件均放置在 ohmo workspace 根目录（``OHMO_WORKSPACE`` / ``~/.ohmo``），
-缺失时回退到内置默认值：
+三份配置文件按下面的**可见路径优先**顺序解析（缺失时回退到内置默认值）：
 
-- ``webapp.json``           —— Web 服务配置
-- ``agents.json``           —— Agent 注册表与路由规则
+1. ``--config-dir <dir>`` / 环境变量 ``QAAPP_CONFIG_DIR``（显式指定，最高优先）
+2. ``<cwd>/config/<name>`` —— **项目内、可见、随 git 走**（`git pull` 即可在服务器生效）
+3. ``<ohmo workspace>/<name>`` —— 本机覆盖（``OHMO_WORKSPACE`` / ``~/.ohmo``，可选）
+
+- ``webapp.json``           —— Web 服务配置（含 token，建议只放本机 workspace）
+- ``agents.json``           —— **所有 Agent 的唯一维护文件**（含外部 Agent 的内联访问配置）
 - ``dangerous-actions.json``—— 高危操作策略
+
+> 不传 ``cwd`` 时（例如纯单元测试）只按 workspace 解析，不会去读项目 ``config/``。
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +32,11 @@ WEBAPP_FILENAME = "webapp.json"
 AGENTS_FILENAME = "agents.json"
 DANGEROUS_FILENAME = "dangerous-actions.json"
 
+#: 项目内可见配置目录（相对于 ``--cwd``），随 git 统一管理。
+PROJECT_CONFIG_DIRNAME = "config"
+#: 显式指定配置目录的环境变量。
+ENV_CONFIG_DIR = "QAAPP_CONFIG_DIR"
+
 KIND_EXTERNAL = "external"
 KIND_SUBAGENT = "subagent"
 KIND_HARNESS = "harness"
@@ -35,16 +46,71 @@ DANGEROUS_ACTIONS = ("allow", "confirm", "deny")
 ROUTING_MODES = ("rule_then_llm", "llm", "rule", "explicit")
 
 
-def get_webapp_config_path(workspace: str | Path | None = None) -> Path:
-    return get_workspace_root(workspace) / WEBAPP_FILENAME
+def get_project_config_dir(
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> Path | None:
+    """返回项目的可见配置目录。
+
+    - 显式 ``config_dir``（或 ``QAAPP_CONFIG_DIR``）总是生效（即使目录还不存在）；
+    - 否则仅当 ``<cwd>/config`` 存在时启用；
+    - ``cwd`` 为空（未显式传入）时返回 ``None``，避免隐式依赖进程当前目录。
+    """
+    explicit = str(config_dir or os.environ.get(ENV_CONFIG_DIR) or "").strip()
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if not cwd:
+        return None
+    project = Path(cwd).expanduser().resolve() / PROJECT_CONFIG_DIRNAME
+    return project if project.is_dir() else None
 
 
-def get_agents_config_path(workspace: str | Path | None = None) -> Path:
-    return get_workspace_root(workspace) / AGENTS_FILENAME
+def resolve_config_path(
+    filename: str,
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> Path:
+    """按「显式目录 → 项目 config/ → workspace」解析配置文件路径。"""
+    project_dir = get_project_config_dir(cwd, config_dir)
+    if project_dir is not None:
+        candidate = project_dir / filename
+        if candidate.is_file():
+            return candidate
+        # 显式指定的目录即使文件缺失也以它为准（便于报错/写入示例）。
+        if config_dir or os.environ.get(ENV_CONFIG_DIR):
+            return candidate
+    return get_workspace_root(workspace) / filename
 
 
-def get_dangerous_config_path(workspace: str | Path | None = None) -> Path:
-    return get_workspace_root(workspace) / DANGEROUS_FILENAME
+def get_webapp_config_path(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> Path:
+    return resolve_config_path(WEBAPP_FILENAME, workspace, cwd=cwd, config_dir=config_dir)
+
+
+def get_agents_config_path(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> Path:
+    return resolve_config_path(AGENTS_FILENAME, workspace, cwd=cwd, config_dir=config_dir)
+
+
+def get_dangerous_config_path(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> Path:
+    return resolve_config_path(
+        DANGEROUS_FILENAME, workspace, cwd=cwd, config_dir=config_dir
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -349,18 +415,46 @@ def _load_json_model(path: Path, model: type[BaseModel]) -> tuple[BaseModel, str
         return model(), f"配置非法 {path}: {exc}"
 
 
-def load_webapp_config(workspace: str | Path | None = None) -> WebappConfig:
-    config, _ = _load_json_model(get_webapp_config_path(workspace), WebappConfig)
+def _resolve_kwargs(
+    cwd: str | Path | None, config_dir: str | Path | None
+) -> dict[str, Any]:
+    return {"cwd": cwd, "config_dir": config_dir}
+
+
+def load_webapp_config(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> WebappConfig:
+    config, _ = _load_json_model(
+        get_webapp_config_path(workspace, **_resolve_kwargs(cwd, config_dir)), WebappConfig
+    )
     return config  # type: ignore[return-value]
 
 
-def load_agent_registry(workspace: str | Path | None = None) -> AgentRegistry:
-    registry, _ = _load_json_model(get_agents_config_path(workspace), AgentRegistry)
+def load_agent_registry(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> AgentRegistry:
+    registry, _ = _load_json_model(
+        get_agents_config_path(workspace, **_resolve_kwargs(cwd, config_dir)), AgentRegistry
+    )
     return registry  # type: ignore[return-value]
 
 
-def load_dangerous_actions(workspace: str | Path | None = None) -> DangerousActions:
-    config, _ = _load_json_model(get_dangerous_config_path(workspace), DangerousActions)
+def load_dangerous_actions(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> DangerousActions:
+    config, _ = _load_json_model(
+        get_dangerous_config_path(workspace, **_resolve_kwargs(cwd, config_dir)),
+        DangerousActions,
+    )
     return config  # type: ignore[return-value]
 
 
@@ -373,9 +467,14 @@ def _validation_error(path: Path, exc: Exception) -> str:
     return f"配置非法 {path}: {exc}"
 
 
-def validate_webapp_config(workspace: str | Path | None = None) -> list[str]:
+def validate_webapp_config(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> list[str]:
     """返回 webapp.json 的校验错误列表（空 = 合法）。"""
-    path = get_webapp_config_path(workspace)
+    path = get_webapp_config_path(workspace, **_resolve_kwargs(cwd, config_dir))
     if not path.exists():
         return []
     try:
@@ -385,9 +484,14 @@ def validate_webapp_config(workspace: str | Path | None = None) -> list[str]:
     return []
 
 
-def validate_agent_registry(workspace: str | Path | None = None) -> list[str]:
+def validate_agent_registry(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> list[str]:
     """返回 agents.json 的校验错误列表（空 = 合法）。"""
-    path = get_agents_config_path(workspace)
+    path = get_agents_config_path(workspace, **_resolve_kwargs(cwd, config_dir))
     if not path.exists():
         return []
     errors: list[str] = []
@@ -421,9 +525,14 @@ def validate_agent_registry(workspace: str | Path | None = None) -> list[str]:
     return errors
 
 
-def validate_dangerous_actions(workspace: str | Path | None = None) -> list[str]:
+def validate_dangerous_actions(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> list[str]:
     """返回 dangerous-actions.json 的校验错误列表（空 = 合法）。"""
-    path = get_dangerous_config_path(workspace)
+    path = get_dangerous_config_path(workspace, **_resolve_kwargs(cwd, config_dir))
     if not path.exists():
         return []
     try:
@@ -433,29 +542,49 @@ def validate_dangerous_actions(workspace: str | Path | None = None) -> list[str]
     return []
 
 
-def config_status(workspace: str | Path | None = None) -> dict[str, Any]:
-    """返回三份配置的存在性与校验结果摘要。"""
+def config_status(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """返回三份配置的**实际解析路径**、存在性与校验结果摘要。"""
+    kwargs = _resolve_kwargs(cwd, config_dir)
     paths = {
-        "webapp": get_webapp_config_path(workspace),
-        "agents": get_agents_config_path(workspace),
-        "dangerous": get_dangerous_config_path(workspace),
+        "webapp": get_webapp_config_path(workspace, **kwargs),
+        "agents": get_agents_config_path(workspace, **kwargs),
+        "dangerous": get_dangerous_config_path(workspace, **kwargs),
     }
     validators = {
         "webapp": validate_webapp_config,
         "agents": validate_agent_registry,
         "dangerous": validate_dangerous_actions,
     }
-    result: dict[str, Any] = {"workspace": str(get_workspace_root(workspace))}
+    project_dir = get_project_config_dir(cwd, config_dir)
+    result: dict[str, Any] = {
+        "workspace": str(get_workspace_root(workspace)),
+        "project_config_dir": str(project_dir) if project_dir else "",
+    }
     for name, path in paths.items():
         result[name] = {
             "path": str(path),
             "exists": path.exists(),
-            "errors": validators[name](workspace),
+            "source": (
+                "project"
+                if project_dir is not None and path.parent == project_dir
+                else ("explicit" if config_dir or os.environ.get(ENV_CONFIG_DIR) else "workspace")
+            ),
+            "errors": validators[name](workspace, **kwargs),
         }
     return result
 
 
 __all__ = [
+    "AGENTS_FILENAME",
+    "DANGEROUS_FILENAME",
+    "ENV_CONFIG_DIR",
+    "PROJECT_CONFIG_DIRNAME",
+    "WEBAPP_FILENAME",
     "AgentEntry",
     "AgentRegistry",
     "AttachmentsConfig",
@@ -470,10 +599,12 @@ __all__ = [
     "config_status",
     "get_agents_config_path",
     "get_dangerous_config_path",
+    "get_project_config_dir",
     "get_webapp_config_path",
     "load_agent_registry",
     "load_dangerous_actions",
     "load_webapp_config",
+    "resolve_config_path",
     "validate_agent_registry",
     "validate_dangerous_actions",
     "validate_webapp_config",
