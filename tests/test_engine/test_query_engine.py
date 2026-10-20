@@ -22,6 +22,7 @@ from openharness.engine.stream_events import (
     ErrorEvent,
     StatusEvent,
     ToolExecutionCompleted,
+    ToolExecutionProgress,
     ToolExecutionStarted,
 )
 from openharness.permissions import PermissionChecker, PermissionMode
@@ -336,6 +337,85 @@ async def test_query_engine_executes_tool_calls(tmp_path: Path, monkeypatch):
     assert isinstance(events[-1], AssistantTurnComplete)
     assert "alpha and beta" in events[-1].message.text
     assert len(engine.messages) == 4
+
+
+class _StreamingToolInput(BaseModel):
+    message: str = ""
+
+
+class _StreamingTool(BaseTool):
+    """A tool that emits incremental progress via context.stream_text."""
+
+    name = "streaming_test_tool"
+    description = "Test tool that streams progress."
+    input_model = _StreamingToolInput
+
+    async def execute(self, arguments: _StreamingToolInput, context: ToolExecutionContext) -> ToolResult:
+        del arguments
+        if context.stream_text is not None:
+            await context.stream_text("chunk one\n")
+            await context.stream_text("chunk two\n")
+        return ToolResult(output="final result")
+
+
+@pytest.mark.asyncio
+async def test_query_engine_streams_tool_progress(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("CLAUDE_CODE_COORDINATOR_MODE", raising=False)
+    registry = create_default_tool_registry()
+    registry.register(_StreamingTool())
+
+    engine = QueryEngine(
+        api_client=FakeApiClient(
+            [
+                _FakeResponse(
+                    message=ConversationMessage(
+                        role="assistant",
+                        content=[
+                            TextBlock(text="I will run the streaming tool."),
+                            ToolUseBlock(
+                                id="toolu_stream",
+                                name="streaming_test_tool",
+                                input={"message": "go"},
+                            ),
+                        ],
+                    ),
+                    usage=UsageSnapshot(input_tokens=4, output_tokens=3),
+                ),
+                _FakeResponse(
+                    message=ConversationMessage(
+                        role="assistant",
+                        content=[TextBlock(text="done")],
+                    ),
+                    usage=UsageSnapshot(input_tokens=8, output_tokens=6),
+                ),
+            ]
+        ),
+        tool_registry=registry,
+        permission_checker=PermissionChecker(PermissionSettings(mode=PermissionMode.FULL_AUTO)),
+        cwd=tmp_path,
+        model="claude-test",
+        system_prompt="system",
+    )
+
+    events = [event async for event in engine.submit_message("run it")]
+
+    progress = [event for event in events if isinstance(event, ToolExecutionProgress)]
+    assert len(progress) == 2
+    assert progress[0].tool_name == "streaming_test_tool"
+    assert progress[0].text == "chunk one\n"
+    assert progress[1].text == "chunk two\n"
+
+    # Progress must be emitted between tool start and tool completion.
+    positions = {
+        "started": next(i for i, e in enumerate(events) if isinstance(e, ToolExecutionStarted)),
+        "progress": [i for i, e in enumerate(events) if isinstance(e, ToolExecutionProgress)],
+        "completed": next(i for i, e in enumerate(events) if isinstance(e, ToolExecutionCompleted)),
+    }
+    assert all(positions["started"] < i < positions["completed"] for i in positions["progress"])
+
+    completed = [event for event in events if isinstance(event, ToolExecutionCompleted)]
+    assert len(completed) == 1
+    assert completed[0].output == "final result"
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,13 @@
   "port": 8787,
   "provider_profile": "",
   "api_tokens": ["please-change-this-token"],
+  "_browser_auth_comment": "浏览器免手工 token：前端启动时请求 GET /api/v1/bootstrap，服务端读取 api_tokens 并签发 HttpOnly 会话 Cookie（值不是 token 本身）。enabled=false 时前端必须用 VITE_API_TOKEN 或由反向代理注入 Authorization；对公网暴露建议关闭并前置 SSO/网关。",
+  "browser_auth": {
+    "enabled": true,
+    "ttl_seconds": 604800,
+    "cookie_name": "qaapp_session"
+  },
+  "_cors_comment": "前后端分机部署且使用浏览器会话 Cookie 时，cors_origins 必须写成明确来源（不能是 \"*\"），浏览器才会在跨域请求里带上 Cookie。",
   "cors_origins": ["*"],
   "static_dir": "",
   "approval_timeout_seconds": 300,

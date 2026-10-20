@@ -22,6 +22,12 @@ from qaapp.config import (
     validate_agent_registry,
     validate_dangerous_actions,
 )
+from qaapp.maintenance import (
+    apply_cleanup_plan,
+    build_cleanup_plan,
+    format_cleanup_plan,
+    format_cleanup_result,
+)
 from qaapp.service import QaWebService, configure_logging
 
 app = typer.Typer(
@@ -91,6 +97,67 @@ def config_cmd(
             indent=2,
         )
     )
+
+
+@app.command("cleanup")
+def cleanup_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
+    older_than_days: float | None = typer.Option(
+        None,
+        "--older-than-days",
+        help="清理闲置超过多少天的会话（默认取 webapp.json 的 idle_timeout_seconds）",
+    ),
+    keep_latest: int | None = typer.Option(
+        None,
+        "--keep-latest",
+        help="始终保留最近 N 个会话（默认取 webapp.json 的 max_active_bundles）",
+    ),
+    apply: bool = typer.Option(False, "--apply", help="真正执行删除（默认只 dry-run 展示计划）"),
+    as_json: bool = typer.Option(False, "--json", help="以 JSON 输出，便于脚本消费"),
+) -> None:
+    """清理闲置会话目录、会话快照与执行轨迹。
+
+    默认只展示计划（dry-run）。确认后加 ``--apply``。只处理 12 位十六进制会话 ID
+    对应的 qaapp 数据，不会碰 ohmo 个人助手的其它会话快照。
+    """
+    if older_than_days is not None and older_than_days < 0:
+        raise typer.BadParameter("--older-than-days 不能为负数")
+    if keep_latest is not None and keep_latest < 0:
+        raise typer.BadParameter("--keep-latest 不能为负数")
+
+    webapp = load_webapp_config(workspace, cwd=cwd, config_dir=config_dir)
+    older_than_seconds = (
+        None if older_than_days is None else float(older_than_days) * 86400
+    )
+    plan = build_cleanup_plan(
+        workspace,
+        webapp,
+        older_than_seconds=older_than_seconds,
+        keep_latest=keep_latest,
+    )
+
+    if not apply:
+        if as_json:
+            print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(format_cleanup_plan(plan))
+        return
+
+    result = apply_cleanup_plan(plan)
+    if as_json:
+        print(
+            json.dumps(
+                {"plan": plan.to_dict(), "result": result.to_dict()},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(format_cleanup_result(result))
+    if result.failed:
+        raise typer.Exit(code=1)
 
 
 @app.command("init")

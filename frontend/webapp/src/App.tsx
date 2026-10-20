@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import {
+  bootstrap,
   createConversation,
   fetchConversationFile,
   getConversation,
+  hasStaticToken,
   interruptConversation,
   listAgents,
   listConversationFiles,
@@ -328,7 +330,6 @@ function StepCard({
 // ---------------------------------------------------------------------------
 
 export default function App() {
-  const [token, setToken] = useState<string>(() => localStorage.getItem("qaapp_token") ?? "");
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -372,10 +373,6 @@ export default function App() {
   const submittingApprovalsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    localStorage.setItem("qaapp_token", token);
-  }, [token]);
-
-  useEffect(() => {
     localStorage.setItem("qaapp_render_markdown", markdownDefault ? "1" : "0");
   }, [markdownDefault]);
 
@@ -405,8 +402,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refreshAgents();
-    void refreshConversations();
+    // 先向服务端建立浏览器会话：服务端读取 webapp.json 的 api_tokens 并签发
+    // HttpOnly Cookie，因此页面不再需要用户手填 Bearer token。
+    let cancelled = false;
+    void (async () => {
+      try {
+        const info = await bootstrap();
+        if (cancelled) return;
+        if (info.auth_required && !info.browser_session && !hasStaticToken()) {
+          setError(
+            "服务端要求 Bearer token，但未启用浏览器会话。请启用 browser_auth，" +
+              "或在构建前端时设置 VITE_API_TOKEN，或由反向代理注入 Authorization。",
+          );
+        }
+      } catch (e) {
+        if (!cancelled) setError(`初始化会话失败：${(e as Error).message}`);
+      }
+      if (cancelled) return;
+      // 即使 bootstrap 失败也继续拉取：未配置 api_tokens 的部署本来就不需要会话。
+      await Promise.all([refreshAgents(), refreshConversations()]);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [refreshAgents, refreshConversations]);
 
   const updateMessage = useCallback((index: number, updater: (m: ChatMessage) => ChatMessage) => {
@@ -905,15 +923,6 @@ export default function App() {
           <button className="btn primary" onClick={() => void handleNewConversation()}>
             + 新建对话
           </button>
-        </div>
-
-        <div className="token-box">
-          <input
-            type="password"
-            placeholder="Bearer Token（可选）"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
         </div>
 
         <div className="conversation-list">

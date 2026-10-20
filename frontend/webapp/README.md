@@ -10,6 +10,20 @@
 - 中断当前回答
 - **附件上传**（Word / Excel / TXT，最多 2 个，选中即解析）与**会话文件面板**
 - 助手回答默认按 Markdown 渲染（表格 / 代码块 / 列表 / 引用），可看源码并一键复制
+- **免手工 token**：启动时自动建立浏览器会话（HttpOnly Cookie），页面不再显示 Bearer Token 输入框
+
+## 鉴权与会话（无需手填 token）
+
+页面启动时调用一次 `GET /api/v1/bootstrap`：
+
+- 后端读取 `webapp.json:api_tokens`，签发 HttpOnly 会话 Cookie；
+- 后续请求由浏览器自动携带 Cookie；token 不进入 localStorage / JS；
+- 服务重启后旧 Cookie 失效，前端收到 401 会自动重建一次并重试；
+- 只有服务端显式关闭 `browser_auth.enabled` 时，才需要构建时注入
+  `VITE_API_TOKEN`（或由反向代理 / SSO 注入 `Authorization`）。
+
+> `VITE_API_TOKEN` 会被打进前端产物，任何访问者都能从 JS 读到；公网部署优先用网关认证，
+> 不要依赖它。
 
 ## 附件上传与会话文件
 
@@ -23,7 +37,7 @@
 | 发送 | body 带 `attachment_ids`；用户气泡下方渲染附件芯片（本地状态） |
 | 历史回放 | 附件芯片来自轨迹里的 `attachments_ready` 事件（会话快照里只有文本，这是唯一的还原来源） |
 | 右侧「会话文件」抽屉 | 按 `uploads/extracted/scripts/tmp/outputs` 分组列出会话目录文件，支持下载、文本预览（前 2000 字符）、复制会话目录绝对路径；每轮回答结束后自动刷新 |
-| 下载鉴权 | 走 `fetch` + `Blob`（下载接口要 Bearer，`<a href>` 带不了请求头，token 拼进 URL 又会泄漏） |
+| 下载鉴权 | 走 `fetch` + `Blob`（下载接口要 Cookie 或 Bearer，`<a href>` 带不了请求头，token 拼进 URL 又会泄漏） |
 | 上传/回答期间 | 禁止再次选择 / 拖拽 / 删除附件，避免附件被挂到错误的轮次 |
 
 纯函数（`src/attachments.ts`：后缀白名单、`formatBytes`、上限筛选、状态文案）带零依赖自检：

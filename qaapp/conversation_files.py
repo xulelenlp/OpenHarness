@@ -38,6 +38,10 @@ SUBDIRS = ("uploads", "extracted", "scripts", "tmp", "outputs")
 INDEX_FILENAME = "attachments.json"
 META_FILENAME = "meta.json"
 
+#: 会话 ID 由服务端生成（uuid4 hex 前 12 位），也是会话目录名的白名单：
+#: 只允许这个形状，杜绝 ``../`` 之类的路径穿越。维护/清理逻辑复用同一个常量。
+CONVERSATION_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
+
 #: 文件名最大长度（字符），超出截断保留后缀。
 MAX_FILENAME_CHARS = 120
 
@@ -572,6 +576,7 @@ def build_context_block(
 
 
 __all__ = [
+    "CONVERSATION_ID_PATTERN",
     "INDEX_FILENAME",
     "META_FILENAME",
     "SUBDIRS",

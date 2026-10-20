@@ -613,19 +613,23 @@ class ExternalAgentTool(BaseTool):
     def _build_description(self) -> str:
         config = self._load_config()
         enabled = [agent for agent in config.agents if agent.enabled]
+        # 这里刻意不写死任何 agent id：新增智能体只需要改外部配置的
+        # name / description，工具描述与路由规则会自动跟着变。
         routing_rules = (
             "调用已配置的外部专业领域智能体，返回其完整报告。\n"
             "【路由规则：先判意图，再选智能体】当用户问题属于下方任一智能体的领域时，必须调用本工具："
             "把用户原话作为 message，agent 传对应的智能体 id；不要自行搜索文件或回答“没有数据/未接入接口”。\n"
             "意图判定优先级（从高到低）：\n"
-            "① 分析类（优先级最高）：问题含「分析、评估、解读、研判、预测、展望、对比、比较、复盘、总结」"
+            "① 分析类：问题含「分析、评估、解读、研判、预测、展望、对比、比较、复盘、总结」"
             "等动词，或「趋势、走势、情况、表现、变化、成因、原因、影响因素、同比、环比、增长、下降、异常、波动」"
-            "等表述，一律判为分析类，选“分析报告”智能体（description 含“分析报告/数据分析”者，如 power-grid-analysis）。"
-            "注意：即使句中同时出现某个具体指标或“福建/售电量”等词，只要带分析意图就按分析类处理，不要当成问数。\n"
-            "② 问数类（仅当完全没有分析意图）：用户只想要“一个具体数值/数据明细”，典型表述「XX 是多少」「查一下 XX 的数值」「XX 明细」，"
-            "才选“问数”智能体（description 含“查数/数据查询”者，如 smart-data-query）。\n"
-            "③ 知识/政策解读类：「是什么/为什么/如何理解/政策如何规定/文件怎么解读」选知识问答智能体。\n"
-            "判例：「分析福建2026年第二季度售电量情况」含“分析”与“情况”→ 分析类 → 选 power-grid-analysis，不选 smart-data-query。"
+            "等表述，优先选 description 含「分析报告 / 数据分析 / 指标分析」的智能体。"
+            "即使句中同时出现某个具体指标，只要带分析意图就按分析类处理，不要当成问数。\n"
+            "② 问数类（仅当完全没有分析意图）：用户只想要“一个具体数值 / 数据明细”，典型表述"
+            "「XX 是多少」「查一下 XX 的数值」「XX 明细」，选 description 含「问数 / 查询 / 数据明细」的智能体。\n"
+            "③ 知识 / 政策解读类：「是什么 / 为什么 / 如何理解 / 政策如何规定 / 文件怎么解读」，"
+            "选 description 含「知识 / 政策 / 解读」的智能体。\n"
+            "多个候选都沾边时，选 description 最具体、最贴近用户目标的一个；"
+            "都不匹配时不要强行调用，直接用自身能力回答或向用户说明缺少什么能力。"
         )
         lines = [routing_rules]
         if not enabled:
@@ -634,7 +638,7 @@ class ExternalAgentTool(BaseTool):
                 "external-agents.json file."
             )
         else:
-            lines.append("可用智能体（按领域匹配）：")
+            lines.append("可用智能体（按 description 的领域与触发场景匹配）：")
             for agent in enabled:
                 detail = agent.description or "(无描述)"
                 lines.append(f"- {agent.id}（{agent.name}）：{detail}")

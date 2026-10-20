@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from ohmo.workspace import get_sessions_dir
 from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import ConversationMessage, sanitize_conversation_messages
 from openharness.services.session_backend import SessionBackend
@@ -17,8 +18,6 @@ from openharness.services.session_storage import (
     _sanitize_snapshot_payload,
 )
 from openharness.utils.fs import atomic_write_text
-
-from ohmo.workspace import get_sessions_dir
 
 
 def get_session_dir(workspace: str | Path | None = None) -> Path:
@@ -32,7 +31,13 @@ def _session_key_token(session_key: str) -> str:
     return hashlib.sha1(session_key.encode("utf-8")).hexdigest()[:12]
 
 
-def _session_key_latest_path(workspace: str | Path | None, session_key: str) -> Path:
+def get_session_key_latest_path(workspace: str | Path | None, session_key: str) -> Path:
+    """Return the per-session-key ``latest-<hash>.json`` path.
+
+    qaapp uses ``session_key=conversation_id``; exposing the path lets
+    maintenance code delete the right snapshot without duplicating the hash
+    algorithm here and in ``qaapp.maintenance``.
+    """
     session_dir = get_session_dir(workspace)
     token = _session_key_token(session_key)
     return session_dir / f"latest-{token}.json"
@@ -79,7 +84,7 @@ def save_session_snapshot(
     latest_path = session_dir / "latest.json"
     atomic_write_text(latest_path, data)
     if session_key:
-        atomic_write_text(_session_key_latest_path(workspace, session_key), data)
+        atomic_write_text(get_session_key_latest_path(workspace, session_key), data)
     session_path = session_dir / f"session-{sid}.json"
     atomic_write_text(session_path, data)
     return latest_path
@@ -93,7 +98,7 @@ def load_latest(workspace: str | Path | None = None) -> dict[str, Any] | None:
 
 
 def load_latest_for_session_key(workspace: str | Path | None, session_key: str) -> dict[str, Any] | None:
-    path = _session_key_latest_path(workspace, session_key)
+    path = get_session_key_latest_path(workspace, session_key)
     if path.exists():
         return _sanitize_snapshot_payload(json.loads(path.read_text(encoding="utf-8")))
     return None

@@ -3,16 +3,16 @@
     "product_name": "ABC Tech",
     "slogan": "企业级AI助手"
   },
-  "active_profile": "qwen",
+  "active_profile": "mine",
   "profiles": {
-    "qwen": {
-      "label": "Qwen (DashScope)",
-      "provider": "dashscope",
+    "mine": {
+      "label": "Mine(自定义服务商）",
+      "provider": "mine",
       "api_format": "openai",
       "auth_source": "dashscope_api_key",
-      "default_model": "qwen-plus",
-      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key": "sk-1f81215f492743a7a671d4b8ff46c3af"
+      "default_model": "deepseek-flash",
+      "base_url": "http://ai.ac-energytech.com/v1",
+      "api_key": "sk-96Uy23xRBP09simq6L1QgRVdWskjxwpwHUzzKfV2cFVoemYn"
     },
     "openai-compatible": {
       "label": "DeepSeek (通用 OpenAI 兼容)",
@@ -24,14 +24,14 @@
     }
   },
 
-  "model": "qwen-plus",
+  "model": "deepseek-flash",
   "max_tokens": 16384,
-  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "base_url": "http://ai.ac-energytech.com/v1",
   "timeout": 30.0,
   "context_window_tokens": null,
   "auto_compact_threshold_tokens": null,
   "api_format": "openai",
-  "provider": "dashscope",
+  "provider": "mine",
   "max_turns": 200,
 
   "system_prompt": null,

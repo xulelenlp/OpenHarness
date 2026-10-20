@@ -115,6 +115,14 @@ class QueryEngine:
         """Update the active API client for future turns."""
         self._api_client = api_client
 
+    def set_tool_registry(self, tool_registry: ToolRegistry) -> None:
+        """Replace the tool registry used for future turns.
+
+        Hosts such as qaapp use this to apply a per-agent ``tools`` /
+        ``disallowed_tools`` policy without rebuilding the runtime.
+        """
+        self._tool_registry = tool_registry
+
     def set_max_turns(self, max_turns: int | None) -> None:
         """Update the maximum number of agentic turns per user input."""
         self._max_turns = None if max_turns is None else max(1, int(max_turns))

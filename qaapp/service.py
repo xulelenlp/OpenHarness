@@ -12,7 +12,7 @@ import contextlib
 import json
 import logging
 import os
-import re
+import secrets
 import time
 from collections import deque
 from pathlib import Path
@@ -39,6 +39,7 @@ from openharness.permissions.modes import PermissionMode
 from openharness.tools.base import ToolExecutionContext
 from openharness.ui.runtime import RuntimeBundle, build_runtime, close_runtime, start_runtime
 from qaapp.agent_router import AgentNotFoundError, NoDefaultAgentError, resolve_agent
+from qaapp.capabilities import build_capability_catalog
 from qaapp.config import (
     KIND_EXTERNAL,
     KIND_SUBAGENT,
@@ -51,6 +52,7 @@ from qaapp.config import (
     load_webapp_config,
 )
 from qaapp.conversation_files import (
+    CONVERSATION_ID_PATTERN,
     AttachmentError,
     AttachmentNotFound,
     AttachmentStore,
@@ -77,13 +79,10 @@ from qaapp.documents import (
 )
 from qaapp.external_agents import external_conversation_id, install_external_agent_tool
 from qaapp.script_tool import CONVERSATION_DIR_KEY, RunScriptTool
+from qaapp.tool_policy import build_agent_tool_registry
 from qaapp.trace import ConversationTraceStore
 
 logger = logging.getLogger(__name__)
-
-#: 会话 ID 由服务端生成（uuid4 hex 前 12 位）；用它做白名单校验可以彻底杜绝
-#: 「用 ../ 之类的路径穿越会话目录 / 快照文件」。
-CONVERSATION_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 
 #: 用户只上传文件、不输入文字时使用的默认提问。
 DEFAULT_ATTACHMENT_PROMPT = "请阅读并分析我上传的文件。"
@@ -233,6 +232,9 @@ class QaWebService:
         self.session_backend = OhmoSessionBackend(workspace)
         self._sessions: dict[str, ConversationSession] = {}
         self._lock = asyncio.Lock()
+        #: 浏览器会话 Cookie 的值：进程内随机生成，不是 api_token 本身，也不下发到 JS。
+        #: 服务重启后旧 Cookie 失效，前端下次加载会重新 bootstrap。
+        self._browser_session_value = secrets.token_urlsafe(32)
         self._warn_unresolved_external_agents()
         self.app = self._build_app()
 
@@ -657,14 +659,24 @@ class QaWebService:
         bundle = await self.ensure_bundle(session)
         engine = bundle.engine
 
-        # 系统提示 = agent 自带提示（没有则用运行时默认提示）+ 本会话工作区上下文。
-        # 上下文每轮重新生成（含本轮附件与目录清单），因此不会写进 messages 历史、
-        # 也不会随对话变长而重复堆积。
+        # 1) 先按 agents.json 的 tools / disallowed_tools 裁出本 Agent 的能力边界。
+        #    不生效的白名单等于没有边界，因此这里必须真正替换 engine 的工具表。
+        agent_tools = build_agent_tool_registry(bundle.tool_registry, agent)
+        engine.set_tool_registry(agent_tools)
+
+        # 2) 系统提示 = agent 自带提示 + 动态能力清单 + 本会话工作区上下文。
+        #    能力清单每轮从注册表生成：新增 Agent / 受限工具都会自动反映，
+        #    不需要再去手改 general 的 system_prompt。
         base_prompt = self._resolve_system_prompt(agent) or session.system_prompt_base or ""
-        context_block = self._conversation_context(session)
-        engine.set_system_prompt(
-            f"{base_prompt}\n\n{context_block}" if base_prompt else context_block
+        catalog = build_capability_catalog(
+            self.registry,
+            current_agent_id=agent.id,
+            available_tools={tool.name for tool in agent_tools.list_tools()},
         )
+        context_block = self._conversation_context(session)
+        prompt_parts = [part for part in (base_prompt, catalog, context_block) if part]
+        engine.set_system_prompt("\n\n".join(prompt_parts))
+
         if agent.model:
             engine.set_model(agent.model)
         if agent.max_turns:
@@ -867,25 +879,94 @@ class QaWebService:
                 allow_origins=self.webapp.cors_origins,
                 allow_methods=["*"],
                 allow_headers=["*"],
+                # 浏览器会话走 Cookie；前后端分机部署时必须把 cors_origins 配成
+                # 明确来源（不能是 "*"），浏览器才会在跨域请求里带上 Cookie。
+                allow_credentials=True,
             )
         ]
 
         async def _auth(request: Request):
+            """鉴权：优先 Bearer（API 客户端），其次浏览器会话 Cookie。
+
+            Cookie 由 ``GET /api/v1/bootstrap`` 用 ``api_tokens`` 的存在性签发，
+            值本身是进程内随机串——**不是 token**，也不进入 JS 可读范围。
+            """
             tokens = self.webapp.api_tokens
             if not tokens:
                 return None
             header = request.headers.get("authorization", "")
-            if not header.startswith("Bearer "):
-                return JSONResponse({"status": 401, "code": "unauthorized", "message": "缺少 Bearer token"}, status_code=401)
-            token = header[len("Bearer "):].strip()
-            if token not in tokens:
-                return JSONResponse({"status": 403, "code": "forbidden", "message": "token 无效"}, status_code=403)
-            return None
+            if header:
+                if not header.startswith("Bearer "):
+                    return JSONResponse(
+                        {"status": 401, "code": "unauthorized", "message": "Authorization 必须是 Bearer token"},
+                        status_code=401,
+                    )
+                token = header[len("Bearer "):].strip()
+                if token not in tokens:
+                    return JSONResponse(
+                        {"status": 403, "code": "forbidden", "message": "token 无效"},
+                        status_code=403,
+                    )
+                return None
+            browser_auth = self.webapp.browser_auth
+            cookie = request.cookies.get(browser_auth.cookie_name, "")
+            if (
+                browser_auth.enabled
+                and cookie
+                and secrets.compare_digest(cookie, self._browser_session_value)
+            ):
+                return None
+            return JSONResponse(
+                {
+                    "status": 401,
+                    "code": "unauthorized",
+                    "message": "缺少 Bearer token 或浏览器会话（请刷新页面重新建立会话）",
+                },
+                status_code=401,
+            )
 
         # --- 路由处理 ---
 
         async def healthz(request: Request):
             return JSONResponse({"status": "ok", "active_sessions": len(self._sessions)})
+
+        async def bootstrap(request: Request):
+            """浏览器启动引导：读取服务端配置的 token，签发 HttpOnly 会话 Cookie。
+
+            - 未配置 ``api_tokens``：``auth_required=false``，前端不需要任何凭据；
+            - 配置了 ``api_tokens`` 且 ``browser_auth.enabled``：签发 Cookie，
+              前端后续请求自动携带，**用户不再需要手填 token**；
+            - ``browser_auth.enabled=false``：不签发，前端需用 VITE_API_TOKEN
+              或在反向代理层注入 Authorization。
+            """
+            browser_auth = self.webapp.browser_auth
+            auth_required = bool(self.webapp.api_tokens)
+            can_session = bool(auth_required and browser_auth.enabled)
+            payload: dict[str, Any] = {
+                "auth_required": auth_required,
+                "browser_session": can_session,
+                "session_ttl_seconds": browser_auth.ttl_seconds if can_session else 0,
+            }
+            headers = {"Cache-Control": "no-store"}
+            if not can_session:
+                return JSONResponse(payload, headers=headers)
+
+            # 阻止「跨站页面静默建立会话」；curl / 服务端调用没有该头，保持可用。
+            site = request.headers.get("sec-fetch-site", "").lower()
+            if site and site not in {"same-origin", "same-site", "none"}:
+                return _error(403, "cross_site", "不允许从跨站页面建立浏览器会话")
+
+            response = JSONResponse(payload, headers=headers)
+            response.set_cookie(
+                browser_auth.cookie_name,
+                self._browser_session_value,
+                max_age=browser_auth.ttl_seconds,
+                httponly=True,
+                samesite="lax",
+                secure=request.url.scheme == "https",
+                path="/",
+            )
+            return response
 
         async def list_agents(request: Request):
             return JSONResponse(
@@ -1233,6 +1314,8 @@ class QaWebService:
 
         routes = [
             Route("/healthz", healthz, methods=["GET"]),
+            # 免鉴权：浏览器据此建立会话，用户不再手填 token（见 BrowserAuthConfig）。
+            Route("/api/v1/bootstrap", bootstrap, methods=["GET"]),
             Route("/api/v1/agents", list_agents, methods=["GET"]),
             Route("/api/v1/conversations", create_conversation, methods=["POST"]),
             Route("/api/v1/conversations", list_conversations_route, methods=["GET"]),
@@ -1298,6 +1381,17 @@ class QaWebService:
                 "请设置 api_tokens（见 README §9.1），或把 webapp.json 的 host 改回 127.0.0.1。",
                 resolved_host,
                 resolved_port,
+            )
+
+        if (
+            self.webapp.api_tokens
+            and self.webapp.browser_auth.enabled
+            and "*" in self.webapp.cors_origins
+        ):
+            logger.warning(
+                "浏览器会话提示：browser_auth 已启用且 cors_origins 含 '*'。"
+                "同源部署（static_dir 托管前端）可忽略；前后端分机部署时浏览器会拒绝"
+                "带凭据的跨域响应，请把 cors_origins 改成明确的前端来源（见 README §9.1）。"
             )
 
         uvicorn.run(

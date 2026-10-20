@@ -13,8 +13,8 @@
       "id": "general",
       "kind": "harness",
       "name": "通用助手",
-      "description": "任意领域开放问答，并可自动编排专业 Agent",
-      "system_prompt": "你是一个企业级智能助手。\n\n工作方式：\n1. 任意领域的开放问答（通用知识、文档、代码、写作、推理、日常任务等），优先使用你自身的能力回答；需要联网查证、读取本地文件或执行任务时，使用 web_search / read_file / bash 等内置工具。\n2. 当用户问题涉及以下专业领域时，调用 external_agent 工具获取专业结果（把用户原话作为 message，选择正确的 agent id）：\n   - power-grid-analysis：电网指标数据分析（售电量/线损/供电量等指标的分析、趋势、同比环比、影响因素）\n   - smart-data-query：业务数据明细与数值查询（“XX 是多少”“查一下 XX 明细”）\n   - knowledge-qa：知识/政策/文件解读（“是什么/为什么/如何理解”）\n\n原则：专业领域问题务必调用对应工具，不要凭空编造数据；其余问题用你自身知识直接回答。",
+      "description": "任意领域开放问答；按可调度能力自动编排专业 Agent 或本机会话执行",
+      "system_prompt": "你是一个企业级智能助手。你的目标是独立完成用户的任意任务：能直接回答就直接回答；需要专业业务能力或真实执行时，按下方「可调度能力」清单选择工具。\n\n工作原则：\n1. 不要向用户索要 token、接口地址、内部实现细节——这些是部署配置，不是任务的一部分。\n2. 专业领域问题（业务指标、明细数据、政策知识）优先调用对应的专业智能体，不要凭空编造数据。\n3. 需要真实计算、处理上传文件、生成图表/报告/CSV 时，用 run_script 在服务器 Python 环境执行，不要靠心算或让用户自己跑脚本。\n4. 需要最新外部事实时用 web_search / web_fetch 查证，并说明来源。\n5. 信息不足时只问一个最小澄清问题；能从对话、附件、会话目录推断的不要重复问。\n6. 多步任务边做边报告；失败时说明原因并给出替代方案，不要假装成功。\n\n输出格式：正文直接用 Markdown（标题、表格、列表、加粗），不要把整篇回答包在 ```markdown 代码围栏里——围栏只用于真正的代码或文件内容，否则前端只能把它显示成一大段代码。",
       "tools": [
         "*"
       ],
@@ -24,8 +24,7 @@
       "id": "power-grid-analysis",
       "kind": "external",
       "name": "电网指标数据分析",
-      "description": "售电量、线损等电网经营与技术指标的分析报告",
-      "external_ref": "power-grid-analysis",
+      "description": "【做什么】售电量、线损、供电量等电网经营与技术指标的分析与报告生成。【什么时候用】用户问趋势、同比环比、影响因素、异常波动，或要求“分析/评估/研判”时。【不适用】只想要一个具体数值或明细时用 smart-data-query；通用知识直接回答。",
       "external": {
         "type": "http",
         "enabled": true,
@@ -68,8 +67,7 @@
       "id": "smart-data-query",
       "kind": "external",
       "name": "智能问数",
-      "description": "业务数据明细查询与数值查询",
-      "external_ref": "smart-data-query",
+      "description": "【做什么】业务数据的明细查询与具体数值查询。【什么时候用】用户只想要一个数值或明细，如“XX 是多少”“查一下 XX 明细”，且没有分析意图。【不适用】要求趋势/原因/分析报告时用 power-grid-analysis。",
       "external": {
         "type": "http",
         "enabled": true,
@@ -130,8 +128,7 @@
       "id": "knowledge-qa",
       "kind": "external",
       "name": "知识问答",
-      "description": "通用知识问答",
-      "external_ref": "knowledge-qa",
+      "description": "【做什么】政策、文件、通用知识的解读与问答。【什么时候用】用户问“是什么/为什么/如何理解/政策怎么规定/文件怎么解读”。【不适用】需要实时业务数据或指标分析时用对应专业智能体。",
       "external": {
         "type": "http",
         "enabled": true,

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from openharness.api.client import AnthropicApiClient
 from openharness.config.paths import get_project_issue_file, get_project_pr_comments_file
@@ -35,7 +35,7 @@ from openharness.tools import create_default_tool_registry
 
 ScenarioSetup = Callable[[Path, Path], dict[str, object] | None]
 ScenarioValidate = Callable[[Path, str, list[str], int, int], tuple[bool, str]]
-FIXTURE_SERVER = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "fake_mcp_server.py"
+FIXTURE_SERVER = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "fake_mcp_server.py"
 
 
 @dataclass(frozen=True)

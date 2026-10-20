@@ -5,7 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from re import sub
 
+from ohmo.workspace import get_memory_dir, get_memory_index_path
 from openharness.commands import MemoryCommandBackend
+from openharness.memory.manager import (
+    MemoryLocation,
+    effective_memory_signature,
+    next_memory_path,
+    soft_delete_memory_entry,
+)
 from openharness.memory.scan import scan_memory_files
 from openharness.memory.schema import (
     SCHEMA_VERSION,
@@ -21,8 +28,6 @@ from openharness.memory.schema import (
 )
 from openharness.utils.file_lock import exclusive_file_lock
 from openharness.utils.fs import atomic_write_text
-
-from ohmo.workspace import get_memory_dir, get_memory_index_path
 
 
 def list_memory_files(workspace: str | Path | None = None) -> list[Path]:
@@ -56,10 +61,14 @@ def add_memory_entry(workspace: str | Path | None, title: str, content: str) -> 
             memory_dir=memory_dir,
         )
         duplicate = next(
-            (header for header in existing if _effective_signature(header.path, header.signature) == signature),
+            (
+                header
+                for header in existing
+                if effective_memory_signature(header.path, header.signature) == signature
+            ),
             None,
         )
-        path = duplicate.path if duplicate is not None else _next_memory_path(memory_dir, slug)
+        path = duplicate.path if duplicate is not None else next_memory_path(memory_dir, slug)
         now = utc_now()
         now_text = format_datetime(now)
         if path.exists():
@@ -108,49 +117,18 @@ def add_memory_entry(workspace: str | Path | None, title: str, content: str) -> 
 
 
 def remove_memory_entry(workspace: str | Path | None, name: str) -> bool:
-    """Soft-delete a memory file and remove its index entry."""
+    """Soft-delete a personal memory file and remove its index entry."""
     memory_dir = get_memory_dir(workspace)
-    matches = [
-        header
-        for header in scan_memory_files(
-            _scan_cwd(workspace, memory_dir),
-            max_files=None,
-            include_disabled=True,
-            include_expired=True,
+    return soft_delete_memory_entry(
+        MemoryLocation(
+            scan_cwd=_scan_cwd(workspace, memory_dir),
             memory_dir=memory_dir,
-        )
-        if name in {header.path.stem, header.path.name, header.title, header.id}
-    ]
-    if not matches:
-        return False
-    header = matches[0]
-    if header.disabled:
-        return False
-    path = header.path
-    with exclusive_file_lock(memory_dir / ".memory.lock"):
-        content = path.read_text(encoding="utf-8")
-        metadata, body, _, _ = split_memory_file(content)
-        metadata = memory_metadata_from_path(
-            path,
-            metadata,
-            body,
-            source="manual",
+            entrypoint=get_memory_index_path(workspace),
             default_type="personal",
             default_category="preference",
-        )
-        metadata["disabled"] = True
-        metadata["updated_at"] = format_datetime(utc_now())
-        atomic_write_text(path, render_memory_file(metadata, body))
-
-        index_path = get_memory_index_path(workspace)
-        if index_path.exists():
-            lines = [
-                line
-                for line in index_path.read_text(encoding="utf-8").splitlines()
-                if path.name not in line
-            ]
-            atomic_write_text(index_path, "\n".join(lines).rstrip() + "\n")
-    return True
+        ),
+        name,
+    )
 
 
 def load_memory_prompt(workspace: str | Path | None = None, *, max_files: int = 5) -> str | None:
@@ -193,27 +171,3 @@ def create_memory_command_backend(workspace: str | Path | None = None) -> Memory
 
 def _scan_cwd(workspace: str | Path | None, memory_dir: Path) -> Path:
     return Path(workspace) if workspace is not None else memory_dir.parent
-
-
-def _next_memory_path(memory_dir: Path, slug: str) -> Path:
-    path = memory_dir / f"{slug}.md"
-    if not path.exists():
-        return path
-    index = 2
-    while True:
-        candidate = memory_dir / f"{slug}_{index}.md"
-        if not candidate.exists():
-            return candidate
-        index += 1
-
-
-def _effective_signature(path: Path, existing_signature: str) -> str:
-    if existing_signature:
-        return existing_signature
-    try:
-        metadata, body, _, _ = split_memory_file(path.read_text(encoding="utf-8"))
-    except OSError:
-        return ""
-    memory_type = str(metadata.get("type") or "personal")
-    category = str(metadata.get("category") or "preference")
-    return compute_memory_signature(body, memory_type, category)

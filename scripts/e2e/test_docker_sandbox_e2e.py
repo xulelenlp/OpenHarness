@@ -6,10 +6,10 @@ lifecycle: image build, container start, command execution, file isolation,
 network isolation, resource limits, and cleanup.
 
 Run directly:
-    python3 scripts/test_docker_sandbox_e2e.py
+    python3 scripts/e2e/test_docker_sandbox_e2e.py
 
 Or via pytest (skipped automatically when Docker is unavailable):
-    uv run pytest scripts/test_docker_sandbox_e2e.py -v
+    uv run pytest scripts/e2e/test_docker_sandbox_e2e.py -v
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Bootstrap: ensure the src package is importable when run as a script
 # ---------------------------------------------------------------------------
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from openharness.config.settings import (
     DockerSandboxSettings,

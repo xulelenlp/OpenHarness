@@ -48,14 +48,6 @@ body,
   margin: 0 0 8px;
 }
 
-.token-box input {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-}
-
 .conversation-list {
   flex: 1;
   overflow-y: auto;

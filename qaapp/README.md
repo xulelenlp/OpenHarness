@@ -20,6 +20,10 @@
 8. [前端部署](#8-前端部署)
 9. [部署与运维注意事项（重点）](#9-部署与运维注意事项重点)
 10. [常见问题排查](#10-常见问题排查)
+11. [能力扩展规范](#11-能力扩展规范)
+
+> **先读架构**：本文偏「怎么跑、怎么部署」；分层架构、能力矩阵、扩展契约与
+> 决策链见 [`docs/QAAPP_ARCHITECTURE.zh-CN.md`](../docs/QAAPP_ARCHITECTURE.zh-CN.md)。
 
 ---
 
@@ -27,7 +31,10 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| 多 Agent 接入 | 通过 `agents.json` 声明 Agent：默认由 **harness 通用助手总控**（开放问答直接回答，需要专业能力时自动调用 `external_agent` 工具），也支持关键词路由 / LLM 分类 / 显式指定 |
+| 多 Agent 接入 | 通过 `agents.json` 声明 Agent：默认由 **harness 通用助手总控**（开放问答直接回答，需要专业能力时自动调用 `external_agent` 工具），也支持关键词路由 / 显式指定 |
+| 动态能力清单 | 每轮由 `agents.json` 生成「可调度能力 + 决策顺序」注入系统提示：新增 Agent 不用改通用提示词 |
+| Agent 工具边界 | `tools` / `disallowed_tools` 在运行时真正生效（支持 `*` 与通配），不再只是声明 |
+| 浏览器免手工 token | 前端启动时 `GET /api/v1/bootstrap`，服务端读取 `webapp.json:api_tokens` 并签发 HttpOnly 会话 Cookie；token 不进入页面/JS |
 | 高危操作门禁 | `dangerous-actions.json` 对删除/写文件/执行命令等做 allow / confirm / deny 三级控制 |
 | 对话 API | REST + SSE + WebSocket，保留 Agent 调用与操作系统文件能力 |
 | 对话历史 | 每个对话有独立 `conversation_id`，历史（含中间工具执行过程）可查询 |
@@ -48,7 +55,9 @@
    ▼
 qaapp/service.py          Starlette 服务，维护“每对话一个 RuntimeBundle”的会话池
    │
-   ├─ qaapp/agent_router.py    多 Agent 路由（显式 → 关键词 → LLM → 默认）
+   ├─ qaapp/agent_router.py    多 Agent 路由（显式 → 关键词 → 默认）
+   ├─ qaapp/capabilities.py    动态能力清单（由 agents.json 生成，含决策顺序）
+   ├─ qaapp/tool_policy.py     按 Agent 裁剪 tools / disallowed_tools
    ├─ qaapp/dangerous.py       高危操作门禁 + 权限检查器
    ├─ qaapp/config.py          三份配置的模型与加载
    ├─ qaapp/conversation_files.py  会话临时目录布局 + 附件索引 + 提示词上下文块
@@ -171,6 +180,10 @@ python -m qaapp webapp stop         # 停止
 ```bash
 curl http://127.0.0.1:8787/healthz
 # → {"status":"ok","active_sessions":0}
+
+curl http://127.0.0.1:8787/api/v1/bootstrap
+# 配了 api_tokens 时 → {"auth_required":true,"browser_session":true,...}
+# 前端据此自动建立 HttpOnly 会话，用户不需要在页面填 token（见 §9.1）
 ```
 
 > 服务**默认监听 `0.0.0.0:8787`（所有网卡）**，局域网内其他设备可用
@@ -280,12 +293,15 @@ abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须�
 | `host` | `0.0.0.0` | 监听地址。**默认监听所有网卡**，便于局域网内的 APP / 其他设备直接访问；仅需本机访问时改为 `127.0.0.1`。对外暴露务必配 `api_tokens`（见 §9.1） |
 | `port` | `8787` | 监听端口 |
 | `provider_profile` | `""` | 空=继承 `active_profile`；非空=指定 profile 名 |
-| `api_tokens` | `[]` | 静态 Bearer Token 列表；**空=不鉴权**，非空时除 healthz/agents/WS 外均需鉴权（见 §9.1） |
-| `cors_origins` | `["*"]` | 允许跨域来源；生产应限定域名 |
+| `api_tokens` | `[]` | 服务端 token 列表；**空=不鉴权**。非空时，API 客户端用 `Authorization: Bearer <token>`，浏览器用 `browser_auth` 自动建立会话（见 §9.1） |
+| `browser_auth.enabled` | `true` | 浏览器免手工 token：`/api/v1/bootstrap` 用 `api_tokens` 的存在性签发 HttpOnly 会话 Cookie。关闭后前端需 `VITE_API_TOKEN` 或反向代理注入 Authorization |
+| `browser_auth.ttl_seconds` | `604800` | 浏览器会话 Cookie 有效期（秒，默认 7 天） |
+| `browser_auth.cookie_name` | `"qaapp_session"` | Cookie 名；同主机多实例时用于区分 |
+| `cors_origins` | `["*"]` | 允许跨域来源；前后端分机 + 浏览器会话 Cookie 时必须写成明确来源（不能是 `"*"`） |
 | `static_dir` | `""` | 前端构建产物目录；非空则挂载为静态站点 |
 | `approval_timeout_seconds` | `300` | 高危操作审批超时（秒），超时按拒绝处理 |
-| `conversation.max_active_bundles` | `100` | 预留字段（当前未强制回收） |
-| `conversation.idle_timeout_seconds` | `86400` | 预留字段（当前未强制回收） |
+| `conversation.max_active_bundles` | `100` | `abcqa cleanup` 默认保留的最近会话数（`--keep-latest`） |
+| `conversation.idle_timeout_seconds` | `86400` | `abcqa cleanup` 默认的闲置阈值（秒；`--older-than-days` 可覆盖） |
 | `attachments.enabled` | `true` | 是否允许上传附件 |
 | `attachments.max_files_per_message` | `2` | 单条消息（单次上传请求）最多文件数 |
 | `attachments.max_file_mb` | `20.0` | 单文件大小上限（MB），超出返回 413 |
@@ -305,7 +321,12 @@ abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须�
 #### `agents.json` —— Agent 注册表与路由
 
 **推荐架构：harness 总控自动编排** —— 开放问答由通用助手直接回答；当模型判断问题
-属于专业领域时，自动调用 `external_agent` 工具。三个专业 Agent 仍注册、前端可显式指定：
+属于专业领域时，自动调用 `external_agent` 工具；需要真实计算/文件处理时用
+`run_script`。专业 Agent 仍注册、前端可显式指定：
+
+> **通用提示词里不要写死 agent id / 端点 / 关键词**。这些信息由运行时从
+> `agents.json` 生成「可调度能力清单」并追加到系统提示（见 `qaapp/capabilities.py`）。
+> 新增 Agent 只需改配置，下一轮模型就能看到。
 
 ```jsonc
 {
@@ -314,7 +335,7 @@ abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须�
   "agents": [
     {
       "id": "general", "kind": "harness",
-      "system_prompt": "你是通用助手：开放问答直接回答；涉及电网分析/数据查询/知识问答时调用 external_agent 工具",
+      "system_prompt": "你是企业级智能助手：能直接回答就直接回答；需要专业能力或真实执行时，按运行时注入的「可调度能力」清单选择工具。不要向用户索要 token / 接口地址。",
       "tools": ["*"], "permission_mode": "default"
     },
     // 外部 Agent 直接内联访问配置（endpoint/请求体/响应解析），不再另建文件
@@ -335,19 +356,29 @@ abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须�
 | --- | --- | --- |
 | `external` | 调用外部 HTTP/stdio 智能体（transport 由 external-agents 插件提供） | `external`（内联 endpoint/请求体/响应解析，推荐）；旧配置可仍用 `external_ref` |
 | `subagent` | 复用 OpenHarness 的 AgentDefinition | `subagent_type` |
-| `harness` | 内联运行，具备完整工具能力（**含 `external_agent` 工具，可自动编排其它 Agent**） | `system_prompt` / `system_prompt_file` / `tools` / `model` / `max_turns` / `permission_mode` |
+| `harness` | 内联运行，具备完整工具能力（**含 `external_agent` 工具，可自动编排其它 Agent**） | `system_prompt` / `system_prompt_file` / `tools` / `disallowed_tools` / `model` / `max_turns` / `permission_mode` |
+
+**`tools` / `disallowed_tools` 是硬边界**（运行时由 `qaapp/tool_policy.py` 生效）：
+
+- 省略或 `["*"]` = 全部工具；`[]` = 不允许任何工具；支持 `web_*`、`mcp_*` 等通配；
+- `disallowed_tools` 优先于 `tools`；
+- 被裁掉的工具不会出现在模型工具表，也不会出现在动态能力清单里。
 
 **两种工作方式（可并存）**：
 
 1. **harness 总控编排（默认）**：`default_agent` 指向一个 `harness` Agent、`routing.rules`
    留空。开放问答由 harness 用自身能力（模型知识 + `web_search`/`read_file`/`bash` 等
-   内置工具）直接回答；当模型判断问题属于专业领域时，自动调用 `external_agent` 工具
-   （该工具的描述会动态列出各专业 Agent 的名称、能力与意图判定规则）。
+   内置工具）直接回答；需要专业能力时调用 `external_agent`，需要真实执行时调用
+   `run_script`。每轮系统提示 = Agent 自身提示 + **动态能力清单** + 会话工作区上下文。
 2. **显式指定 / 关键词路由（可选）**：前端让用户选 Agent（请求带 `agent` 字段）；
    或在 `routing.rules` 配关键词规则做确定性快速分流。
 
 路由解析顺序：**显式指定（请求带 `agent`）→ 关键词规则（若配置，priority 降序、子串
-匹配）→ LLM 分类（仅 mode 含 `llm` 时）→ `default_agent`**。
+匹配）→ `default_agent`**。
+
+> LLM 分类是**预留能力**：`resolve_agent` 接受 `llm_classifier`，但 qaapp 服务端目前
+> 未注入；`routing.mode=llm` 不会产生额外模型调用。生产推荐「默认 harness + 动态能力
+> 清单」，比每轮先做一次分类调用更省成本、更可解释。
 
 #### `dangerous-actions.json` —— 高危操作策略
 
@@ -462,6 +493,8 @@ settings 的 `allowed_tools` → 基础权限模式。
 ```bash
 abcqa init [--workspace DIR] [--force]     # 写入三份示例配置
 abcqa config [--workspace DIR]             # 三份配置存在性与校验结果
+abcqa cleanup [--older-than-days N] [--keep-latest N] [--apply] [--json]
+                                           # 清理闲置会话目录/快照/轨迹（默认 dry-run）
 abcqa agents list                          # 列出注册的 Agent
 abcqa agents validate                      # 校验 agents.json（exit 1 表示有错）
 abcqa dangerous validate                   # 校验 dangerous-actions.json
@@ -477,6 +510,7 @@ abcqa webapp start|stop|status [--workspace DIR]
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
 | GET | `/healthz` | **否** | 健康检查 |
+| GET | `/api/v1/bootstrap` | **否** | 浏览器启动引导：返回是否需要鉴权；启用 `browser_auth` 时签发 HttpOnly 会话 Cookie |
 | GET | `/api/v1/agents` | **否** | Agent 列表 |
 | POST | `/api/v1/conversations` | 是 | 创建对话 → `{"conversation_id": "..."}` |
 | GET | `/api/v1/conversations` | 是 | 列出对话（`?limit=&offset=`） |
@@ -490,8 +524,10 @@ abcqa webapp start|stop|status [--workspace DIR]
 | POST | `/api/v1/conversations/{id}/interrupt` | 是 | 中断当前回答 |
 | WS | `/api/v1/conversations/{id}/stream` | **否** | WebSocket 流式订阅 |
 
-> 「鉴权」列 = 配置了 `api_tokens` 之后是否校验 `Authorization: Bearer <token>`。
-> 三个「否」的端点在开启鉴权后仍然开放，见 §9.1。
+> 「鉴权」列 = 配置了 `api_tokens` 之后是否要求凭据。浏览器默认走 `browser_auth`
+> 的 HttpOnly 会话 Cookie（用户无需手填 token）；API 客户端仍用
+> `Authorization: Bearer <token>`。`/healthz`、`/api/v1/bootstrap`、`/api/v1/agents`
+> 与 WebSocket 在开启鉴权后仍然开放，见 §9.1。
 
 **发送消息**：
 
@@ -574,6 +610,8 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
 
 前端交互还包含（详见 [`frontend/webapp/README.md`](../frontend/webapp/README.md)）：
 
+- **免手工 token**：页面启动时调用 `/api/v1/bootstrap` 建立 HttpOnly 会话，不再显示
+  Bearer Token 输入框；token 由服务端从 `webapp.json` 读取，不进入 localStorage / JS。
 - **附件上传**：输入框左侧「📎 附件」按钮 + 拖拽到消息区/输入框；最多 2 个，选中即上传并
   显示解析状态；发送时把 `attachment_id` 随消息带给后端；刷新页面后靠 `attachments_ready`
   轨迹事件还原附件芯片。
@@ -588,7 +626,8 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
 | 变量 | 作用 | 用在哪 |
 | --- | --- | --- |
 | `VITE_API_TARGET` | **Vite 开发/预览服务器**代理转发的目标地址（服务端转发） | `npm run dev` / `npm run preview`；浏览器同源请求，**不产生跨域** |
-| `VITE_API_BASE_URL` | **浏览器直连**后端的基址 | 仅当前端产物部署在与后端不同的域名/端口时；需后端 `cors_origins` 放行 |
+| `VITE_API_BASE_URL` | **浏览器直连**后端的基址 | 仅当前端产物部署在与后端不同的域名/端口时；需后端 `cors_origins` 放行（不能是 `"*"`，否则 Cookie 不生效） |
+| `VITE_API_TOKEN` | 构建时写死的 Bearer token（可选兜底） | 仅当 `browser_auth.enabled=false`（公网 / SSO 场景）；会打进前端产物，公网慎用 |
 
 配置方式（**推荐第 2 种**，长期生效且不进版本库）：
 
@@ -642,12 +681,42 @@ VITE_API_BASE_URL=http://192.168.139.144:8787 npm run build
 > 因此 `api_tokens` **强烈建议务必配置**；留空等于把「对话 API + 文件写入 + shell 执行」
 > 的能力开放给同网段所有人。仅需本机访问时，把 `host` 改回 `127.0.0.1`。
 
-`api_tokens` 非空时，**以下端点仍不鉴权**：`/healthz`、`/api/v1/agents`、
-WebSocket `/stream`。其余 API 需 `Authorization: Bearer <token>`。
+#### 浏览器：免手工 token（默认）
+
+页面不再要求用户填 Bearer Token。流程是：
+
+```text
+浏览器 GET /api/v1/bootstrap
+  服务端读取 webapp.json:api_tokens
+  → 签发 Set-Cookie: qaapp_session=<进程内随机值>; HttpOnly; SameSite=Lax
+浏览器后续请求自动携带 Cookie
+```
+
+- Cookie 值**不是 token 本身**，也不进入 localStorage / JS；
+- `api_tokens` 为空时 `auth_required=false`，前端不需要任何凭据；
+- 服务重启后随机值变化，前端收到 401 会自动重建一次会话；
+- 关闭：`webapp.json` 设 `"browser_auth": {"enabled": false}`，此时前端需
+  `VITE_API_TOKEN` 构建，或由反向代理 / SSO 注入 `Authorization`。
+
+> ⚠️ **边界**：能访问 `/api/v1/bootstrap` 的客户端都能建立会话。它是「免手工输入」的
+> 体验优化，**不是访问控制边界**。公网部署必须在网关层做认证/限流，或关闭
+> `browser_auth` 使用严格 Bearer。
+
+#### API 客户端：Bearer
+
+API 客户端（APP / curl / 服务端调用）仍使用：
+
+```bash
+Authorization: Bearer <api_tokens 里的任意一个>
+```
+
+`api_tokens` 非空时，**以下端点仍不鉴权**：`/healthz`、`/api/v1/bootstrap`、
+`/api/v1/agents`、WebSocket `/stream`。其余 API 需要 Cookie 或 Bearer。
 
 - `api_tokens` 为空 = 完全开放，**仅限本机/可信内网**。
-- 生产对公网暴露时，建议：① 配 `api_tokens`；② 在反向代理（Nginx）层对
-  `/api/v1/*` 统一加鉴权/限流，把 healthz/agents/ws 一并纳入管控；③ 用 TLS。
+- 生产对公网暴露时，建议：① 配 `api_tokens`；② 在反向代理（Nginx/Caddy）层对
+  `/api/v1/*`（含 bootstrap/agents/ws）统一加认证/限流；③ 用 TLS；④ 必要时关闭
+  `browser_auth`，只允许网关注入 Authorization。
 
 ### 9.2 会话是「单进程内存 + 磁盘快照」
 
@@ -713,7 +782,15 @@ workspace 下：
 `web_fetch`、`agent`、`task_*`、`cron_*`、`team_*`、`skill`、`mcp_*`、`todo_write`、
 `ask_user_question`、`send_message`、`enter_plan_mode`、`exit_plan_mode`、
 `enter_worktree`、`exit_worktree`、`notebook_edit`、`image_to_text`、
-`image_generation`、`sleep` 等。以 `abcqa agents list` / 运行时 `tool_search` 为准。
+`image_generation`、`sleep` 等。
+
+qaapp 额外注入：
+
+- `run_script` —— 会话目录内执行 Python/Node（脚本固定写 `scripts/`，产物 `outputs/`）；
+- `external_agent` —— 调用 `agents.json` 注册的外部智能体（插件提供）。
+
+以 `abcqa agents list` / 运行时 `tool_search` 为准。`tools` / `disallowed_tools`
+里的名字必须与真实工具名一致；支持 `*` 与 `web_*`、`mcp_*` 这类通配。
 
 ### 9.9 密钥安全（重要）
 
@@ -729,8 +806,9 @@ workspace 下：
   否则 Agent 工具调用会被拒。
 - 同一对话同一时刻只处理一轮（`busy` 状态），并发发送会得到 409；可调
   `/interrupt` 中断。
-- `conversation.max_active_bundles` / `idle_timeout_seconds` 目前是**预留字段，
-  未强制回收**——长期运行需自行关注会话池内存占用。
+- `conversation.max_active_bundles` / `idle_timeout_seconds` 同时是 `abcqa cleanup` 的
+  默认策略：前者始终保留最近 N 个会话，后者是闲置阈值。清理只删 qaapp 的 12 位会话 ID
+  数据，不会碰 ohmo 个人助手的其它会话快照（见 §9.11）。
 
 ### 9.11 会话临时目录、附件上传与 `run_script`
 
@@ -748,9 +826,17 @@ workspace 下：
 ```
 
 - 目录在会话首次被访问时幂等创建（`POST /conversations`、上传、发消息都会触发）。
-- **不会随会话池回收而删除**，也没有自动过期清理：文件就是「本会话的临时工作区」，
-  需要清理时手工删 `~/.ohmo/conversations/<id>/` 即可（建议按 `meta.json` 的
-  `last_turn_at` 定期清理，删除前确认会话不再需要）。
+- **不会随会话池回收而删除**：文件就是「本会话的临时工作区」。清理统一走
+  `abcqa cleanup`（**默认 dry-run**，确认后加 `--apply`）：
+  - 只处理 12 位十六进制会话 ID 的目录；
+  - 同时清理对应的 `sessions/session-<id>.json`、`sessions/latest-<hash>.json`
+    与 `sessions/traces/<id>.jsonl`，避免留下孤儿文件；
+  - 默认策略取 `conversation.idle_timeout_seconds`（闲置阈值）与
+    `conversation.max_active_bundles`（始终保留最近 N 个）；
+  - 不跟随符号链接；路径不在会话根/会话目录/轨迹目录内的项会被跳过。
+  - 需要定期回收时用 cron，例如每天 03:00：
+    `0 3 * * * cd /path/to/repo && /path/to/abcqa cleanup --apply >> /var/log/qaapp-cleanup.log 2>&1`
+    （先手动跑一次 dry-run 确认计划，再上定时任务）。
 - 多实例部署时该目录在**本机磁盘**上：请与会话路由保持一致（粘性会话），
   或把 `conversation_workspace.root` 指到共享存储。
 
@@ -800,6 +886,9 @@ workspace 下：
 | `abcqa` 找不到命令（command not found） | 依赖通常没问题，只是命令脚本未生成：改了 `pyproject.toml` 后要重新 `pip install -e .`；或直接用 `python -m qaapp` 等价替代，见 §3.2 |
 | 首次调模型报「未配置认证」/ 直接退出 | `settings.json` 未配 `active_profile` 与 `api_key`，见 §5.1 |
 | `abcqa config` 显示 `errors` 非空 | 对应 JSON 非法（字段/枚举错）；按提示修正 |
+| 页面没有 Bearer Token 输入框了，却仍报「缺少 Bearer token」 | 确认 `webapp.json` 的 `browser_auth.enabled=true`；浏览器是否禁用了 Cookie；反向代理是否剥掉了 `Set-Cookie`；`cors_origins` 是否写成 `"*"`（分机部署时必须明确来源）。也可临时用 `VITE_API_TOKEN` 兜底 |
+| 新增 Agent 后模型不调用它 | ① 是否重启服务；② `description` 是否写清「做什么/何时用/不适用」；③ 当前 Agent 的 `tools` 是否包含 `external_agent`；④ `abcqa agents list` 确认实际生效文件 |
+| 配了 `tools` 但模型还能调用别的工具 | 确认已升级到包含 `qaapp/tool_policy.py` 的版本；旧版本只声明不生效。`disallowed_tools` 优先于 `tools` |
 | 发送消息 404 `agent_not_found` | 请求指定的 `agent` 或路由命中的 agent 未在 `agents.json` 注册 |
 | 发送消息 404 `no_default_agent` | 无关键词命中且未设 `default_agent` |
 | 外部 Agent 报「工具未加载（插件缺失）」 | `plugins/external-agents` 未加载；检查 `extra_plugin_roots` 与插件目录 |
@@ -816,6 +905,7 @@ workspace 下：
 | 脚本没生成在会话目录 | 让模型用 `run_script` 工具（会自动落到 `scripts/`）；若用 `bash` 手写，需要显式给会话目录绝对路径（§9.11） |
 | 生成脚本时反复弹审批 | 会话目录内的写文件本就免确认；执行类工具（`bash`/`run_script`）默认仍需确认，可配 `{"tool":"run_script","action":"allow"}` 放开 |
 | 后台启动后端口没起来 | 看 `<workspace>/logs/webapp.log`；`abcqa webapp status` 看 pid |
+| 会话目录/磁盘越来越大 | 先 `abcqa cleanup` 看 dry-run 计划；确认后 `abcqa cleanup --apply`。可用 `--older-than-days` / `--keep-latest` 临时覆盖配置默认值（§9.11） |
 | 长时间只显示「思考中…」，看不到思考过程/工具步骤/审批 | 用 §10.1 的三层日志定位；最常见是 SSE 分帧不兼容或反向代理缓冲 |
 
 ### 10.1 排查「只有思考中…、看不到中间过程」
@@ -878,10 +968,52 @@ workspace 下：
 
 ---
 
+## 11. 能力扩展规范
+
+完整的分层架构、能力矩阵、扩展契约与决策链见
+[`docs/QAAPP_ARCHITECTURE.zh-CN.md`](../docs/QAAPP_ARCHITECTURE.zh-CN.md)。
+这里只放最常用的「新增能力」检查清单。
+
+### 11.1 新增外部智能体（纯配置）
+
+```text
+config/agents.json → agents[] 追加 { id, kind:"external", name, description, external:{...} }
+→ abcqa agents validate
+→ 重启服务
+→ 问一个该领域的问题，确认 agent_routed / tool_started(tool_name=external_agent)
+```
+
+必须写清 `description`（做什么 / 何时用 / 不适用）；**不要**改通用助手的
+`system_prompt`，运行时能力清单会自动生成。
+
+### 11.2 新增 harness 智能体（独立人设/工具边界）
+
+配置 `kind:"harness"`，用 `tools` / `disallowed_tools` 划边界；提示词只写角色、
+工作原则、输出格式。`tools` 现在是硬边界，支持 `*` 与 fnmatch 通配。
+
+### 11.3 新增工具（代码）
+
+1. 继承 `BaseTool`（`qaapp/xxx_tool.py` 或 `plugins/<name>/tools/`）；
+2. 在 `ensure_bundle` 注册（qaapp 会话级）或由插件自动发现；
+3. 声明 `is_read_only`，在 `dangerous-actions.json` 配默认策略；
+4. 输出有上限、错误用 `ToolResult(is_error=True)`；
+5. 加单测并更新 §9.8 工具名清单。
+
+### 11.4 扩展完成的判定
+
+- [ ] 旧配置不写新字段仍能启动；
+- [ ] `abcqa config` / `agents validate` 通过；
+- [ ] 至少一条集成路径（真实消息 → 路由 → 工具/外部 Agent → SSE 事件）；
+- [ ] 前端无需改代码即可看到新能力（或已同步更新前端）；
+- [ ] 文档的配置表 / API 表 / 工具清单已更新；
+- [ ] 只改配置即可关闭新能力，无需回滚代码。
+
+---
+
 ## 附：测试与校验
 
 ```bash
-# 后端：配置 / 路由 / 门禁 / 轨迹 / 附件解析 / 会话目录 / run_script
+# 后端：配置 / 路由 / 能力清单 / 工具白名单 / 门禁 / 轨迹 / 附件 / 会话目录 / run_script
 pytest tests/test_qaapp -q
 ruff check qaapp tests/test_qaapp
 

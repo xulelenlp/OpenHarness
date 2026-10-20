@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from re import sub
 
@@ -10,9 +11,10 @@ from openharness.memory.scan import scan_memory_files
 from openharness.memory.schema import (
     DEFAULT_MEMORY_SCOPE,
     DEFAULT_MEMORY_TYPE,
+    SCHEMA_VERSION,
     MemoryScope,
     MemoryType,
-    SCHEMA_VERSION,
+    coerce_int,
     compute_memory_signature,
     first_content_line,
     format_datetime,
@@ -20,15 +22,104 @@ from openharness.memory.schema import (
     memory_metadata_from_path,
     render_memory_file,
     split_memory_file,
-    coerce_int,
     utc_now,
 )
 from openharness.utils.file_lock import exclusive_file_lock
 from openharness.utils.fs import atomic_write_text
 
 
-def _memory_lock_path(cwd: str | Path) -> Path:
-    return get_project_memory_dir(cwd) / ".memory.lock"
+@dataclass(frozen=True)
+class MemoryLocation:
+    """Where a memory store lives.
+
+    Project memory and ohmo personal memory share the same file format and
+    soft-delete workflow, but have different directories, entrypoints, and
+    default type/category values.  This small value object lets both layers
+    reuse one lifecycle implementation.
+    """
+
+    scan_cwd: Path
+    memory_dir: Path
+    entrypoint: Path
+    default_type: str = DEFAULT_MEMORY_TYPE
+    default_category: str = "knowledge"
+
+
+def next_memory_path(memory_dir: Path, slug: str) -> Path:
+    """Return a non-conflicting ``<slug>.md`` path in *memory_dir*."""
+    path = memory_dir / f"{slug}.md"
+    if not path.exists():
+        return path
+    index = 2
+    while True:
+        candidate = memory_dir / f"{slug}_{index}.md"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def effective_memory_signature(path: Path, existing_signature: str) -> str:
+    """Return the stored signature, or recompute it for legacy files."""
+    if existing_signature:
+        return existing_signature
+    try:
+        metadata, body, _, _ = split_memory_file(path.read_text(encoding="utf-8"))
+    except OSError:
+        return ""
+    memory_type = str(metadata.get("type") or "personal")
+    category = str(metadata.get("category") or "preference")
+    return compute_memory_signature(body, memory_type, category)
+
+
+def soft_delete_memory_entry(location: MemoryLocation, name: str) -> bool:
+    """Soft-delete a memory file and remove its index entry.
+
+    Shared by project memory (``openharness.memory``) and personal memory
+    (``ohmo.memory``) so the two stores cannot drift in how they remove
+    entries.
+    """
+    matches = [
+        header
+        for header in scan_memory_files(
+            location.scan_cwd,
+            max_files=None,
+            include_disabled=True,
+            include_expired=True,
+            memory_dir=location.memory_dir,
+        )
+        if name in {header.path.stem, header.path.name, header.title, header.id}
+    ]
+    if not matches:
+        return False
+    header = matches[0]
+    if header.disabled:
+        return False
+    path = header.path
+    with exclusive_file_lock(location.memory_dir / ".memory.lock"):
+        if path.exists():
+            content = path.read_text(encoding="utf-8")
+            metadata, body, _, _ = split_memory_file(content)
+            metadata = memory_metadata_from_path(
+                path,
+                metadata,
+                body,
+                source="manual",
+                default_type=location.default_type,
+                default_category=location.default_category,
+            )
+            metadata["disabled"] = True
+            metadata["updated_at"] = format_datetime(utc_now())
+            atomic_write_text(path, render_memory_file(metadata, body))
+
+        entrypoint = location.entrypoint
+        if entrypoint.exists():
+            lines = [
+                line
+                for line in entrypoint.read_text(encoding="utf-8").splitlines()
+                if path.name not in line
+            ]
+            atomic_write_text(entrypoint, "\n".join(lines).rstrip() + "\n")
+    return True
 
 
 def list_memory_files(cwd: str | Path) -> list[Path]:
@@ -69,10 +160,14 @@ def add_memory_entry(
             memory_dir=memory_dir,
         )
         duplicate = next(
-            (header for header in existing if _effective_signature(header.path, header.signature) == signature),
+            (
+                header
+                for header in existing
+                if effective_memory_signature(header.path, header.signature) == signature
+            ),
             None,
         )
-        path = duplicate.path if duplicate is not None else _next_memory_path(memory_dir, slug)
+        path = duplicate.path if duplicate is not None else next_memory_path(memory_dir, slug)
         now = utc_now()
         now_text = format_datetime(now)
         if path.exists():
@@ -122,62 +217,12 @@ def add_memory_entry(
 
 
 def remove_memory_entry(cwd: str | Path, name: str) -> bool:
-    """Soft-delete a memory file and remove its index entry."""
-    matches = [
-        header
-        for header in scan_memory_files(
-            cwd,
-            max_files=None,
-            include_disabled=True,
-            include_expired=True,
-        )
-        if name in {header.path.stem, header.path.name, header.title, header.id}
-    ]
-    if not matches:
-        return False
-    header = matches[0]
-    if header.disabled:
-        return False
-    path = header.path
-    with exclusive_file_lock(_memory_lock_path(cwd)):
-        if path.exists():
-            content = path.read_text(encoding="utf-8")
-            metadata, body, _, _ = split_memory_file(content)
-            metadata = memory_metadata_from_path(path, metadata, body, source="manual")
-            metadata["disabled"] = True
-            metadata["updated_at"] = format_datetime(utc_now())
-            atomic_write_text(path, render_memory_file(metadata, body))
-
-        entrypoint = get_memory_entrypoint(cwd)
-        if entrypoint.exists():
-            lines = [
-                line
-                for line in entrypoint.read_text(encoding="utf-8").splitlines()
-                if path.name not in line
-            ]
-            atomic_write_text(entrypoint, "\n".join(lines).rstrip() + "\n")
-    return True
-
-
-def _next_memory_path(memory_dir: Path, slug: str) -> Path:
-    path = memory_dir / f"{slug}.md"
-    if not path.exists():
-        return path
-    index = 2
-    while True:
-        candidate = memory_dir / f"{slug}_{index}.md"
-        if not candidate.exists():
-            return candidate
-        index += 1
-
-
-def _effective_signature(path: Path, existing_signature: str) -> str:
-    if existing_signature:
-        return existing_signature
-    try:
-        metadata, body, _, _ = split_memory_file(path.read_text(encoding="utf-8"))
-    except OSError:
-        return ""
-    memory_type = str(metadata.get("type") or "project")
-    category = str(metadata.get("category") or "knowledge")
-    return compute_memory_signature(body, memory_type, category)
+    """Soft-delete a project memory file and remove its index entry."""
+    return soft_delete_memory_entry(
+        MemoryLocation(
+            scan_cwd=Path(cwd),
+            memory_dir=get_project_memory_dir(cwd),
+            entrypoint=get_memory_entrypoint(cwd),
+        ),
+        name,
+    )

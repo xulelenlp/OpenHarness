@@ -119,10 +119,25 @@ def get_dangerous_config_path(
 
 
 class ConversationPoolConfig(BaseModel):
-    """会话池配置。"""
+    """会话池与磁盘保留策略。
 
+    这两个字段同时是 ``abcqa cleanup`` 的默认值：
+
+    - ``max_active_bundles`` → 始终保留最近 N 个会话（``--keep-latest``）；
+    - ``idle_timeout_seconds`` → 超过该闲置时长的会话才允许清理（``--older-than-days``）。
+    """
+
+    #: 清理时始终保留的最近会话数；``abcqa cleanup`` 的默认 keep-latest。
     max_active_bundles: int = 100
+    #: 会话闲置多久后允许清理（秒）；cleanup 的默认闲置阈值。
     idle_timeout_seconds: int = 86400
+
+    @field_validator("max_active_bundles", "idle_timeout_seconds")
+    @classmethod
+    def _validate_non_negative(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("conversation limits must be >= 0")
+        return value
 
 
 #: 允许上传的文档后缀（解析器支持的范围）。
@@ -184,6 +199,33 @@ class ConversationWorkspaceConfig(BaseModel):
     script_output_max_chars: int = 40_000
 
 
+class BrowserAuthConfig(BaseModel):
+    """``webapp.json:browser_auth`` —— 浏览器免手工 token 的会话认证。
+
+    启用后，前端启动时请求一次 ``GET /api/v1/bootstrap``，服务端读取
+    ``webapp.json`` 的 ``api_tokens`` 并签发一个 **HttpOnly 会话 Cookie**
+    （值由进程内随机密钥生成，不是 token 本身），后续请求凭 Cookie 鉴权。
+
+    这样用户无需在页面里填写 token，token 也不会进入 localStorage / JS 可读范围。
+    代价是：**能访问 ``/api/v1/bootstrap`` 的客户端都能建立会话**，所以它只是
+    「免手工输入」的体验优化，不是访问控制边界。对公网暴露时请关闭本项，改用
+    反向代理 / SSO 注入 ``Authorization``，或在前端构建时设置 ``VITE_API_TOKEN``。
+    """
+
+    enabled: bool = True
+    #: 会话 Cookie 有效期（秒）；默认 7 天。
+    ttl_seconds: int = 7 * 24 * 3600
+    #: Cookie 名；同一主机多实例部署时可用它区分。
+    cookie_name: str = "qaapp_session"
+
+    @field_validator("ttl_seconds")
+    @classmethod
+    def _validate_ttl(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("browser_auth.ttl_seconds must be > 0")
+        return value
+
+
 class WebappConfig(BaseModel):
     """``webapp.json`` —— Web 服务配置。"""
 
@@ -195,6 +237,8 @@ class WebappConfig(BaseModel):
     #: 为空 = 继承 settings.json 的 active_profile；否则显式指定 profile。
     provider_profile: str = ""
     api_tokens: list[str] = Field(default_factory=list)
+    #: 浏览器端免手工 token：服务端用 api_tokens 签发 HttpOnly 会话 Cookie。
+    browser_auth: BrowserAuthConfig = Field(default_factory=BrowserAuthConfig)
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     static_dir: str = ""
     conversation: ConversationPoolConfig = Field(default_factory=ConversationPoolConfig)
@@ -210,6 +254,12 @@ class WebappConfig(BaseModel):
         if not 0 <= value <= 65535:
             raise ValueError("port must be in 0..65535")
         return value
+
+    @field_validator("api_tokens")
+    @classmethod
+    def _clean_tokens(cls, values: list[str]) -> list[str]:
+        """去掉空串/首尾空白，避免 ``[""]`` 被误判成“已配置 token”。"""
+        return [token.strip() for token in values if token and token.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -588,6 +638,7 @@ __all__ = [
     "AgentEntry",
     "AgentRegistry",
     "AttachmentsConfig",
+    "BrowserAuthConfig",
     "ConversationPoolConfig",
     "ConversationWorkspaceConfig",
     "DangerousActions",

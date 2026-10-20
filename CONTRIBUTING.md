@@ -33,9 +33,13 @@ cd ../..
 Run the same core checks that CI runs before opening a PR:
 
 ```bash
-ruff check src tests scripts
+ruff check src tests scripts qaapp
 pytest -q
 ```
+
+`tests/` is the CI surface. Manual E2E suites under `scripts/e2e/` need real model
+calls, Docker, or an interactive TUI; run them only when your change touches those
+areas, and follow [`scripts/README.md`](scripts/README.md).
 
 Frontend sanity check:
 

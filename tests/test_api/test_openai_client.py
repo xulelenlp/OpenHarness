@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import types
 
 import httpx
-
 import pytest
 
-from openharness.api.client import ApiMessageRequest
+from openharness.api.client import (
+    ApiMessageCompleteEvent,
+    ApiMessageRequest,
+    ApiReasoningDeltaEvent,
+)
 from openharness.api.openai_client import (
     OpenAICompatibleClient,
     _convert_assistant_message,
@@ -364,78 +368,157 @@ class TestStripThinkBlocks:
     """Unit tests for the _strip_think_blocks streaming helper."""
 
     def test_no_think_tags_passthrough(self):
-        visible, leftover = _strip_think_blocks("Hello world")
+        visible, think_text, leftover = _strip_think_blocks("Hello world")
         assert visible == "Hello world"
+        assert think_text == ""
         assert leftover == ""
 
     def test_complete_think_block_removed(self):
-        visible, leftover = _strip_think_blocks("<think>internal reasoning</think>answer")
+        visible, think_text, leftover = _strip_think_blocks("<think>internal reasoning</think>answer")
         assert visible == "answer"
+        assert think_text == "internal reasoning"
         assert leftover == ""
 
     def test_multiline_think_block_removed(self):
         buf = "<think>\nstep 1\nstep 2\n</think>final answer"
-        visible, leftover = _strip_think_blocks(buf)
+        visible, think_text, leftover = _strip_think_blocks(buf)
         assert visible == "final answer"
+        assert think_text == "\nstep 1\nstep 2\n"
         assert leftover == ""
 
     def test_unclosed_think_held_in_leftover(self):
         # Streaming chunk ends before </think> arrives
-        visible, leftover = _strip_think_blocks("prefix<think>partial reasoning")
+        visible, think_text, leftover = _strip_think_blocks("prefix<think>partial reasoning")
         assert visible == "prefix"
+        assert think_text == ""
         assert leftover == "<think>partial reasoning"
 
     def test_empty_string(self):
-        visible, leftover = _strip_think_blocks("")
+        visible, think_text, leftover = _strip_think_blocks("")
         assert visible == ""
+        assert think_text == ""
         assert leftover == ""
 
     def test_only_think_block(self):
-        visible, leftover = _strip_think_blocks("<think>all hidden</think>")
+        visible, think_text, leftover = _strip_think_blocks("<think>all hidden</think>")
         assert visible == ""
+        assert think_text == "all hidden"
         assert leftover == ""
 
     def test_multiple_think_blocks(self):
         buf = "<think>a</think>text1<think>b</think>text2"
-        visible, leftover = _strip_think_blocks(buf)
+        visible, think_text, leftover = _strip_think_blocks(buf)
         assert visible == "text1text2"
+        assert think_text == "ab"
         assert leftover == ""
 
     def test_text_before_unclosed_think(self):
-        visible, leftover = _strip_think_blocks("before<think>unclosed")
+        visible, think_text, leftover = _strip_think_blocks("before<think>unclosed")
         assert visible == "before"
+        assert think_text == ""
         assert leftover == "<think>unclosed"
 
     def test_closed_then_unclosed(self):
         # One complete block followed by a new unclosed one (cross-chunk scenario)
         buf = "<think>done</think>visible<think>still open"
-        visible, leftover = _strip_think_blocks(buf)
+        visible, think_text, leftover = _strip_think_blocks(buf)
         assert visible == "visible"
+        assert think_text == "done"
         assert leftover == "<think>still open"
 
     def test_partial_open_tag_is_held_for_next_chunk(self):
-        visible, leftover = _strip_think_blocks("prefix<thi")
+        visible, think_text, leftover = _strip_think_blocks("prefix<thi")
         assert visible == "prefix"
+        assert think_text == ""
         assert leftover == "<thi"
 
     def test_partial_open_tag_after_closed_block_is_held(self):
         buf = "<think>done</think>visible<thi"
-        visible, leftover = _strip_think_blocks(buf)
+        visible, think_text, leftover = _strip_think_blocks(buf)
         assert visible == "visible"
+        assert think_text == "done"
         assert leftover == "<thi"
 
     def test_split_open_tag_across_chunks_does_not_leak_reasoning(self):
         buf = ""
 
         buf += "<thi"
-        visible, buf = _strip_think_blocks(buf)
+        visible, think_text, buf = _strip_think_blocks(buf)
         assert visible == ""
+        assert think_text == ""
         assert buf == "<thi"
 
         buf += "nk>secret</think>answer"
-        visible, buf = _strip_think_blocks(buf)
+        visible, think_text, buf = _strip_think_blocks(buf)
         assert visible == "answer"
+        assert think_text == "secret"
         assert buf == ""
+
+
+class TestToolCallStreaming:
+    """工具调用（tool_calls）的生成过程应流式透传为 reasoning delta，
+    这样前端在模型生成大型工具参数（如脚本内容）时能看到进度，而不是干等。"""
+
+    @staticmethod
+    def _tc_delta(index: int, id: str | None = None, name: str | None = None, arguments: str | None = None):
+        fn = types.SimpleNamespace(name=name, arguments=arguments)
+        return types.SimpleNamespace(index=index, id=id, function=fn)
+
+    @staticmethod
+    def _delta(tool_calls: list | None = None):
+        return types.SimpleNamespace(content=None, reasoning_content=None, tool_calls=tool_calls or [])
+
+    @staticmethod
+    def _chunk(tool_calls: list | None = None, finish: str | None = None):
+        choice = types.SimpleNamespace(delta=TestToolCallStreaming._delta(tool_calls), finish_reason=finish)
+        return types.SimpleNamespace(choices=[choice], usage=None)
+
+    @pytest.mark.asyncio
+    async def test_tool_call_generation_streams_reasoning_deltas(self):
+        async def _stream():
+            # 第一个 chunk：只给出工具名（无参数）
+            yield self._chunk(tool_calls=[self._tc_delta(0, id="call_1", name="write_file")])
+            # 后续 chunk：流式给出 JSON 参数增量
+            yield self._chunk(tool_calls=[self._tc_delta(0, arguments='{"content": ')])
+            yield self._chunk(tool_calls=[self._tc_delta(0, arguments='"hello"')])
+            yield self._chunk(tool_calls=[self._tc_delta(0, arguments="}")])
+            yield self._chunk(finish="tool_calls")
+
+        class _Completions:
+            async def create(self, **kwargs):
+                return _stream()
+
+        class _Chat:
+            def __init__(self):
+                self.completions = _Completions()
+
+        class _FakeClient:
+            def __init__(self):
+                self.chat = _Chat()
+
+        client = OpenAICompatibleClient(api_key="test-key")
+        client._client = _FakeClient()  # type: ignore[attr-defined]
+
+        request = ApiMessageRequest(
+            model="qwen-plus",
+            messages=[ConversationMessage.from_user_text("写一个脚本")],
+        )
+
+        events = [event async for event in client.stream_message(request)]
+
+        reasoning_texts = [e.text for e in events if isinstance(e, ApiReasoningDeltaEvent)]
+        # 工具名首次出现时应给出"准备调用工具"进度
+        assert any("准备调用工具 write_file" in t for t in reasoning_texts)
+        # 参数增量应逐段流式透传
+        assert '"hello"' in "".join(reasoning_texts)
+
+        # 最终消息应包含完整、可解析的 tool_use
+        completes = [e for e in events if isinstance(e, ApiMessageCompleteEvent)]
+        assert len(completes) == 1
+        final = completes[0].message
+        assert final.tool_uses and len(final.tool_uses) == 1
+        assert final.tool_uses[0].name == "write_file"
+        assert final.tool_uses[0].input == {"content": "hello"}
 
 
 class TestReasoningContentEmission:

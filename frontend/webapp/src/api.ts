@@ -20,20 +20,75 @@ import type {
  */
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem("qaapp_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+/**
+ * 构建时写死的 Bearer token（可选，仅用于「严格 Bearer」部署）。
+ *
+ * 默认不需要：页面启动时调用 `GET /api/v1/bootstrap`，后端读取 `webapp.json`
+ * 的 `api_tokens` 并签发 HttpOnly 会话 Cookie，用户无需在页面里填写 token。
+ * 只有 `browser_auth.enabled=false`（公网/SSO 场景）时才需要在构建时注入本变量，
+ * 例如 `VITE_API_TOKEN=xxx npm run build`。
+ */
+const STATIC_TOKEN = (import.meta.env.VITE_API_TOKEN ?? "").trim();
+
+export interface BootstrapInfo {
+  /** 服务端是否配置了 api_tokens（true = 必须鉴权）。 */
+  auth_required: boolean;
+  /** 服务端是否已签发浏览器会话 Cookie（true = 前端无需任何凭据）。 */
+  browser_session: boolean;
+  /** 会话 Cookie 有效期（秒），0 表示未签发。 */
+  session_ttl_seconds?: number;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+let bootstrapPromise: Promise<BootstrapInfo> | null = null;
+
+export function hasStaticToken(): boolean {
+  return Boolean(STATIC_TOKEN);
+}
+
+/**
+ * 建立浏览器会话：服务端从项目配置读取 token，签发 HttpOnly Cookie。
+ * 幂等且带缓存；失败后清空缓存，允许用户刷新/重试。
+ */
+export function bootstrap(): Promise<BootstrapInfo> {
+  if (bootstrapPromise) return bootstrapPromise;
+  bootstrapPromise = (async () => {
+    const resp = await fetch(`${BASE}/api/v1/bootstrap`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+    if (!resp.ok) throw await errorFrom(resp);
+    return (await resp.json()) as BootstrapInfo;
+  })().catch((err: unknown) => {
+    bootstrapPromise = null;
+    throw err;
+  });
+  return bootstrapPromise;
+}
+
+/** 会话失效（服务重启 / Cookie 过期）时重建一次，再重试原请求。 */
+async function refreshBrowserSession(): Promise<void> {
+  bootstrapPromise = null;
+  await bootstrap();
+}
+
+function authHeaders(): Record<string, string> {
+  return STATIC_TOKEN ? { Authorization: `Bearer ${STATIC_TOKEN}` } : {};
+}
+
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
       ...(init?.headers ?? {}),
     },
   });
+  if (resp.status === 401 && retry && !STATIC_TOKEN) {
+    await refreshBrowserSession();
+    return request<T>(path, init, false);
+  }
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error((body as { message?: string }).message || `HTTP ${resp.status}`);
@@ -72,7 +127,7 @@ async function errorFrom(resp: Response): Promise<Error> {
  *
  * 不能用上面的 `request()`：它会强制 `Content-Type: application/json`，
  * 而 multipart 必须让浏览器自己带上 `boundary`（手写会丢掉 boundary，后端直接解析失败）。
- * 所以这里另写 fetch，并且**只**带 Authorization。
+ * 所以这里另写 fetch：带 Cookie（默认浏览器会话）或可选的静态 Bearer。
  */
 export async function uploadAttachments(
   conversationId: string,
@@ -84,6 +139,7 @@ export async function uploadAttachments(
 
   const resp = await fetch(`${BASE}/api/v1/conversations/${conversationId}/attachments`, {
     method: "POST",
+    credentials: "include",
     headers: { ...authHeaders() },
     body: form,
   });
@@ -137,8 +193,8 @@ function filenameFromDisposition(header: string | null, relativePath: string): s
 /**
  * 下载会话文件。
  *
- * 必须走 fetch + Blob：下载接口要求 Bearer 鉴权，而 `<a href>` / `window.open`
- * 带不了请求头，把 token 拼进 URL 又会泄漏到历史记录与日志里。
+ * 必须走 fetch + Blob：下载接口要求鉴权（Cookie 或 Bearer），而 `<a href>` /
+ * `window.open` 带不了请求头，把 token 拼进 URL 又会泄漏到历史记录与日志里。
  */
 export async function fetchConversationFile(
   conversationId: string,
@@ -146,7 +202,7 @@ export async function fetchConversationFile(
 ): Promise<{ blob: Blob; filename: string }> {
   const resp = await fetch(
     `${BASE}/api/v1/conversations/${conversationId}/files/${encodePath(relativePath)}`,
-    { headers: { Accept: "*/*", ...authHeaders() } },
+    { credentials: "include", headers: { Accept: "*/*", ...authHeaders() } },
   );
   if (!resp.ok) throw await errorFrom(resp);
   return {
@@ -234,21 +290,30 @@ export async function streamMessage(
   signal?: AbortSignal,
   attachmentIds?: string[],
 ): Promise<void> {
-  const resp = await fetch(`${BASE}/api/v1/conversations/${conversationId}/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      ...authHeaders(),
-    },
-    body: JSON.stringify({
-      content,
-      agent,
-      stream: true,
-      ...(attachmentIds && attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
-    }),
-    signal,
-  });
+  const doFetch = (): Promise<Response> =>
+    fetch(`${BASE}/api/v1/conversations/${conversationId}/messages`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({
+        content,
+        agent,
+        stream: true,
+        ...(attachmentIds && attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
+      }),
+      signal,
+    });
+
+  let resp = await doFetch();
+  // 服务重启后进程内会话密钥会变，旧 Cookie 失效 → 重建一次再重试。
+  if (resp.status === 401 && !STATIC_TOKEN) {
+    await refreshBrowserSession();
+    resp = await doFetch();
+  }
 
   if (!resp.ok || !resp.body) {
     const body = await resp.json().catch(() => ({}));
