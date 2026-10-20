@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import re
+import time
 from html.parser import HTMLParser
 
 import httpx
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.error_report import (
+    configured_web_proxy,
+    describe_http_exception,
+    failure_hint,
+)
+from openharness.utils.netlog import log_web_failure, log_web_success
 from openharness.utils.network_guard import (
     NetworkGuardError,
     fetch_public_http_response,
@@ -42,6 +49,7 @@ class WebFetchTool(BaseTool):
         is_valid, error_message = _validate_url(arguments.url)
         if not is_valid:
             return ToolResult(output=f"web_fetch failed: {error_message}", is_error=True)
+        started = time.monotonic()
         try:
             response = await fetch_public_http_response(
                 arguments.url,
@@ -51,7 +59,26 @@ class WebFetchTool(BaseTool):
             )
             response.raise_for_status()
         except (httpx.HTTPError, NetworkGuardError) as exc:
-            return ToolResult(output=f"web_fetch failed: {exc}", is_error=True)
+            elapsed = time.monotonic() - started
+            detail = describe_http_exception(
+                exc,
+                target=arguments.url,
+                elapsed=elapsed,
+                proxy=configured_web_proxy(),
+            )
+            log_web_failure(
+                tool=self.name,
+                endpoint=arguments.url,
+                query=None,
+                elapsed=elapsed,
+                exc=exc,
+                detail=detail,
+            )
+            output = f"web_fetch failed: {detail}"
+            hint = failure_hint(exc)
+            if hint:
+                output = f"{output}\n{hint}"
+            return ToolResult(output=output, is_error=True)
 
         content_type = response.headers.get("content-type", "")
         body = response.text
@@ -60,6 +87,13 @@ class WebFetchTool(BaseTool):
         body = body.strip()
         if len(body) > arguments.max_chars:
             body = body[: arguments.max_chars].rstrip() + "\n...[truncated]"
+        log_web_success(
+            tool=self.name,
+            endpoint=arguments.url,
+            query=None,
+            elapsed=time.monotonic() - started,
+            status_code=response.status_code,
+        )
         return ToolResult(
             output=(
                 f"URL: {response.url}\n"

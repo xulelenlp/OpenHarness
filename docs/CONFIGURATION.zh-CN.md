@@ -34,7 +34,7 @@
 | **Hooks** | `hooks` | 事件钩子（按事件名分组） |
 | **记忆** | `memory.enabled`、`context_window_tokens`、`auto_compact_threshold_tokens`、`session_memory_enabled`、`auto_dream_enabled` | 记忆与自动压缩 |
 | **沙箱** | `sandbox.enabled`、`sandbox.backend`、`sandbox.docker` | 命令执行沙箱 |
-| **Web** | `web.proxy`、`web.resolution_mode` | 网络访问 / 代理 |
+| **Web** | `web.proxy`、`web.resolution_mode`、`web.search_url` | 网络访问 / 代理 / 搜索端点（默认 Bing） |
 | **扩展** | `enabled_plugins`、`mcp_servers`、`allow_project_plugins`、`allow_project_skills`、`project_skill_dirs` | 插件、MCP 服务器、项目级技能 |
 | **UI** | `theme`、`output_style`、`vim_mode`、`voice_mode`、`fast_mode`、`effort`、`passes` | 界面与运行行为 |
 | **视觉/绘图** | `vision`、`image_generation` | 图像理解 / 生图模型 |
@@ -118,8 +118,17 @@ abcag config --profile <name>      # 非交互切换 provider profile
 | `OPENHARNESS_PRODUCT_NAME` / `OPENHARNESS_SLOGAN` | 品牌化覆盖 |
 | `OPENHARNESS_SANDBOX_ENABLED` / `OPENHARNESS_SANDBOX_BACKEND` | 沙箱 |
 | `OPENHARNESS_WEB_PROXY` / `OPENHARNESS_WEB_RESOLUTION_MODE` | 网络代理 |
+| `OPENHARNESS_WEB_SEARCH_URL` / `OPENHARNESS_WEB_SYNTHETIC_DNS_CIDRS` | 搜索端点覆盖（默认 `https://cn.bing.com/search`）/ 合成 DNS 网段 |
+| `OPENHARNESS_LOGS_DIR` / `OPENHARNESS_LOG_LEVEL` | 日志目录（默认 `~/.openharness/logs`，其中 `web.log` 记录每次出网结果）/ 日志级别 |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENHARNESS_*_API_KEY` 等 | 各 Provider 凭证 |
 | `OHMO_WORKSPACE` | ohmo workspace 目录 |
+
+### 5.1 `web_search` / `web_fetch` 出网排查
+
+- 默认搜索端点是 **Bing**（`https://cn.bing.com/search`，可用 `web.search_url` / `OPENHARNESS_WEB_SEARCH_URL` 覆盖）。DuckDuckGo 已移除：其 HTML 端点在中国大陆网络不可达，且域名常被 DNS 污染成假地址。
+- 每次出网都会往 `<logs>/web.log`（默认 `~/.openharness/logs/web.log`，`OPENHARNESS_LOGS_DIR` 可改）追加一行：`event=ok/failed`、`endpoint`、`q`、`elapsed`、`status`、`type`、`message`、`args`、`cause`、`dns`、`detail`。失败行是 WARNING，可直接从服务器下载。
+- 一键复现网络状况：`python scripts/diag_web.py --report /tmp/web-diag.txt`。
+- 典型现象：失败信息形如 `ConnectTimeout｜原始错误信息为空｜目标 …:443｜耗时 20.0s｜代理 未配置｜原因 ConnectTimeout <- TimeoutError()` → 表示该机器无法直达目标地址，请配置 `web.proxy` / `OPENHARNESS_WEB_PROXY`，或把 `web.search_url` 指向可达端点。
 
 ---
 

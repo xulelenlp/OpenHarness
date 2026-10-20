@@ -120,6 +120,10 @@ class WebSettings(BaseModel):
     proxy: str | None = None
     resolution_mode: str = "auto"
     synthetic_dns_cidrs: list[str] = Field(default_factory=list)
+    #: HTML endpoint used by ``web_search``. Defaults to Bing; DuckDuckGo was
+    #: dropped because it is unreachable from mainland-China networks and its
+    #: DNS answers are commonly poisoned.
+    search_url: str | None = None
 
 
 class ProviderProfile(BaseModel):

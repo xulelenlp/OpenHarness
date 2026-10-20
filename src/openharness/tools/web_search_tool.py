@@ -1,17 +1,41 @@
-"""Simple web search tool."""
+"""Web search tool backed by Bing's HTML endpoint.
+
+DuckDuckGo was dropped as the default backend: its HTML endpoint is unreachable
+from mainland-China networks and its answers are widely DNS-poisoned, which
+surfaced as an opaque ``web_search failed:``.  Bing is reachable directly
+(``cn.bing.com``) and its ``b_algo`` result blocks parse cleanly.
+"""
 
 from __future__ import annotations
 
+import base64
+import binascii
 import html
 import os
 import re
-from urllib.parse import parse_qs, unquote, urlparse
+import time
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.error_report import (
+    configured_web_proxy,
+    describe_http_exception,
+    failure_hint,
+)
+from openharness.utils.netlog import log_web_failure, log_web_success
 from openharness.utils.network_guard import NetworkGuardError, fetch_public_http_response
+
+DEFAULT_SEARCH_URL = "https://cn.bing.com/search"
+SEARCH_URL_ENV_VAR = "OPENHARNESS_WEB_SEARCH_URL"
+REQUEST_TIMEOUT_SECONDS = 20.0
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) OpenHarness/0.1"
+)
+_MAX_BLOCK_CHARS = 40000
 
 
 class WebSearchToolInput(BaseModel):
@@ -42,21 +66,65 @@ class WebSearchTool(BaseTool):
         context: ToolExecutionContext,
     ) -> ToolResult:
         del context
-        endpoint = arguments.search_url or os.environ.get("OPENHARNESS_WEB_SEARCH_URL") or "https://html.duckduckgo.com/html/"
+        endpoint = resolve_search_url(arguments.search_url)
+        started = time.monotonic()
         try:
             response = await fetch_public_http_response(
                 endpoint,
                 params={"q": arguments.query},
-                headers={"User-Agent": "OpenHarness/0.1"},
-                timeout=20.0,
+                headers={"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9"},
+                timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
         except (httpx.HTTPError, NetworkGuardError) as exc:
-            return ToolResult(output=f"web_search failed: {exc}", is_error=True)
+            elapsed = time.monotonic() - started
+            detail = describe_http_exception(
+                exc,
+                target=endpoint,
+                elapsed=elapsed,
+                proxy=configured_web_proxy(),
+            )
+            log_web_failure(
+                tool=self.name,
+                endpoint=endpoint,
+                query=arguments.query,
+                elapsed=elapsed,
+                exc=exc,
+                detail=detail,
+            )
+            hint = failure_hint(exc)
+            output = f"web_search failed: {detail}"
+            if hint:
+                output = f"{output}\n{hint}"
+            return ToolResult(output=output, is_error=True)
 
-        results = _parse_search_results(response.text, limit=arguments.max_results)
+        elapsed = time.monotonic() - started
+        results = parse_search_results(response.text, limit=arguments.max_results)
         if not results:
-            return ToolResult(output="No search results found.", is_error=True)
+            log_web_success(
+                tool=self.name,
+                endpoint=endpoint,
+                query=arguments.query,
+                elapsed=elapsed,
+                status_code=response.status_code,
+                result_count=0,
+            )
+            return ToolResult(
+                output=(
+                    f'No search results found for "{arguments.query}" at {endpoint} '
+                    f"(HTTP {response.status_code}, 0 parsed). "
+                    "提示：该端点可能返回了反爬页面，可换 web.search_url。"
+                )
+            )
+
+        log_web_success(
+            tool=self.name,
+            endpoint=endpoint,
+            query=arguments.query,
+            elapsed=elapsed,
+            status_code=response.status_code,
+            result_count=len(results),
+        )
 
         lines = [f"Search results for: {arguments.query}"]
         for index, result in enumerate(results, start=1):
@@ -67,36 +135,40 @@ class WebSearchTool(BaseTool):
         return ToolResult(output="\n".join(lines))
 
 
-def _parse_search_results(body: str, *, limit: int) -> list[dict[str, str]]:
-    snippets = [
-        _clean_html(match.group("snippet"))
-        for match in re.finditer(
-            r'<(?:a|div|span)[^>]+class="[^"]*(?:result__snippet|result-snippet)[^"]*"[^>]*>(?P<snippet>.*?)</(?:a|div|span)>',
-            body,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-    ]
+def resolve_search_url(override: str | None = None) -> str:
+    """Return the endpoint to query: explicit override > env > settings > default."""
+    if override:
+        return override
+    env_url = os.environ.get(SEARCH_URL_ENV_VAR)
+    if env_url:
+        return env_url
+    configured = _configured_search_url()
+    return configured or DEFAULT_SEARCH_URL
 
+
+def _configured_search_url() -> str | None:
+    try:
+        from openharness.config import load_settings
+
+        return load_settings().web.search_url
+    except Exception:  # pragma: no cover - config must never break the tool
+        return None
+
+
+def parse_search_results(body: str, *, limit: int) -> list[dict[str, str]]:
+    """Extract Bing ``b_algo`` result blocks."""
+    starts = [match.start() for match in re.finditer(r'<li[^>]*class="[^"]*\bb_algo\b[^"]*"', body)]
     results: list[dict[str, str]] = []
-    anchor_matches = re.finditer(
-        r"<a(?P<attrs>[^>]+)>(?P<title>.*?)</a>",
-        body,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    for index, match in enumerate(anchor_matches):
-        attrs = match.group("attrs")
-        class_match = re.search(r'class="(?P<class>[^"]+)"', attrs, flags=re.IGNORECASE)
-        if class_match is None:
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else start + _MAX_BLOCK_CHARS
+        chunk = body[start:end]
+        anchor = re.search(r'<h2[^>]*>\s*<a[^>]*?href="([^"]+)"[^>]*>(.*?)</a>', chunk, re.DOTALL | re.IGNORECASE)
+        if anchor is None:
             continue
-        class_names = class_match.group("class")
-        if "result__a" not in class_names and "result-link" not in class_names:
-            continue
-        href_match = re.search(r'href="(?P<href>[^"]+)"', attrs, flags=re.IGNORECASE)
-        if href_match is None:
-            continue
-        title = _clean_html(match.group("title"))
-        url = _normalize_result_url(href_match.group("href"))
-        snippet = snippets[index] if index < len(snippets) else ""
+        title = clean_html(anchor.group(2))
+        url = normalize_result_url(html.unescape(anchor.group(1)))
+        snippet_match = re.search(r"<p[^>]*>(.*?)</p>", chunk, re.DOTALL | re.IGNORECASE)
+        snippet = clean_html(snippet_match.group(1)) if snippet_match else ""
         if title and url:
             results.append({"title": title, "url": url, "snippet": snippet})
         if len(results) >= limit:
@@ -104,16 +176,26 @@ def _parse_search_results(body: str, *, limit: int) -> list[dict[str, str]]:
     return results
 
 
-def _normalize_result_url(raw_url: str) -> str:
+def normalize_result_url(raw_url: str) -> str:
+    """Unwrap Bing ``/ck/a`` redirect links into their real target."""
     parsed = urlparse(raw_url)
-    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
-        target = parse_qs(parsed.query).get("uddg", [""])[0]
-        return unquote(target) if target else raw_url
-    return raw_url
+    if not parsed.netloc.endswith("bing.com") or not parsed.path.startswith("/ck/a"):
+        return raw_url
+    encoded = (parse_qs(parsed.query).get("u") or [""])[0]
+    encoded = encoded.removeprefix("a1")
+    if not encoded:
+        return raw_url
+    padded = encoded + "=" * (-len(encoded) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(padded).decode("utf-8", "replace")
+    except (binascii.Error, ValueError):
+        return raw_url
+    return decoded if decoded.startswith(("http://", "https://")) else raw_url
 
 
-def _clean_html(fragment: str) -> str:
+def clean_html(fragment: str) -> str:
+    """Strip tags and collapse whitespace."""
     text = re.sub(r"(?s)<[^>]+>", " ", fragment)
     text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return re.sub(r"\s+", " ", text).strip()
+

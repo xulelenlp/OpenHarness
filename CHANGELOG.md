@@ -26,6 +26,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Changed
 
+- **web_search 默认后端由 DuckDuckGo 改为 Bing**：DDG 的 HTML 端点在受限网络中不可达且域名常被 DNS 污染（污染答案形如 `31.13.94.49` / `2001::6ca0:accc`），已移除其解析与 `/l/` 跳转归一化逻辑。新增 `web.search_url` 设置与 `OPENHARNESS_WEB_SEARCH_URL` 覆盖（默认 `https://cn.bing.com/search`），解析 Bing 的 `b_algo` 结果块并解开 `/ck/a` 跳转链接。实测同一查询 1.9s 返回 5 条结果。
 - qaapp 参考前端移除侧边栏「Bearer Token（可选）」输入框：改为启动时自动 bootstrap 浏览器会话，收到 401 时自动重建一次并重试；新增可选的 `VITE_API_TOKEN` 构建变量作为「关闭 browser_auth」时的兜底。
 - qaapp 的 LLM 分类路由标注为**预留能力**：`resolve_agent` 仍接受 `llm_classifier`，但服务端未注入；文档不再声称 `routing.mode=llm` 会生效，生产默认推荐 harness 总控 + 动态能力清单。
 - 仓库根目录重新整理：修正了误提交的「English Case Converter」README，改为 OpenHarness 的实际入口/目录/验证说明；删除与项目无关的一次性脚本 `date_converter.py`。手工 E2E 脚本统一收进 `scripts/e2e/`，并新增 `scripts/README.md` / `scripts/e2e/README.md` 明确“自动化测试放 `tests/`、脚本放 `scripts/e2e/`”的约定。
@@ -35,6 +36,9 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Fixed
 
+- 修掉 `web_search failed: ` / `web_fetch failed: ` **错误报文为空**的问题：`httpcore` 把 `TimeoutError` 包成 `ConnectTimeout(TimeoutError())`、`httpx` 再用 `str(exc)` 转发，导致 `str(exc)` 为空串。新增 `utils/error_report.py`，从异常类型、原因链、目标 host:port、耗时、代理状态重建可读报文（`ConnectTimeout｜原始错误信息为空｜目标 …:443｜耗时 20.3s｜代理 未配置｜原因 ConnectTimeout <- TimeoutError()`），并附可执行提示；`web_fetch` 同步接入。
+- 新增 `utils/netlog.py`：每次出网向 `<logs>/web.log` 追加一行（`event`、`endpoint`、`q`、`elapsed`、`status`、`type`、`message`、`args`、`cause`、`dns`、`detail`），失败为 WARNING，服务器上可直接下载定位；`dns=` 字段可辅助识别 DNS 污染。
+- `web_search` 在解析不到结果时不再标记为错误，改为返回 `No search results found …`（HTTP 状态与端点一并给出）。
 - Codex subscription requests now pass reasoning effort separately, enabling `gpt-5.5` with `xhigh` effort instead of treating `gpt-5.5 xhigh` as an unsupported model name.
 - Telegram channel now delivers replies again under `abcag init --no-interactive` and other configs that do not write a `reply_to_message` field. `TelegramConfig` declares `reply_to_message: bool = True` so the attribute access in `TelegramChannel.send` no longer raises `AttributeError` and outbound progress/tool-hint/final messages are sent as expected. See issue #243.
 
