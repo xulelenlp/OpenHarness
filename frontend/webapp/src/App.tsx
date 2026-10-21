@@ -950,7 +950,7 @@ export default function App() {
               onChange={(e) => setSelectedAgent(e.target.value)}
               disabled={streaming}
             >
-              <option value="">自动路由</option>
+              <option value="">自动编排（推荐）</option>
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name || a.id}

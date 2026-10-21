@@ -80,7 +80,13 @@
 | 文件 | 职责 | 扩展时是否常改 |
 | --- | --- | --- |
 | `qaapp/service.py` | HTTP/SSE/WS、会话池、审批、每轮编排 | 少改（新增 API 才改） |
-| `qaapp/config.py` | 三份配置的模型与加载 | 新增配置项时改 |
+| `qaapp/config.py` | 配置路径/模型加载 | 新增配置项时改 |
+| `qaapp/datasources.py` | 数据源唯一加载器/运行时 | 数据源变化时改 |
+| `qaapp/data_catalog.py` / `data_query.py` | 业务库元数据/路由/查询/质量 | 取数规则变化时改 |
+| `qaapp/db_query_tool.py` | `db_query` 工具 | 查询能力变化时改 |
+| `qaapp/consult_agents_tool.py` | `consult_agents` 多智能体批量调用 | 编排策略变化时改 |
+| `qaapp/report_tool.py` | `write_report_docx` Word 报告 | 报告版式变化时改 |
+| `qaapp/analysis_scenarios.py` | 10 类业务场景模板 | 新增场景时改 |
 | `qaapp/agent_router.py` | 显式/关键词/默认路由 | 新增路由策略时改 |
 | `qaapp/capabilities.py` | 动态能力清单与决策顺序 | **一般不用改**（配置自动生成） |
 | `qaapp/tool_policy.py` | 按 Agent 裁剪工具 | 一般不用改 |
@@ -155,7 +161,7 @@
 | 层级 | 文件 | 解析顺序 | 内容 |
 | --- | --- | --- | --- |
 | ① OpenHarness 主配置 | `settings.json` | `OPENHARNESS_CONFIG_DIR` → `<cwd>/.openharness/` → `~/.openharness/` | 模型、API Key、权限、沙箱、MCP |
-| ② qaapp 三份配置 | `webapp.json` / `agents.json` / `dangerous-actions.json` | `--config-dir` / `QAAPP_CONFIG_DIR` → `<cwd>/config/` → `<workspace>/` | 服务、Agent 注册表、高危策略 |
+| ② qaapp 配置 | `webapp.json` / `agents.json` / `dangerous-actions.json` / `datasources.json` | `--config-dir` / `QAAPP_CONFIG_DIR` → `<cwd>/config/` → `<workspace>/` | 服务、Agent 注册表、高危策略、数据源 |
 | ③ 外部 Agent 访问配置 | **内联在 `agents.json`** | 同 ② | endpoint / 请求体 / 响应解析 |
 
 ### 5.1 `agents.json` 是唯一 Agent 维护文件
@@ -411,7 +417,7 @@ WebSocket 一并纳入网关管控。
 | 浏览器控制台 | `[sse] <type>` | 前端实际收到了哪些事件 |
 | 轨迹 | `GET /turns/{turn_id}` | 回放一轮的完整步骤（工具输入/输出/审批） |
 | 会话目录 | `GET /workspace`、`GET /files/...` | 看脚本、解析文本、产物 |
-| 配置 | `abcqa config` | 三份配置实际读了哪个文件 |
+| 配置 | `abcqa config` | 四份配置实际读了哪个文件 |
 | Agent | `abcqa agents list/validate` | 注册表是否生效 |
 
 常见断点：
@@ -485,3 +491,58 @@ WebSocket 一并纳入网关管控。
 - 外部 Agent 插件：[`plugins/external-agents/README.md`](../plugins/external-agents/README.md)
 - OpenHarness 配置：[`docs/CONFIGURATION.zh-CN.md`](CONFIGURATION.zh-CN.md)
 - 定制/插件：[`docs/CUSTOMIZATION.zh-CN.md`](CUSTOMIZATION.zh-CN.md)
+
+---
+
+## 13. 业务库直连与多智能体编排（新增）
+
+### 13.1 数据源：唯一入口
+
+MySQL/Redis 连接信息**只**维护在 `datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`），由 `qaapp/datasources.py` 唯一加载，构造一个进程内共享的 `DataRuntime`：
+
+```text
+QaWebService
+  └─ DataRuntime
+       ├─ MySqlClient（只读、连接池、超时、行数上限）
+       ├─ RedisClient（只读 db0、前缀白名单）
+       ├─ BusinessCatalog（指标/机构/维度/可用性缓存）
+       └─ BusinessQueryService（路由/查询/质量诊断）
+```
+
+其他模块只接收 `DataRuntime` 或 `BusinessQueryService`，**不读取 `DB_*`/`REDIS_*`，不创建连接**。`abcqa datasource show/check` 用于查看（密码脱敏）与连通性检查。
+
+### 13.2 新增工具
+
+| 工具 | 作用 | 权限 |
+| --- | --- | --- |
+| `db_query` | 业务库结构化查询/EDA/大纲/新闻/图表/受控 SQL | 只读 |
+| `consult_agents` | 1–4 个外部智能体并行/顺序调用，重试、超时、截断、证据落盘 | 只读 |
+| `write_report_docx` | Markdown/结构化章节 → Word（封面/目录/表格/图片/页码/来源） | 写（默认确认） |
+
+`db_query` / `consult_agents` 是**增量能力**：不替换 `external_agent`、`run_script` 或任何原有工具；general 的工具仍为 `["*"]`。
+
+### 13.3 通用能力保留
+
+- `general` 仍是默认 Agent，原系统提示词/直接回答/写作/代码/文件/Web/MCP/子智能体能力保持不变；
+- 四阶段业务分析放在 `business-analysis` 技能中，仅当任务明确是业务分析/报告时按需加载；
+- 项目技能统一放在仓库根 `skills/`（随 git 维护），通过 `.openharness/settings.json:project_skill_dirs` + `build_runtime(extra_skill_dirs=...)` 加载；不再放 `.openharness/skills/`；
+- 能力清单第一条仍是“能直接回答就直接回答”，不把业务分析设为默认；
+- 新增测试覆盖“写邮件/解释概念”等开放任务不触发 DB/分析流程。
+
+### 13.4 业务分析场景
+
+`qaapp/analysis_scenarios.py` 集中定义 10 类场景：经营综合、售电量与市场、电费回收与欠费、供电服务、电网运行、资产投资、新能源政策、区域/企业专题、预测与目标、自定义数据+业务库。每类包含指标关键词、维度、必做分析、外部来源、报告章节；`db_query(outline, scenario=...)` 用它生成数据可得性驱动的大纲。
+
+### 13.5 多智能体编排
+
+- `qaapp/capabilities.py` 生成“组合编排矩阵”，按 `AgentEntry.role`（data/analysis/knowledge）动态引用智能体，不写死 ID；
+- 不再暗示“只选一个”；复杂任务要求取数/归因/政策组合；
+- `consult_agents` 一次批量调用，`shared_context` 共享已核验数据；数字仍以 `db_query` 为准；
+- 外部失败重试一次，仍失败切另一个或 `db_query`，不编造。
+
+### 13.6 失败与质量
+
+- 无数据/缺表/周期不符/恒定序列/陈旧/异常均有诊断；
+- `high` 级质量问题必须进入回答/报告；
+- 报告使用 `write_report_docx` 生成，`markdown_path` 适合长文分段写；
+- 详细取数口径见 [`docs/database_query/IMPLEMENTATION.zh-CN.md`](database_query/IMPLEMENTATION.zh-CN.md)。

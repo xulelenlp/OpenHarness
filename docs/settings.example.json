@@ -23,7 +23,6 @@
       "base_url": "https://api.deepseek.com/v1"
     }
   },
-
   "model": "qwen-plus",
   "max_tokens": 16384,
   "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -33,13 +32,11 @@
   "api_format": "openai",
   "provider": "dashscope",
   "max_turns": 200,
-
   "system_prompt": null,
   "effort": "medium",
   "passes": 1,
   "fast_mode": false,
   "verbose": false,
-
   "permission": {
     "mode": "default",
     "allowed_tools": [],
@@ -47,9 +44,7 @@
     "denied_commands": [],
     "path_rules": []
   },
-
   "hooks": {},
-
   "memory": {
     "enabled": true,
     "max_files": 5,
@@ -64,7 +59,6 @@
     "auto_dream_min_hours": 24.0,
     "auto_dream_min_sessions": 5
   },
-
   "sandbox": {
     "enabled": false,
     "backend": "srt",
@@ -77,7 +71,9 @@
     "filesystem": {
       "allow_read": [],
       "deny_read": [],
-      "allow_write": ["."],
+      "allow_write": [
+        "."
+      ],
       "deny_write": []
     },
     "docker": {
@@ -89,31 +85,30 @@
       "extra_env": {}
     }
   },
-
   "web": {
     "proxy": null,
     "resolution_mode": "auto",
     "synthetic_dns_cidrs": []
   },
-
   "enabled_plugins": {},
   "allow_project_plugins": false,
   "allow_project_skills": true,
-  "project_skill_dirs": [".openharness/skills", ".agents/skills", ".claude/skills"],
-
+  "project_skill_dirs": [
+    ".openharness/skills",
+    ".agents/skills",
+    ".claude/skills",
+    "skills"
+  ],
   "mcp_servers": {},
-
   "theme": "default",
   "output_style": "default",
   "vim_mode": false,
   "voice_mode": false,
-
   "vision": {
     "model": "",
     "api_key": "",
     "base_url": ""
   },
-
   "image_generation": {
     "provider": "auto",
     "model": "gpt-image-2",

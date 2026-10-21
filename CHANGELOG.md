@@ -8,6 +8,12 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Added
 
+- **业务库直连（qaapp）**：新增 `db_query` 工具与 `qaapp/data_client.py` / `data_catalog.py` / `data_query.py` / `data_quality.py`，按 `docs/database_query/` 的 A1/A2/B1/B2/T/四率逻辑查询客户 MySQL；以 `ai_data_struct` 实际可用性优先、层级表/`_ssx` 回退，处理月末日期、周期/机构/维度回退、无数据诊断、恒定序列/陈旧/异常/空值/单位等质量问题。新增 `docs/database_query/IMPLEMENTATION.zh-CN.md` 记录实测库结构与文档差异。
+- **数据源配置集中管理**：新增唯一 `datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`）与唯一加载器 `qaapp/datasources.py`；MySQL/Redis 连接信息不再散落在 `webapp.json` 或代码里。新增 `abcqa datasource show/check`，MySQL 只读/连接池/超时/行数上限，Redis 只读 db0 + 前缀白名单。
+- **多智能体灵活编排**：新增 `consult_agents` 工具，可一次并行/顺序调用 1–4 个外部智能体，支持单次超时、502/会话失败重试、部分失败、原文落 `outputs/agents/` 与截断预览；能力清单改为“可组合、不要只选一个”，并按 `AgentEntry.role` 动态生成取数/分析/知识组合矩阵。
+- **业务分析场景与 Word 报告**：新增 10 类业务场景模板（`qaapp/analysis_scenarios.py`）、`business-analysis` / `database-query` / `multi-agent-orchestration` 技能（统一放仓库根 `skills/`，随 git 维护，`.openharness/settings.json` 的 `project_skill_dirs` 已包含 `skills`），以及 `write_report_docx`（封面/目录域/标题层级/表格/图片/页眉页脚页码/来源与数据质量附录）。通用助手仍是默认 Agent、工具仍为 `*`；四阶段分析只在业务分析任务中按需加载，不改变开放问答/写作/代码等原有能力。
+- `pyproject.toml` 新增 `pymysql` / `redis` / `matplotlib` 依赖。
+
 - qaapp 新增**浏览器免手工 token**：前端启动时调用 `GET /api/v1/bootstrap`，服务端读取 `webapp.json` 的 `api_tokens` 并签发 HttpOnly 会话 Cookie（值是进程内随机串，不是 token 本身），后续请求凭 Cookie 鉴权。页面移除 Bearer Token 输入框，token 不再进入 localStorage / JS；`webapp.json:browser_auth` 可关闭并回退到严格 Bearer（`VITE_API_TOKEN` 或反向代理注入）。API 客户端仍支持 `Authorization: Bearer`。
 - qaapp 新增**动态能力清单**（`qaapp/capabilities.py`）：每轮根据 `agents.json` 生成「可调度能力 + 决策顺序」注入 harness 系统提示，新增 Agent 不需要再改通用助手的 `system_prompt`；清单只列本轮实际可用的工具，`external_agent` / `run_script` 被裁掉时对应能力不会出现。通用助手提示词同步改为「直接回答 / 专业智能体 / `run_script` 执行 / 查证 / 澄清」的自主决策原则。
 - qaapp 的 `agents.json` **`tools` / `disallowed_tools` 现在真正生效**（`qaapp/tool_policy.py`）：支持 `*` 与 fnmatch 通配，`disallowed_tools` 优先；被裁掉的工具不会出现在模型工具表。`QueryEngine` 新增 `set_tool_registry()` 供宿主按 Agent 切换能力边界。

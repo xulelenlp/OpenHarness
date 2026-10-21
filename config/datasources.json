@@ -1,0 +1,45 @@
+{
+  "_comment": "数据源唯一维护文件：MySQL/Redis 连接信息只在这里（或本机 ~/.ohmo/datasources.json / 就近 .env）维护，不要写进代码。${VAR} 由 qaapp.datasources 统一解析：进程环境变量 > 就近 .env > 本文件字面值。",
+  "mysql": {
+    "enabled": true,
+    "host": "${DB_HOST}",
+    "port": "${DB_PORT}",
+    "user": "${DB_USER}",
+    "password": "${DB_PASSWORD}",
+    "database": "${DB_NAME}",
+    "charset": "utf8mb4",
+    "read_only": true,
+    "connect_timeout": 5,
+    "read_timeout": 30,
+    "max_rows": 1000,
+    "max_execution_ms": 15000,
+    "pool_size": 4,
+    "allow_raw_sql": false,
+    "denied_tables": [
+      "ai_llm_agent_api",
+      "ai_llm_agent_api_bak0617",
+      "ai_llm_agent_bk",
+      "ai_llm_api",
+      "ai_llm_api_local",
+      "ai_llm_api_pc",
+      "ai_llm_conf",
+      "ai_runtime_config",
+      "mc_users",
+      "mc_ip_whitelist",
+      "mc_sessions",
+      "mc_messages",
+      "ai_api_session",
+      "ai_agent_session_online"
+    ]
+  },
+  "redis": {
+    "enabled": true,
+    "host": "${REDIS_HOST}",
+    "port": "${REDIS_PORT}",
+    "password": "${REDIS_PASSWORD}",
+    "db": 0,
+    "socket_timeout": 3,
+    "key_prefixes": ["fj_", "daily_"],
+    "max_scan_keys": 5000
+  }
+}

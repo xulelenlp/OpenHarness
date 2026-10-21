@@ -16,11 +16,17 @@ from ohmo.workspace import get_logs_dir, get_workspace_root, initialize_workspac
 from qaapp.config import (
     config_status,
     get_agents_config_path,
+    get_datasources_config_path,
     load_agent_registry,
     load_dangerous_actions,
     load_webapp_config,
     validate_agent_registry,
     validate_dangerous_actions,
+)
+from qaapp.datasources import (
+    DataSourceConfigError,
+    datasources_status,
+    load_datasources_config,
 )
 from qaapp.maintenance import (
     apply_cleanup_plan,
@@ -39,10 +45,12 @@ app = typer.Typer(
 webapp_app = typer.Typer(name="webapp", help="运行/管理 Web 服务")
 agents_app = typer.Typer(name="agents", help="查看/校验 Agent 注册表")
 dangerous_app = typer.Typer(name="dangerous", help="校验高危操作配置")
+datasource_app = typer.Typer(name="datasource", help="查看/检查 MySQL/Redis 数据源")
 
 app.add_typer(webapp_app)
 app.add_typer(agents_app)
 app.add_typer(dangerous_app)
+app.add_typer(datasource_app)
 
 _WORKSPACE_HELP = "ohmo workspace 路径（默认 OHMO_WORKSPACE / ~/.ohmo）"
 _CONFIG_DIR_HELP = (
@@ -89,7 +97,7 @@ def config_cmd(
     config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
     cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
-    """查看三份配置的**实际解析路径**、存在性与校验结果。"""
+    """查看配置文件的**实际解析路径**、存在性与校验结果（含数据源）。"""
     print(
         json.dumps(
             config_status(workspace, cwd=cwd, config_dir=config_dir),
@@ -181,6 +189,7 @@ def init_cmd(
         "webapp.json": target_dir / "webapp.json",
         "agents.json": target_dir / "agents.json",
         "dangerous-actions.json": target_dir / "dangerous-actions.json",
+        "datasources.json": target_dir / "datasources.json",
     }
     for name, target in targets.items():
         src = _EXAMPLES_DIR / name
@@ -195,6 +204,8 @@ def init_cmd(
     print("      想让服务器 git pull 后直接生效，请把 agents.json 放在项目可见目录 config/ 下：")
     print("        abcqa init --config-dir ./config --force   # 或手工放 config/agents.json")
     print("      解析顺序：--config-dir / QAAPP_CONFIG_DIR → <cwd>/config/ → <workspace>/")
+    print("      数据源（MySQL/Redis）只在 datasources.json 维护；用 ${DB_HOST} 等占位符 + 环境变量/就近 .env。")
+    print("      检查连通性：abcqa datasource check")
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +344,102 @@ def webapp_status_cmd(
             indent=2,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# datasource
+# ---------------------------------------------------------------------------
+
+
+@datasource_app.command("show")
+def datasource_show_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
+) -> None:
+    """打印数据源配置（密码脱敏）与实际解析路径。"""
+    print(
+        json.dumps(
+            datasources_status(workspace, cwd=cwd, config_dir=config_dir),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+@datasource_app.command("check")
+def datasource_check_cmd(
+    workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
+    config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
+) -> None:
+    """只读检查 MySQL/Redis 连通性与关键表/键。"""
+    path = get_datasources_config_path(workspace, cwd=cwd, config_dir=config_dir)
+    print(f"# datasources.json: {path}")
+    status = datasources_status(workspace, cwd=cwd, config_dir=config_dir)
+    if status.get("errors"):
+        for error in status["errors"]:
+            print(f"✗ {error}")
+        raise typer.Exit(code=1)
+    try:
+        config = load_datasources_config(workspace, cwd=cwd, config_dir=config_dir)
+    except DataSourceConfigError as exc:
+        print(f"✗ {exc}")
+        raise typer.Exit(code=1)
+    if not config.enabled:
+        print("数据源未启用（datasources.json 中 mysql.enabled / redis.enabled 均为 false 或文件缺失）")
+        return
+
+    failed = False
+    if config.mysql.enabled:
+        from qaapp.data_client import MySqlClient
+
+        client = MySqlClient(config.mysql)
+        try:
+            version = client.fetch_one("SELECT VERSION() AS version") or {}
+            tables = client.fetch_one(
+                "SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE()"
+            ) or {}
+            print(
+                f"MySQL OK：{config.mysql.host}:{config.mysql.port}/{config.mysql.database}，"
+                f"version={version.get('version')}，tables={tables.get('count')}"
+            )
+            for table in (
+                "zhss_index_basic_info",
+                "zhss_result_data_qs",
+                "zhss_result_data_ds",
+                "qlyy_dimension",
+                "zhss_org_new",
+            ):
+                try:
+                    row = client.fetch_one(f"SELECT COUNT(*) AS count FROM {table}") or {}
+                    print(f"  - {table}: {row.get('count')}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  - {table}: 读取失败（{exc}）")
+        except Exception as exc:  # noqa: BLE001
+            failed = True
+            print(f"✗ MySQL 检查失败：{exc}")
+        finally:
+            client.close()
+
+    if config.redis.enabled:
+        from qaapp.redis_client import RedisClient
+
+        redis = RedisClient(config.redis)
+        try:
+            print(
+                f"Redis OK：{config.redis.host}:{config.redis.port}/db0，"
+                f"dbsize={redis.dbsize()}"
+            )
+            print(f"  白名单前缀：{'、'.join(config.redis.key_prefixes)}")
+        except Exception as exc:  # noqa: BLE001
+            failed = True
+            print(f"✗ Redis 检查失败：{exc}")
+        finally:
+            redis.close()
+
+    if failed:
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
