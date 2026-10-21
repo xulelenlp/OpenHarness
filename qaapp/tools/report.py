@@ -1,29 +1,56 @@
 """``write_report_docx``：把结构化内容或 Markdown 转成 Word 报告。
 
-只写 ``<会话目录>/outputs/reports/``；支持封面、目录域、标题层级、表格、图片、
-页眉页脚页码、来源与数据质量附录。
+只写 ``<会话目录>/outputs/reports/``；支持标题/单位/日期、可选目录、标题层级、表格、图片、
+页码、来源与数据质量附录。版式固定为国网公文格式：A4，上下 35mm / 左右 28mm；
+标题宋体二号加粗，作者/日期楷体三号加粗，一级标题黑体三号，二级标题楷体三号加粗，
+三级标题宋体三号加粗，四级标题与正文仿宋三号，固定行距 29 磅。
 """
 
 from __future__ import annotations
 
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Mm, Pt, RGBColor
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
 from qaapp.tools.script import CONVERSATION_DIR_KEY
 
-_BODY_FONT = "宋体"
-_HEAD_FONT = "黑体"
+# 国网公文格式：标题宋体二号加粗；作者/日期楷体三号加粗；一级标题黑体三号；
+# 二级标题楷体三号加粗；三级标题宋体三号加粗；四级标题/正文仿宋三号。
+_TITLE_FONT = "宋体"
+_AUTHOR_FONT = "楷体"
+_H1_FONT = "黑体"
+_H2_FONT = "楷体"
+_H3_FONT = "宋体"
+_H4_FONT = "仿宋"
+_BODY_FONT = "仿宋"
+
+_TITLE_SIZE = 22  # 二号
+_BODY_SIZE = 16  # 三号
+_TABLE_SIZE = 10.5  # 五号
+_LINE_SPACING_PT = 29
+_BODY_INDENT_PT = _BODY_SIZE * 2  # 正文首行缩进两字符
+_DEFAULT_ORG = "国家电网公司"
+
+#: 各级标题的（字体, 是否加粗）映射。一级标题按规范不加粗。
+_HEADING_SPECS = {
+    1: (_H1_FONT, False),
+    2: (_H2_FONT, True),
+    3: (_H3_FONT, True),
+    4: (_H4_FONT, False),
+}
+
 _MAX_TABLE_ROWS = 200
 _MAX_TABLE_COLS = 12
 
@@ -55,7 +82,8 @@ class WriteReportDocxInput(BaseModel):
     title: str = Field(description="报告标题")
     subtitle: str = ""
     author: str = ""
-    org: str = ""
+    org: str = Field(default="", description="作者单位；留空时依次用 author、国家电网公司")
+    date: str = Field(default="", description="成文日期（如 2026年10月21日）；留空用当天")
     period: str = ""
     markdown: str = Field(default="", description="Markdown 全文；与 markdown_path/sections 三选一")
     markdown_path: str = Field(default="", description="会话目录内的 Markdown 文件，适合长报告")
@@ -63,7 +91,7 @@ class WriteReportDocxInput(BaseModel):
     sources: list[dict[str, Any]] = Field(default_factory=list, description="来源列表：label/detail/url")
     data_quality: list[str] = Field(default_factory=list, description="数据质量与局限性说明")
     file_name: str = Field(default="", description="输出文件名（不含目录），留空按标题生成")
-    include_toc: bool = True
+    include_toc: bool = False
     include_page_numbers: bool = True
 
 
@@ -74,8 +102,11 @@ class WriteReportDocxTool(BaseTool):
     description = (
         "把分析内容生成 Word 报告（.docx），写到会话目录 outputs/reports/。\n"
         "输入可以是 sections（结构化章节/表格/图片），也可以是 markdown 或 markdown_path"
-        "（适合先分段写长文，再一次性转 Word）。自动加封面、目录域、标题层级、表格样式、"
-        "图片、页眉页脚页码、来源与数据质量附录。\n"
+        "（适合先分段写长文，再一次性转 Word）。默认标题/单位/日期与正文同页，自动加标题层级、"
+        "表格样式、图片、页码、来源与数据质量附录；长报告可传 include_toc=true 单独生成目录页。\n"
+        "【版式固定】严格按国网公文格式输出：A4，上下页边距 35mm、左右 28mm；标题宋体二号加粗；"
+        "作者/日期楷体三号加粗；一级标题黑体三号；二级标题楷体三号加粗；三级标题宋体三号加粗；"
+        "四级标题与正文仿宋三号；固定行距 29 磅。标题层级用 1–4 级，正文首行缩进两字符。\n"
         "【要求】报告内容必须由你综合加工；数字先用 db_query 核验；不要直接把智能体原文粘进来。"
         "生成后返回路径；前端会在本轮正文下方展示结果文件卡片，用户可直接点击下载。"
     )
@@ -183,10 +214,14 @@ class WriteReportDocxTool(BaseTool):
 
         self._cover(doc, arguments)
         if arguments.include_toc:
+            # 长报告才单独起目录页；默认标题/单位/日期与正文同页。
             doc.add_page_break()
             self._toc(doc)
+            doc.add_page_break()
+        else:
+            separator = doc.add_paragraph()
+            self._format_paragraph(separator, first_line_indent=Pt(0))
 
-        doc.add_page_break()
         if arguments.sections:
             self._render_sections(doc, arguments.sections, root, warnings)
         else:
@@ -194,11 +229,11 @@ class WriteReportDocxTool(BaseTool):
             self._render_blocks(doc, blocks, root, warnings)
 
         if arguments.data_quality:
-            doc.add_heading("数据质量与局限性", level=1)
+            self._add_heading(doc, "数据质量与局限性", 1)
             for item in arguments.data_quality:
                 self._bullet(doc, str(item))
         if arguments.sources:
-            doc.add_heading("资料来源", level=1)
+            self._add_heading(doc, "资料来源", 1)
             for index, item in enumerate(arguments.sources, start=1):
                 if isinstance(item, dict):
                     label = str(item.get("label") or item.get("title") or f"来源 {index}")
@@ -211,82 +246,147 @@ class WriteReportDocxTool(BaseTool):
         doc.save(output_path)
         return warnings
 
+    @staticmethod
+    def _today_cn() -> str:
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        return f"{now.year}年{now.month}月{now.day}日"
+
+    @staticmethod
+    def _format_paragraph(
+        paragraph: Any,
+        *,
+        alignment: Any = None,
+        first_line_indent: Any = None,
+    ) -> None:
+        pf = paragraph.paragraph_format
+        if alignment is not None:
+            pf.alignment = alignment
+        if first_line_indent is not None:
+            pf.first_line_indent = first_line_indent
+        pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        pf.line_spacing = Pt(_LINE_SPACING_PT)
+        pf.space_before = Pt(0)
+        pf.space_after = Pt(0)
+
+    @staticmethod
+    def _format_run(run: Any, font: str, size: float, bold: bool | None = None) -> None:
+        run.font.name = font
+        run.font.size = Pt(size)
+        if bold is not None:
+            run.font.bold = bold
+        _set_run_eastasia(run, font)
+
+    def _add_heading(self, doc: Document, text: str, level: int) -> Any:
+        """Add a 1–4 level heading with the State Grid font rules."""
+        level = max(1, min(4, int(level)))
+        paragraph = doc.add_heading(str(text), level=level)
+        self._format_paragraph(
+            paragraph,
+            alignment=WD_ALIGN_PARAGRAPH.LEFT,
+            first_line_indent=Pt(0),
+        )
+        paragraph.paragraph_format.keep_with_next = True
+        font, bold = _HEADING_SPECS[level]
+        for run in paragraph.runs:
+            self._format_run(run, font, _BODY_SIZE, bold)
+        return paragraph
+
     def _setup_document(self, doc: Document) -> None:
         section = doc.sections[0]
-        section.page_width = Cm(21.0)
-        section.page_height = Cm(29.7)
-        section.top_margin = Cm(2.54)
-        section.bottom_margin = Cm(2.54)
-        section.left_margin = Cm(2.8)
-        section.right_margin = Cm(2.6)
-
+        section.page_width = Mm(210)
+        section.page_height = Mm(297)
+        # 国网公文格式：上下 35mm，左右 28mm。
+        section.top_margin = Mm(35)
+        section.bottom_margin = Mm(35)
+        section.left_margin = Mm(28)
+        section.right_margin = Mm(28)
         normal = doc.styles["Normal"]
         normal.font.name = _BODY_FONT
-        normal.font.size = Pt(12)
+        normal.font.size = Pt(_BODY_SIZE)
+        normal.font.bold = False
         _set_style_eastasia(normal, _BODY_FONT)
-        normal.paragraph_format.line_spacing = 1.5
-        normal.paragraph_format.first_line_indent = Cm(0.74)
-        normal.paragraph_format.space_after = Pt(6)
+        normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        normal.paragraph_format.line_spacing = Pt(_LINE_SPACING_PT)
+        normal.paragraph_format.space_before = Pt(0)
+        normal.paragraph_format.space_after = Pt(0)
+        normal.paragraph_format.first_line_indent = Pt(0)
 
-        for level, size in ((1, 16), (2, 14), (3, 12)):
+        for level, (font, bold) in _HEADING_SPECS.items():
             style = doc.styles[f"Heading {level}"]
-            style.font.name = _HEAD_FONT
-            style.font.size = Pt(size)
-            style.font.bold = True
-            style.font.color.rgb = RGBColor(0x1F, 0x3A, 0x5F)
-            _set_style_eastasia(style, _HEAD_FONT)
-            style.paragraph_format.space_before = Pt(10)
-            style.paragraph_format.space_after = Pt(6)
+            style.font.name = font
+            style.font.size = Pt(_BODY_SIZE)
+            style.font.bold = bold
+            style.font.color.rgb = RGBColor(0, 0, 0)
+            _set_style_eastasia(style, font)
+            style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+            style.paragraph_format.line_spacing = Pt(_LINE_SPACING_PT)
+            style.paragraph_format.space_before = Pt(0)
+            style.paragraph_format.space_after = Pt(0)
+            style.paragraph_format.first_line_indent = Pt(0)
+            style.paragraph_format.keep_with_next = True
 
     def _cover(self, doc: Document, arguments: WriteReportDocxInput) -> None:
-        for _ in range(4):
-            doc.add_paragraph()
         title = doc.add_paragraph()
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self._format_paragraph(
+            title,
+            alignment=WD_ALIGN_PARAGRAPH.CENTER,
+            first_line_indent=Pt(0),
+        )
         run = title.add_run(arguments.title)
-        run.bold = True
-        run.font.name = _HEAD_FONT
-        run.font.size = Pt(26)
-        _set_run_eastasia(run, _HEAD_FONT)
-        if arguments.subtitle:
-            subtitle = doc.add_paragraph()
-            subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            sub_run = subtitle.add_run(arguments.subtitle)
-            sub_run.font.size = Pt(14)
-            sub_run.font.color.rgb = RGBColor(0x59, 0x59, 0x59)
-            _set_run_eastasia(sub_run, _BODY_FONT)
-        for _ in range(3):
-            doc.add_paragraph()
-        meta = [
-            ("机构", arguments.org),
-            ("期间", arguments.period),
-            ("作者", arguments.author),
-            ("生成日期", time.strftime("%Y-%m-%d")),
-        ]
-        for label, value in meta:
-            if not value:
-                continue
+        self._format_run(run, _TITLE_FONT, _TITLE_SIZE, True)
+
+        subtitle = arguments.subtitle.strip() or arguments.period.strip()
+        if subtitle:
             paragraph = doc.add_paragraph()
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = paragraph.add_run(f"{label}：{value}")
-            run.font.size = Pt(12)
-            _set_run_eastasia(run, _BODY_FONT)
+            self._format_paragraph(
+                paragraph,
+                alignment=WD_ALIGN_PARAGRAPH.CENTER,
+                first_line_indent=Pt(0),
+            )
+            run = paragraph.add_run(subtitle)
+            self._format_run(run, _AUTHOR_FONT, _BODY_SIZE, False)
+
+        org = arguments.org.strip()
+        author = arguments.author.strip()
+        lines = [value for value in (org, author) if value and value != org]
+        if org:
+            lines.insert(0, org)
+        if not lines:
+            lines.append(_DEFAULT_ORG)
+        lines.append(arguments.date.strip() or self._today_cn())
+        for value in lines:
+            paragraph = doc.add_paragraph()
+            self._format_paragraph(
+                paragraph,
+                alignment=WD_ALIGN_PARAGRAPH.CENTER,
+                first_line_indent=Pt(0),
+            )
+            run = paragraph.add_run(value)
+            self._format_run(run, _AUTHOR_FONT, _BODY_SIZE, True)
 
     def _toc(self, doc: Document) -> None:
         heading = doc.add_paragraph()
-        heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self._format_paragraph(
+            heading,
+            alignment=WD_ALIGN_PARAGRAPH.CENTER,
+            first_line_indent=Pt(0),
+        )
         run = heading.add_run("目  录")
-        run.bold = True
-        run.font.name = _HEAD_FONT
-        run.font.size = Pt(18)
-        _set_run_eastasia(run, _HEAD_FONT)
+        self._format_run(run, _H1_FONT, _BODY_SIZE, False)
+
         paragraph = doc.add_paragraph()
+        self._format_paragraph(
+            paragraph,
+            alignment=WD_ALIGN_PARAGRAPH.LEFT,
+            first_line_indent=Pt(0),
+        )
         run = paragraph.add_run()
+        self._format_run(run, _BODY_FONT, _BODY_SIZE, None)
         fld_begin = OxmlElement("w:fldChar")
         fld_begin.set(qn("w:fldCharType"), "begin")
         instr = OxmlElement("w:instrText")
         instr.set(qn("xml:space"), "preserve")
-        instr.text = 'TOC \\o "1-3" \\h \\z \\u'
+        instr.text = 'TOC \\o "1-4" \\h \\z \\u'
         fld_sep = OxmlElement("w:fldChar")
         fld_sep.set(qn("w:fldCharType"), "separate")
         placeholder = OxmlElement("w:t")
@@ -300,24 +400,22 @@ class WriteReportDocxTool(BaseTool):
         run._r.append(fld_end)
 
     def _header_footer(self, doc: Document, arguments: WriteReportDocxInput) -> None:
+        if not arguments.include_page_numbers:
+            return
         section = doc.sections[0]
-        header = section.header.paragraphs[0]
-        header.text = arguments.title
-        header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        for run in header.runs:
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
-            _set_run_eastasia(run, _BODY_FONT)
-        if arguments.include_page_numbers:
-            footer = section.footer.paragraphs[0]
-            footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = footer.add_run("第 ")
-            self._field(run, "PAGE")
-            run2 = footer.add_run(" 页 / 共 ")
-            self._field(run2, "NUMPAGES")
-            footer.add_run(" 页")
-            for item in footer.runs:
-                item.font.size = Pt(9)
+        # 只有单独封面页时才隐藏首页页码；默认标题与正文同页，首页正常编号。
+        section.different_first_page_header_footer = bool(arguments.include_toc)
+        footer = section.footer.paragraphs[0]
+        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = footer.add_run("第 ")
+        self._field(run, "PAGE")
+        run2 = footer.add_run(" 页 / 共 ")
+        self._field(run2, "NUMPAGES")
+        footer.add_run(" 页")
+        for item in footer.runs:
+            item.font.name = "宋体"
+            item.font.size = Pt(9)
+            _set_run_eastasia(item, "宋体")
 
     @staticmethod
     def _field(run: Any, name: str) -> None:
@@ -351,7 +449,7 @@ class WriteReportDocxTool(BaseTool):
             if section.page_break_before:
                 doc.add_page_break()
             if section.heading:
-                doc.add_heading(section.heading, level=max(1, min(3, int(section.level))))
+                self._add_heading(doc, section.heading, section.level)
             for text in section.paragraphs:
                 self._paragraph(doc, text)
             for text in section.bullets:
@@ -371,23 +469,32 @@ class WriteReportDocxTool(BaseTool):
         for block in blocks:
             kind = block.get("kind")
             if kind == "heading":
-                doc.add_heading(block.get("text", ""), level=int(block.get("level", 1)))
+                self._add_heading(doc, block.get("text", ""), int(block.get("level", 1)))
             elif kind == "paragraph":
                 self._paragraph(doc, block.get("text", ""))
             elif kind == "bullet":
                 self._bullet(doc, block.get("text", ""))
             elif kind == "quote":
                 paragraph = doc.add_paragraph()
+                self._format_paragraph(
+                    paragraph,
+                    alignment=WD_ALIGN_PARAGRAPH.LEFT,
+                    first_line_indent=Pt(0),
+                )
                 paragraph.paragraph_format.left_indent = Cm(0.74)
                 run = paragraph.add_run(block.get("text", ""))
-                run.italic = True
-                run.font.color.rgb = RGBColor(0x59, 0x59, 0x59)
+                self._format_run(run, _BODY_FONT, _BODY_SIZE, False)
             elif kind == "code":
                 paragraph = doc.add_paragraph()
+                self._format_paragraph(
+                    paragraph,
+                    alignment=WD_ALIGN_PARAGRAPH.LEFT,
+                    first_line_indent=Pt(0),
+                )
                 paragraph.paragraph_format.left_indent = Cm(0.74)
+                paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
                 run = paragraph.add_run(block.get("text", ""))
-                run.font.name = "Consolas"
-                run.font.size = Pt(9)
+                self._format_run(run, _BODY_FONT, _TABLE_SIZE, False)
             elif kind == "table":
                 self._table(
                     doc,
@@ -405,18 +512,33 @@ class WriteReportDocxTool(BaseTool):
                 )
             elif kind == "hr":
                 paragraph = doc.add_paragraph()
-                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                paragraph.add_run("—" * 20)
+                self._format_paragraph(
+                    paragraph,
+                    alignment=WD_ALIGN_PARAGRAPH.CENTER,
+                    first_line_indent=Pt(0),
+                )
+                run = paragraph.add_run("—" * 20)
+                self._format_run(run, _BODY_FONT, _BODY_SIZE, False)
             elif kind == "pagebreak":
                 doc.add_page_break()
 
     def _paragraph(self, doc: Document, text: str) -> None:
         paragraph = doc.add_paragraph()
+        self._format_paragraph(
+            paragraph,
+            alignment=WD_ALIGN_PARAGRAPH.JUSTIFY,
+            first_line_indent=Pt(_BODY_INDENT_PT),
+        )
         self._add_inline(paragraph, text)
 
     def _bullet(self, doc: Document, text: str) -> None:
         paragraph = doc.add_paragraph(style="List Bullet")
-        paragraph.paragraph_format.first_line_indent = Cm(0)
+        self._format_paragraph(
+            paragraph,
+            alignment=WD_ALIGN_PARAGRAPH.LEFT,
+            first_line_indent=Pt(0),
+        )
+        paragraph.paragraph_format.left_indent = Cm(0.74)
         self._add_inline(paragraph, text)
 
     def _add_inline(self, paragraph: Any, text: str) -> None:
@@ -443,14 +565,19 @@ class WriteReportDocxTool(BaseTool):
             position = match.end()
         if position < len(text):
             paragraph.add_run(text[position:])
+        for run in paragraph.runs:
+            self._format_run(run, _BODY_FONT, _BODY_SIZE, None)
 
     def _table(self, doc: Document, table: ReportTable) -> None:
         if table.title:
             caption = doc.add_paragraph()
-            caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            self._format_paragraph(
+                caption,
+                alignment=WD_ALIGN_PARAGRAPH.CENTER,
+                first_line_indent=Pt(0),
+            )
             run = caption.add_run(table.title)
-            run.bold = True
-            run.font.size = Pt(10)
+            self._format_run(run, _H3_FONT, _TABLE_SIZE, True)
         columns = [str(item) for item in table.columns][:_MAX_TABLE_COLS]
         rows = table.rows[:_MAX_TABLE_ROWS]
         if not columns:
@@ -460,15 +587,17 @@ class WriteReportDocxTool(BaseTool):
         doc_table.alignment = WD_TABLE_ALIGNMENT.CENTER
         header = doc_table.rows[0].cells
         for index, name in enumerate(columns):
-            header[index].text = ""
-            paragraph = header[index].paragraphs[0]
-            run = paragraph.add_run(name)
-            run.bold = True
-            self._shade(header[index], "D9E2F3")
+            self._table_cell(header[index], name, bold=True, font=_H3_FONT)
+            self._shade(header[index], "F2F2F2")
         for row in rows:
             cells = doc_table.add_row().cells
             for index, value in enumerate(row[: len(columns)]):
-                cells[index].text = str(value if value is not None else "")
+                self._table_cell(
+                    cells[index],
+                    str(value if value is not None else ""),
+                    bold=False,
+                    font=_BODY_FONT,
+                )
         # 表头跨页重复
         tr_pr = doc_table.rows[0]._tr.get_or_add_trPr()
         tbl_header = OxmlElement("w:tblHeader")
@@ -476,10 +605,25 @@ class WriteReportDocxTool(BaseTool):
         tr_pr.append(tbl_header)
         if table.note:
             note = doc.add_paragraph()
-            note.paragraph_format.first_line_indent = Cm(0)
+            self._format_paragraph(
+                note,
+                alignment=WD_ALIGN_PARAGRAPH.LEFT,
+                first_line_indent=Pt(0),
+            )
             run = note.add_run(table.note)
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
+            self._format_run(run, _BODY_FONT, 9, False)
+
+    def _table_cell(self, cell: Any, text: str, *, bold: bool, font: str) -> None:
+        cell.text = ""
+        paragraph = cell.paragraphs[0]
+        self._format_paragraph(
+            paragraph,
+            alignment=WD_ALIGN_PARAGRAPH.LEFT,
+            first_line_indent=Pt(0),
+        )
+        paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        run = paragraph.add_run(str(text))
+        self._format_run(run, font, _TABLE_SIZE, bold)
 
     @staticmethod
     def _shade(cell: Any, color: str) -> None:
@@ -498,12 +642,26 @@ class WriteReportDocxTool(BaseTool):
             warnings.append(f"图片不存在：{image.path}")
             return
         try:
-            doc.add_picture(str(path), width=Cm(max(5.0, min(17.0, float(image.width_cm or 15.0)))))
+            # A4 正文宽度 = 21 - 2.8 - 2.8 = 15.4cm，图片不得越界。
+            doc.add_picture(
+                str(path),
+                width=Cm(max(5.0, min(15.4, float(image.width_cm or 15.0)))),
+            )
+            picture_paragraph = doc.paragraphs[-1]
+            self._format_paragraph(
+                picture_paragraph,
+                alignment=WD_ALIGN_PARAGRAPH.CENTER,
+                first_line_indent=Pt(0),
+            )
             if image.caption:
                 caption = doc.add_paragraph()
-                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                self._format_paragraph(
+                    caption,
+                    alignment=WD_ALIGN_PARAGRAPH.CENTER,
+                    first_line_indent=Pt(0),
+                )
                 run = caption.add_run(image.caption)
-                run.font.size = Pt(9)
+                self._format_run(run, _BODY_FONT, _TABLE_SIZE, False)
         except Exception as exc:  # noqa: BLE001 - 单张图片失败不阻断整篇
             warnings.append(f"图片插入失败 {image.path}: {exc}")
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from docx.enum.text import WD_LINE_SPACING
 
 from openharness.tools.base import ToolExecutionContext
 from qaapp.tools.report import (
@@ -58,6 +59,8 @@ async def test_generate_docx_from_markdown(tmp_path: Path):
     assert any("总体情况" in text for text in texts)
     assert len(doc.tables) == 1
     assert any("数据质量与局限性" in text for text in texts)
+    # 默认标题/单位/日期与正文同页，不额外生成目录页。
+    assert all(text != "目  录" for text in texts)
 
 
 @pytest.mark.asyncio
@@ -113,3 +116,86 @@ def test_parse_markdown_table_and_heading():
     kinds = [block["kind"] for block in blocks]
     assert "heading" in kinds
     assert "table" in kinds
+
+@pytest.mark.asyncio
+async def test_report_uses_state_grid_official_format(tmp_path: Path):
+    """生成的 Word 必须符合国网公文格式（字体/字号/行距/页边距）。"""
+    markdown = (
+        "# 一、总体情况\n\n"
+        "这是正文。\n\n"
+        "## （二）分项标题\n\n"
+        "### 3.三级标题\n\n"
+        "#### （4）四级标题\n\n"
+        "正文第二段。\n"
+    )
+    result = await WriteReportDocxTool().execute(
+        WriteReportDocxInput(
+            title="关于测试问题的汇报",
+            org="国家电网公司",
+            date="2026年10月21日",
+            markdown=markdown,
+            include_toc=False,
+            include_page_numbers=False,
+        ),
+        _context(tmp_path),
+    )
+    assert result.is_error is False
+    doc = Document(result.metadata["path"])
+
+    section = doc.sections[0]
+    assert round(section.top_margin.mm) == 35
+    assert round(section.bottom_margin.mm) == 35
+    assert round(section.left_margin.mm) == 28
+    assert round(section.right_margin.mm) == 28
+
+    normal = doc.styles["Normal"]
+    assert normal.font.name == "仿宋"
+    assert normal.font.size.pt == 16
+    assert normal.paragraph_format.line_spacing.pt == 29
+    assert normal.paragraph_format.line_spacing_rule == WD_LINE_SPACING.EXACTLY
+
+    expected = {
+        1: ("黑体", False),
+        2: ("楷体", True),
+        3: ("宋体", True),
+        4: ("仿宋", False),
+    }
+    for level, (font, bold) in expected.items():
+        style = doc.styles[f"Heading {level}"]
+        assert style.font.name == font
+        assert style.font.size.pt == 16
+        assert bool(style.font.bold) is bold
+        assert style.paragraph_format.line_spacing.pt == 29
+
+    def _paragraph(text: str):
+        return next(p for p in doc.paragraphs if p.text == text)
+
+    title_run = _paragraph("关于测试问题的汇报").runs[0]
+    assert title_run.font.name == "宋体"
+    assert title_run.font.size.pt == 22
+    assert title_run.font.bold is True
+
+    for value in ("国家电网公司", "2026年10月21日"):
+        run = _paragraph(value).runs[0]
+        assert run.font.name == "楷体"
+        assert run.font.size.pt == 16
+        assert run.font.bold is True
+
+    for text, level, font, bold in (
+        ("一、总体情况", 1, "黑体", False),
+        ("（二）分项标题", 2, "楷体", True),
+        ("3.三级标题", 3, "宋体", True),
+        ("（4）四级标题", 4, "仿宋", False),
+    ):
+        paragraph = _paragraph(text)
+        assert paragraph.style.name == f"Heading {level}"
+        run = paragraph.runs[0]
+        assert run.font.name == font
+        assert run.font.size.pt == 16
+        assert bool(run.font.bold) is bold
+
+    body = _paragraph("这是正文。")
+    assert body.runs[0].font.name == "仿宋"
+    assert body.runs[0].font.size.pt == 16
+    assert body.paragraph_format.line_spacing.pt == 29
+    assert body.paragraph_format.first_line_indent.pt == 32

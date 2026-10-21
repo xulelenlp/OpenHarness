@@ -153,8 +153,12 @@ def build_capability_catalog(
         sections.append(
             "### Word 报告（write_report_docx）\n"
             "- 深度分析完成后，用 `write_report_docx` 生成 `.docx`：可传 `sections`（结构化）或 "
-            "`markdown`/`markdown_path`（长文先落 Markdown 再转换）。\n"
+            "`markdown`/`markdown_path`（长文先落 Markdown 再转换）。默认标题/单位/日期与正文同页；"
+            "长报告可传 `include_toc=true` 单独生成目录页，传 `include_page_numbers=false` 可关闭页码。\n"
             "- 报告必须包含：摘要、背景与口径、总体情况、分维度、问题诊断、成因、建议、数据质量/来源。\n"
+            "- **版式固定为国网公文格式**：A4，上下 35mm、左右 28mm；标题宋体二号加粗；作者/日期楷体三号加粗；"
+            "一级标题黑体三号；二级标题楷体三号加粗；三级标题宋体三号加粗；四级标题与正文仿宋三号；固定行距 29 磅。"
+            "标题用 1–4 级，按“一、/（二）/3./（4）”编号；正文首行缩进两字符。\n"
             "- 数字先用 `db_query` 核验；不要直接把智能体原文粘进报告。"
         )
 

@@ -93,6 +93,7 @@ abcqa webapp start|stop|status [--workspace DIR]
 | 高危操作门禁 | `dangerous-actions.json` 对删除/写文件/执行命令等做 allow / confirm / deny 三级控制 |
 | 对话 API | REST + SSE + WebSocket，保留 Agent 调用与操作系统文件能力 |
 | 对话历史 | 每个对话有独立 `conversation_id`，历史（含中间工具执行过程）可查询 |
+| Word 报告 | `write_report_docx` 固定按国网公文格式输出（A4、35/28mm 页边距、29 磅行距、宋体二号标题、仿宋三号正文） |
 | 附件上传解析 | 对话框上传 Word / Excel / TXT（单条消息最多 2 个），服务端主动解析成文本并注入模型上下文 |
 | 会话临时目录 | 每个 `conversation_id` 一个独立目录 `~/.ohmo/conversations/<id>/`（uploads / extracted / scripts / tmp / outputs） |
 | 会话脚本执行 | 内置 `run_script` 工具：脚本一律写入本会话 `scripts/`，用共享 conda 环境执行，产物落 `outputs/` |

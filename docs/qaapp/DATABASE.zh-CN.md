@@ -48,7 +48,7 @@ abcqa config             # 四份配置（webapp/agents/dangerous/datasources）
 | --- | --- | --- |
 | `db_query` | 指标/维度/机构查询、EDA、大纲、新闻、图表、Redis 预测缓存、受控 SQL | 只读 |
 | `consult_agents` | 1–4 个外部智能体并行/顺序调用，重试、超时、截断、证据落盘 | 只读 |
-| `write_report_docx` | Markdown/结构化章节 → Word（封面/目录/表格/图片/页码/来源） | 写（默认确认） |
+| `write_report_docx` | Markdown/结构化章节 → Word（国网公文格式；标题/单位/日期、可选目录、表格/图片/页码/来源） | 写（默认确认） |
 
 - `db_query` 直连业务库，已处理 A1/A2/B1/B2/T/四率路由、月末日期、周期/维度回退、无数据诊断、数据质量；
 - `consult_agents` 不替代 `external_agent`；复杂任务用它一次批量调用三个智能体，`shared_context` 共享已核验数据；

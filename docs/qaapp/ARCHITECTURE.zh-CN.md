@@ -85,7 +85,7 @@
 | `qaapp/data/catalog.py` / `data/query.py` + `resolver.py` / `fetcher.py` / `shaping.py` | 业务库元数据/路由/查询/质量 | 取数规则变化时改 |
 | `qaapp/tools/db_query.py` | `db_query` 工具 | 查询能力变化时改 |
 | `qaapp/tools/consult.py` | `consult_agents` 多智能体批量调用 | 编排策略变化时改 |
-| `qaapp/tools/report.py` | `write_report_docx` Word 报告 | 报告版式变化时改 |
+| `qaapp/tools/report.py` | `write_report_docx` Word 报告（固定国网公文格式） | 报告版式变化时改 |
 | `qaapp/agents/scenarios.py` | 10 类业务场景模板 | 新增场景时改 |
 | `qaapp/agents/router.py` | 显式/关键词/默认路由 | 新增路由策略时改 |
 | `qaapp/agents/capabilities.py` | 动态能力清单与决策顺序 | **一般不用改**（配置自动生成） |
@@ -535,7 +535,7 @@ QaWebService
 | --- | --- | --- |
 | `db_query` | 业务库结构化查询/EDA/大纲/新闻/图表/受控 SQL | 只读 |
 | `consult_agents` | 1–4 个外部智能体并行/顺序调用，重试、超时、截断、证据落盘 | 只读 |
-| `write_report_docx` | Markdown/结构化章节 → Word（封面/目录/表格/图片/页码/来源） | 写（默认确认） |
+| `write_report_docx` | Markdown/结构化章节 → Word（国网公文格式；标题/单位/日期、可选目录、表格/图片/页码/来源） | 写（默认确认） |
 
 `db_query` / `consult_agents` 是**增量能力**：不替换 `external_agent`、`run_script` 或任何原有工具；general 的工具仍为 `["*"]`。
 
@@ -564,6 +564,18 @@ QaWebService
 - `high` 级质量问题必须进入回答/报告；
 - 报告使用 `write_report_docx` 生成，`markdown_path` 适合长文分段写；
 - 详细取数口径见 [`database/IMPLEMENTATION.zh-CN.md`](database/IMPLEMENTATION.zh-CN.md)。
+
+### 13.7 Word 报告版式（固定）
+
+所有 `write_report_docx` 输出统一按国网公文格式，不随模型/调用参数变化：
+
+- A4；上下页边距 35 mm，左右 28 mm；
+- 标题：宋体二号加粗；作者/日期：楷体三号加粗；
+- 一级标题：黑体三号；二级标题：楷体三号加粗；三级标题：宋体三号加粗；四级标题：仿宋三号；
+- 正文：仿宋三号，首行缩进两字符；
+- 行距：固定值 29 磅；段前/段后 0。
+
+标题层级只使用 1–4 级；编号建议按“一、/（二）/3./（4）”书写。默认标题/单位/日期与正文同页；长报告可传 `include_toc=true` 单独生成目录页，页码默认开启。
 
 ---
 

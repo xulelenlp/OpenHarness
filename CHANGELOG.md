@@ -33,6 +33,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Changed
 
+- **Word 报告固定为国网公文格式**：`write_report_docx` 现在统一输出 A4、上下 35mm/左右 28mm 页边距；标题宋体二号加粗，作者/日期楷体三号加粗，一级标题黑体三号，二级标题楷体三号加粗，三级标题宋体三号加粗，四级标题与正文仿宋三号，固定行距 29 磅，正文首行缩进两字符。新增 `date` 入参；默认标题/单位/日期与正文同页，不再输出“机构/期间/作者/生成日期”标签；目录改为可选（`include_toc`，默认关闭），标题层级支持 1–4 级。
 - **项目结构重构（不改变公开契约）**：`qaapp` 从平铺模块收敛为 `config / data / agents / workspace / tools / server` 六层；`data_query.py` 拆为 `periods / formatting / resolver / fetcher / shaping / query`，`service.py` 拆为 `server/{service,session,runtime,logging}` + `server/api`；`ohmo/workspace` 拆为路径/模板/生命周期子模块。`qaapp/service.py`、`qaapp/config.py` 等旧模块路径已移除，公开 CLI / HTTP / 配置 / 磁盘布局保持不变。
 - **重复实现收敛**：会话快照统一到 `openharness.services.session_storage`（ohmo 只保留目录与 `app/session_key` 元数据）；个人记忆复用 `MemoryLocation` 生命周期；CLI 交互提示、飞书群策略、diff、路径解析、YAML frontmatter、进程终止、Git 根目录、版本号各只剩一处实现。
 - **测试与依赖治理**：4 个真实 API 测试移入 `tests/e2e/`，删除硬编码 Key 与机器相关绝对路径，默认由 `real_api` marker 排除；新增 `tests/test_architecture.py`（分层守护）、路由契约、文档链接、场景一致性、版本一致性测试。`mcp` 固定为 `<2.0.0`（2.x 移除了 `mcp.server.fastmcp`，会让现有 MCP 测试无法导入）。
