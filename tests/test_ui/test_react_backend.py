@@ -11,9 +11,9 @@ import pytest
 
 from openharness.api.client import ApiMessageCompleteEvent
 from openharness.api.usage import UsageSnapshot
-from openharness.engine.stream_events import CompactProgressEvent
-from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock
 from openharness.config.settings import Settings, save_settings
+from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock
+from openharness.engine.stream_events import CompactProgressEvent
 from openharness.ui.backend_host import (
     BackendHostConfig,
     ReactBackendHost,

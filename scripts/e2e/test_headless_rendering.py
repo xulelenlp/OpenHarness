@@ -13,10 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-GREEN = "\033[92m"
-RED = "\033[91m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
+from _common import BOLD, GREEN, RED, RESET
 
 
 def _env_settings() -> dict[str, str | None]:
@@ -31,12 +28,13 @@ def _env_settings() -> dict[str, str | None]:
 async def test_markdown_render() -> tuple[bool, str]:
     """Test that assistant output with markdown is rendered by rich."""
     from io import StringIO
+
     from rich.console import Console
 
-    from openharness.ui.output import OutputRenderer
-    from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete
-    from openharness.engine.messages import ConversationMessage, TextBlock
     from openharness.api.usage import UsageSnapshot
+    from openharness.engine.messages import ConversationMessage, TextBlock
+    from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete
+    from openharness.ui.output import OutputRenderer
 
     renderer = OutputRenderer(style_name="default")
     buffer = StringIO()
@@ -59,10 +57,11 @@ async def test_markdown_render() -> tuple[bool, str]:
 async def test_tool_output_format() -> tuple[bool, str]:
     """Test that tool output is formatted with panels."""
     from io import StringIO
+
     from rich.console import Console
 
+    from openharness.engine.stream_events import ToolExecutionCompleted, ToolExecutionStarted
     from openharness.ui.output import OutputRenderer
-    from openharness.engine.stream_events import ToolExecutionStarted, ToolExecutionCompleted
 
     renderer = OutputRenderer(style_name="default")
     buffer = StringIO()
@@ -87,10 +86,11 @@ async def test_tool_output_format() -> tuple[bool, str]:
 async def test_spinner_display() -> tuple[bool, str]:
     """Test that spinner starts on tool execution."""
     from io import StringIO
+
     from rich.console import Console
 
+    from openharness.engine.stream_events import ToolExecutionCompleted, ToolExecutionStarted
     from openharness.ui.output import OutputRenderer
-    from openharness.engine.stream_events import ToolExecutionStarted, ToolExecutionCompleted
 
     renderer = OutputRenderer(style_name="default")
     buffer = StringIO()

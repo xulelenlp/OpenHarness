@@ -13,7 +13,6 @@ import pytest
 
 from openharness.utils.fs import atomic_write_bytes, atomic_write_text
 
-
 # ---------------------------------------------------------------------------
 # Core behaviour
 # ---------------------------------------------------------------------------

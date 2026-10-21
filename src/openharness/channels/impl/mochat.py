@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 import httpx
-import logging
 
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus

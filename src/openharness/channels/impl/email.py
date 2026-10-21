@@ -3,10 +3,10 @@
 import asyncio
 import html
 import imaplib
+import logging
 import re
 import smtplib
 import ssl
-import logging
 from datetime import date
 from email import policy
 from email.header import decode_header, make_header
@@ -14,7 +14,6 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import parseaddr
 from typing import Any
-
 
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus

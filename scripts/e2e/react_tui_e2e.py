@@ -14,7 +14,6 @@ import pexpect
 
 from openharness.config.settings import load_settings
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 

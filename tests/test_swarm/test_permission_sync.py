@@ -17,7 +17,6 @@ from openharness.swarm.permission_sync import (
     send_permission_response,
 )
 
-
 # ---------------------------------------------------------------------------
 # _is_read_only heuristic
 # ---------------------------------------------------------------------------

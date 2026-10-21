@@ -11,12 +11,12 @@ from openharness.auth.storage import store_credential
 from openharness.config.settings import (
     ProviderProfile,
     Settings,
+    _apply_env_overrides,
     display_model_setting,
     load_settings,
     normalize_anthropic_model_name,
     save_settings,
     strip_ansi_escape_sequences,
-    _apply_env_overrides,
 )
 
 

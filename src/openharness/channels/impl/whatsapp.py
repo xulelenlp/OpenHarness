@@ -5,7 +5,6 @@ import json
 import logging
 from collections import OrderedDict
 
-
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus
 from openharness.channels.impl.base import BaseChannel

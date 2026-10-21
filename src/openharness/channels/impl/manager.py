@@ -6,7 +6,6 @@ import asyncio
 import logging
 from typing import Any
 
-
 from openharness.channels.bus.queue import MessageBus
 from openharness.channels.impl.base import BaseChannel
 from openharness.config.schema import Config

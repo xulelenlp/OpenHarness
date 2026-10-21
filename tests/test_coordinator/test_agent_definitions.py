@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from openharness.coordinator.agent_definitions import (
@@ -11,7 +10,6 @@ from openharness.coordinator.agent_definitions import (
     get_builtin_agent_definitions,
     load_agents_dir,
 )
-
 
 # ---------------------------------------------------------------------------
 # AgentDefinition model

@@ -1,9 +1,9 @@
 """Slack channel implementation using Socket Mode."""
 
 import asyncio
+import logging
 import re
 
-import logging
 from slack_sdk.socket_mode.request import SocketModeRequest
 from slack_sdk.socket_mode.response import SocketModeResponse
 from slack_sdk.socket_mode.websockets import SocketModeClient

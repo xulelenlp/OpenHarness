@@ -17,11 +17,11 @@ from qaapp.data.catalog import (
     Org,
     OrgHit,
 )
-from qaapp.data.mysql import QueryResult, SqlGuard, SqlSafetyError
-from qaapp.data.quality import check_quality
-from qaapp.data.periods import _month_end, _month_start
-from qaapp.data.query import BusinessQueryService
 from qaapp.data.datasources import MySQLConfig
+from qaapp.data.mysql import QueryResult, SqlGuard, SqlSafetyError
+from qaapp.data.periods import _month_end, _month_start
+from qaapp.data.quality import check_quality
+from qaapp.data.query import BusinessQueryService
 
 INDICATOR = Indicator(
     index_id="IDX-1006-00010001",

@@ -11,12 +11,15 @@ from openharness.config.paths import (
     get_project_pr_comments_file,
 )
 from openharness.config.settings import Settings
-from openharness.coordinator.coordinator_mode import get_coordinator_system_prompt, is_coordinator_mode
+from openharness.coordinator.coordinator_mode import (
+    get_coordinator_system_prompt,
+    is_coordinator_mode,
+)
 from openharness.memory import load_memory_prompt
 from openharness.memory.relevance import format_relevant_memories, select_relevant_memories
 from openharness.memory.usage import mark_memory_used
-from openharness.personalization.rules import load_local_rules
 from openharness.permissions.modes import PermissionMode
+from openharness.personalization.rules import load_local_rules
 from openharness.prompts.claudemd import load_claude_md_prompt
 from openharness.prompts.system_prompt import build_system_prompt
 from openharness.skills.loader import load_skill_registry

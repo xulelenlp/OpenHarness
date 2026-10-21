@@ -5,14 +5,20 @@ from typing import Any
 
 import pytest
 
-from openharness.api.client import ApiMessageRequest, ApiMessageCompleteEvent, ApiTextDeltaEvent
+from openharness.api.client import ApiMessageCompleteEvent, ApiMessageRequest, ApiTextDeltaEvent
 from openharness.api.codex_client import (
     CodexApiClient,
     _convert_messages_to_codex,
     _format_codex_stream_error,
     _resolve_codex_url,
 )
-from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock, ToolResultBlock, ToolUseBlock
+from openharness.engine.messages import (
+    ConversationMessage,
+    ImageBlock,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 
 
 class _FakeStreamResponse:

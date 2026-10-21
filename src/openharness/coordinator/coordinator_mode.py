@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 from xml.sax.saxutils import escape, unescape
 
-
 # ---------------------------------------------------------------------------
 # TeamRegistry (kept for backward compatibility)
 # ---------------------------------------------------------------------------

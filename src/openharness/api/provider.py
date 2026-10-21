@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from openharness.api.registry import detect_provider_from_registry
 from openharness.auth.external import describe_external_binding
 from openharness.auth.storage import load_external_binding
-from openharness.api.registry import detect_provider_from_registry
 from openharness.config.settings import Settings
 
 _AUTH_KIND: dict[str, str] = {

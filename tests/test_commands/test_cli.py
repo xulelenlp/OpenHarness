@@ -9,10 +9,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import openharness.cli as cli
-from openharness.config import load_settings
 from openharness.config.settings import Settings
 from openharness.mcp.types import McpStdioServerConfig
-
 
 app = cli.app
 

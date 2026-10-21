@@ -16,9 +16,20 @@ from openharness.api.client import (
     ApiStreamEvent,
     ApiTextDeltaEvent,
 )
-from openharness.api.errors import AuthenticationFailure, OpenHarnessApiError, RateLimitFailure, RequestFailure
+from openharness.api.errors import (
+    AuthenticationFailure,
+    OpenHarnessApiError,
+    RateLimitFailure,
+    RequestFailure,
+)
 from openharness.api.usage import UsageSnapshot
-from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock, ToolResultBlock, ToolUseBlock
+from openharness.engine.messages import (
+    ConversationMessage,
+    ImageBlock,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 
 DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api"
 JWT_CLAIM_PATH = "https://api.openai.com/auth"

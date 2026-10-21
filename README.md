@@ -50,15 +50,18 @@ browser session cookie).
 ```text
 src/openharness/     core runtime: API clients, engine, tools, permissions,
                      plugins, MCP, skills, sessions, TUI
-ohmo/                personal-agent layer: workspace, memory, gateway, storage
-qaapp/               Q&A web service: REST/SSE/WS, routing, attachments,
-                     run_script, maintenance/cleanup
+ohmo/                personal-agent layer: workspace package, memory, gateway
+qaapp/               Q&A web service, layered into config/data/agents/
+                     workspace/tools/server
 frontend/terminal/   React terminal UI
 frontend/webapp/     React web client for qaapp
+frontend/autopilot-dashboard/
+                     React/Vite dashboard for GitHub Pages
 config/              project-visible qaapp config (agents, etc.)
 tests/               automated tests (pytest; this is the CI surface)
+tests/e2e/           opt-in real-model scenarios (excluded from default pytest)
 scripts/             operational scripts; manual E2E suites live in scripts/e2e/
-docs/                configuration, customization, showcase, architecture
+docs/                core config/customization, plus docs/qaapp/ for the service
 ```
 
 ## Maintenance
@@ -67,11 +70,18 @@ Automated tests belong in `tests/` and are the only suite CI runs:
 
 ```bash
 ruff check src tests scripts qaapp
-pytest -q
+pytest -q                       # excludes the opt-in real_api marker
+```
+
+Real-model scenarios under `tests/e2e/` run only when explicitly requested:
+
+```bash
+OPENHARNESS_E2E_WORKSPACE=/path/to/sample-repo \
+ANTHROPIC_API_KEY=... pytest tests/e2e -m real_api -q
 ```
 
 Manual E2E checks that need real model calls, Docker, or an interactive TUI
-live in [`scripts/e2e/`](scripts/e2e/README.md). They are intentionally not
+live in [`scripts/e2e/`](scripts/README.md#手工-e2e-套件). They are intentionally not
 part of CI.
 
 qaapp keeps a per-conversation workspace under `~/.ohmo/conversations/`.
@@ -84,7 +94,9 @@ python -m qaapp cleanup --help     # dry-run by default; --apply to delete
 ## Documentation
 
 - [qaapp deployment and API](qaapp/README.md)
-- [qaapp architecture and extension contracts](docs/QAAPP_ARCHITECTURE.zh-CN.md)
+- [qaapp documentation index](docs/qaapp/README.zh-CN.md)
+- [qaapp architecture and extension contracts](docs/qaapp/ARCHITECTURE.zh-CN.md)
+- [Documentation index](docs/README.md)
 - [Configuration](docs/CONFIGURATION.zh-CN.md)
 - [Customization and plugins](docs/CUSTOMIZATION.zh-CN.md)
 - [Contributing](CONTRIBUTING.md)

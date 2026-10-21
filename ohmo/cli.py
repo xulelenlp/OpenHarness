@@ -39,7 +39,6 @@ from openharness.ui.prompts import (
     text_prompt,
 )
 
-
 # Backwards-compatible private names (tests and older callers use these).
 _can_use_questionary = can_use_questionary
 _text_prompt = text_prompt

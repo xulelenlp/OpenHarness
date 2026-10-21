@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import mimetypes
 import os
 import time
@@ -10,7 +11,6 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 import httpx
-import logging
 
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus

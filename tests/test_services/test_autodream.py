@@ -6,7 +6,11 @@ import time
 from pathlib import Path
 
 from openharness.config.settings import Settings
-from openharness.services.autodream.backup import create_memory_backup, diff_memory_dirs, restore_memory_backup
+from openharness.services.autodream.backup import (
+    create_memory_backup,
+    diff_memory_dirs,
+    restore_memory_backup,
+)
 from openharness.services.autodream.lock import (
     list_sessions_touched_since,
     read_last_consolidated_at,

@@ -15,7 +15,6 @@ from openharness.coordinator.coordinator_mode import (
     parse_task_notification,
 )
 
-
 # ---------------------------------------------------------------------------
 # TaskNotification XML round-trip
 # ---------------------------------------------------------------------------

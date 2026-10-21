@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from openharness.config.settings import PermissionSettings
 from openharness.engine.messages import ConversationMessage, TextBlock
 from openharness.engine.stream_events import (
     AssistantReasoningDelta,
@@ -28,14 +29,19 @@ from openharness.permissions.modes import PermissionMode
 from openharness.tools.base import ToolExecutionContext
 from openharness.ui.runtime import RuntimeBundle, build_runtime, start_runtime
 from qaapp.agents.capabilities import build_capability_catalog
+from qaapp.agents.external import external_conversation_id, install_external_agent_tool
 from qaapp.agents.router import AgentNotFoundError, NoDefaultAgentError, resolve_agent
 from qaapp.config import KIND_EXTERNAL, KIND_SUBAGENT, AgentEntry
 from qaapp.server.constants import DEFAULT_ATTACHMENT_PROMPT
-from qaapp.server.session import ConversationSession, PendingRequest, _edit_key, _normalize_permission_mode
+from qaapp.server.session import (
+    ConversationSession,
+    PendingRequest,
+    _edit_key,
+    _normalize_permission_mode,
+)
 from qaapp.tools.consult import ConsultAgentsTool
 from qaapp.tools.dangerous import DangerousPermissionChecker
 from qaapp.tools.db_query import DbQueryTool
-from qaapp.agents.external import external_conversation_id, install_external_agent_tool
 from qaapp.tools.policy import build_agent_tool_registry
 from qaapp.tools.report import WriteReportDocxTool
 from qaapp.tools.script import CONVERSATION_DIR_KEY, RunScriptTool
@@ -56,7 +62,6 @@ from qaapp.workspace.files import (
     public_record,
 )
 from qaapp.workspace.turns import Snapshot, compute_turn_files_event, snapshot_workspace
-from openharness.config.settings import PermissionSettings
 
 logger = logging.getLogger(__name__)
 

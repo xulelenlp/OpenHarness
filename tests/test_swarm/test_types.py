@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from openharness.swarm.types import (
     SpawnResult,
     TeammateExecutor,
@@ -10,7 +9,6 @@ from openharness.swarm.types import (
     TeammateMessage,
     TeammateSpawnConfig,
 )
-
 
 # ---------------------------------------------------------------------------
 # TeammateIdentity

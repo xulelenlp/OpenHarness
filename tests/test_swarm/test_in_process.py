@@ -14,7 +14,6 @@ from openharness.swarm.in_process import (
 )
 from openharness.swarm.types import TeammateMessage, TeammateSpawnConfig
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

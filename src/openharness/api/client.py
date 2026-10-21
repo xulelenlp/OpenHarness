@@ -17,13 +17,13 @@ from openharness.api.errors import (
     RateLimitFailure,
     RequestFailure,
 )
+from openharness.api.usage import UsageSnapshot
 from openharness.auth.external import (
     claude_attribution_header,
     claude_oauth_betas,
     claude_oauth_headers,
     get_claude_code_session_id,
 )
-from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import ConversationMessage, assistant_message_from_api
 
 log = logging.getLogger(__name__)

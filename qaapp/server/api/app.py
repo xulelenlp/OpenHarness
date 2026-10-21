@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from sse_starlette.sse import EventSourceResponse
 from starlette.applications import Starlette
 from starlette.datastructures import UploadFile
 from starlette.middleware import Middleware
@@ -19,22 +20,21 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.websockets import WebSocketDisconnect
-from sse_starlette.sse import EventSourceResponse
 
 from qaapp.agents.router import AgentNotFoundError, NoDefaultAgentError
-from qaapp.workspace.files import (
-CONVERSATION_ID_PATTERN,
-AttachmentError,
-AttachmentNotFound,
-AttachmentTooLarge,
-TooManyAttachments,
-UnsupportedAttachment,
-ensure_supported,
-list_files,
-public_record,
-save_upload,
-)
 from qaapp.server.constants import UPLOAD_CHUNK_BYTES
+from qaapp.workspace.files import (
+    CONVERSATION_ID_PATTERN,
+    AttachmentError,
+    AttachmentNotFound,
+    AttachmentTooLarge,
+    TooManyAttachments,
+    UnsupportedAttachment,
+    ensure_supported,
+    list_files,
+    public_record,
+    save_upload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +348,7 @@ def build_app(service) -> Starlette:
         except (ValueError, TypeError):
             return JSONResponse({"status": 400, "code": "bad_request", "message": "请求体不是合法 JSON"}, status_code=400)
         try:
-            from qaapp.schemas import SendMessageRequest
+            from qaapp.server.schemas import SendMessageRequest
 
             payload = SendMessageRequest.model_validate(body)
         except ValueError as exc:

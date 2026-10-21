@@ -15,21 +15,21 @@ from zoneinfo import ZoneInfo
 
 from qaapp.agents.scenarios import AnalysisScenario, get_scenario, match_scenario
 from qaapp.data.catalog import BusinessCatalog, normalize_text
-from qaapp.data.mysql import DataClientError, MySqlClient
-from qaapp.data.quality import QualityIssue, check_quality, summarize_issues
-from qaapp.data.schema import (
-    T_EVENTS,
-    T_NEWS,
-)
 from qaapp.data.datasources import MySQLConfig
 from qaapp.data.fetcher import FetcherMixin
 from qaapp.data.formatting import _rows_jsonable
+from qaapp.data.mysql import DataClientError, MySqlClient
 from qaapp.data.periods import (
     _as_date,
     _periods_from_indicator,
     _today,
 )
+from qaapp.data.quality import QualityIssue, check_quality, summarize_issues
 from qaapp.data.resolver import QueryError, ResolvedRequest, ResolverMixin
+from qaapp.data.schema import (
+    T_EVENTS,
+    T_NEWS,
+)
 from qaapp.data.shaping import ShapingMixin
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+
 from openharness.hooks.events import HookEvent
 from openharness.hooks.schemas import HookDefinition
 

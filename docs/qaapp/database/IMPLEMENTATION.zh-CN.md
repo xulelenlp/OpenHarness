@@ -1,6 +1,6 @@
 # database_query 落地实现说明（qaapp）
 
-> 本文件说明 `docs/database_query/` 里的客户参考资料如何落到 qaapp 的 `db_query` 工具。
+> 本文件说明 `docs/qaapp/database/` 里的客户参考资料如何落到 qaapp 的 `db_query` 工具。
 > 原始 `SKILL.md` / `schema/db_structure.md` / `examples/` **保留不动**，作为口径参考；
 > 实际实现以本文件 + 代码为准。
 
@@ -16,13 +16,13 @@
 
 | 原参考 | qaapp 实现 |
 | --- | --- |
-| `DatabaseQuerySkill.execute` | `qaapp/db_query_tool.py` + `qaapp/data_query.py` |
-| `IndicatorMatcher` | `qaapp/data_catalog.py`（`zhss_index_basic_info` + `zhss_index_name_sim` + `ai_index_config`） |
-| `TableSelector` A1/A2/B1/B2 | `qaapp/data_query.py::_candidate_tables` |
-| `OrgMapper` | `qaapp/data_catalog.py::resolve_orgs` |
-| 维度匹配 | `qaapp/data_catalog.py::resolve_dimensions`（`ai_index_dim` 优先） |
-| 执行器/SQL 安全 | `qaapp/data_client.py::MySqlClient` + `SqlGuard` |
-| 数据质量 | `qaapp/data_quality.py` |
+| `DatabaseQuerySkill.execute` | `qaapp/tools/db_query.py` + `qaapp/data/query.py` |
+| `IndicatorMatcher` | `qaapp/data/catalog.py`（`zhss_index_basic_info` + `zhss_index_name_sim` + `ai_index_config`） |
+| `TableSelector` A1/A2/B1/B2 | `qaapp/data/query.py::_candidate_tables` |
+| `OrgMapper` | `qaapp/data/catalog.py::resolve_orgs` |
+| 维度匹配 | `qaapp/data/catalog.py::resolve_dimensions`（`ai_index_dim` 优先） |
+| 执行器/SQL 安全 | `qaapp/data/mysql.py::MySqlClient` + `SqlGuard` |
+| 数据质量 | `qaapp/data/quality.py` |
 
 ## 2. 已实测的库结构与坑
 
@@ -88,7 +88,7 @@
 ## 6. 配置与安全
 
 - 唯一数据源文件：`datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`）；
-- 唯一加载器：`qaapp/datasources.py`；其他模块不读 `DB_*`/`REDIS_*`、不建连接；
+- 唯一加载器：`qaapp/data/datasources.py`；其他模块不读 `DB_*`/`REDIS_*`、不建连接；
 - MySQL 只读、连接池、执行超时、行数上限；
 - 原始 SQL 默认关闭，开启后只允许单条 SELECT/SHOW/DESCRIBE/EXPLAIN，拒绝写操作/注释/敏感表/系统库；
 - Redis 只读 db0、白名单前缀，禁止 db1/写/KEYS；

@@ -12,6 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from openharness.bridge import build_sdk_url, decode_work_secret, encode_work_secret, spawn_session
+from openharness.bridge.types import WorkSecret
 from openharness.commands.registry import CommandContext, create_default_command_registry
 from openharness.config.settings import Settings, load_settings
 from openharness.engine.messages import ConversationMessage, TextBlock
@@ -23,11 +25,8 @@ from openharness.permissions import PermissionChecker
 from openharness.plugins import load_plugins
 from openharness.plugins.installer import install_plugin_from_path, uninstall_plugin
 from openharness.state import AppState, AppStateStore
-from openharness.bridge import build_sdk_url, decode_work_secret, encode_work_secret, spawn_session
-from openharness.bridge.types import WorkSecret
 from openharness.tools import create_default_tool_registry
 from openharness.tools.base import ToolExecutionContext
-
 
 FIXTURE_SERVER = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "fake_mcp_server.py"
 

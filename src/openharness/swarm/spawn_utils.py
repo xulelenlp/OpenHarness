@@ -7,7 +7,6 @@ import shlex
 import shutil
 import sys
 
-
 # Environment variable to override the teammate command
 TEAMMATE_COMMAND_ENV_VAR = "OPENHARNESS_TEAMMATE_COMMAND"
 

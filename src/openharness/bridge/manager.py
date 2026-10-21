@@ -6,8 +6,8 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
-from openharness.config.paths import get_data_dir
 from openharness.bridge.session_runner import SessionHandle, spawn_session
+from openharness.config.paths import get_data_dir
 
 
 @dataclass(frozen=True)

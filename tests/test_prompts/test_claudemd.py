@@ -9,11 +9,15 @@ from openharness.config.paths import (
     get_project_issue_file,
     get_project_pr_comments_file,
 )
+from openharness.config.settings import Settings
 from openharness.engine.messages import ConversationMessage, TextBlock
 from openharness.personalization import rules as personalization_rules
 from openharness.personalization.session_hook import update_rules_from_session
-from openharness.prompts import build_runtime_system_prompt, discover_claude_md_files, load_claude_md_prompt
-from openharness.config.settings import Settings
+from openharness.prompts import (
+    build_runtime_system_prompt,
+    discover_claude_md_files,
+    load_claude_md_prompt,
+)
 
 
 def test_discover_claude_md_files(tmp_path: Path):

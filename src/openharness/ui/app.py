@@ -6,9 +6,8 @@ import asyncio
 import json
 import sys
 
-from openharness.coordinator.coordinator_mode import is_coordinator_mode
-
 from openharness.api.client import SupportsStreamingMessages
+from openharness.coordinator.coordinator_mode import is_coordinator_mode
 from openharness.engine.stream_events import StreamEvent
 from openharness.ui.backend_host import run_backend_host
 from openharness.ui.coordinator_drain import drain_coordinator_async_agents
@@ -119,7 +118,12 @@ async def run_task_worker(
         print(message, flush=True)
 
     async def _render_event(event: StreamEvent) -> None:
-        from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete, ErrorEvent, StatusEvent
+        from openharness.engine.stream_events import (
+            AssistantTextDelta,
+            AssistantTurnComplete,
+            ErrorEvent,
+            StatusEvent,
+        )
 
         if isinstance(event, AssistantTextDelta):
             sys.stdout.write(event.text)

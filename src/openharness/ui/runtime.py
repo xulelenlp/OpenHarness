@@ -33,15 +33,15 @@ from openharness.engine.query import MaxTurnsExceeded
 from openharness.engine.stream_events import StreamEvent
 from openharness.hooks import HookEvent, HookExecutionContext, HookExecutor, load_hook_registry
 from openharness.hooks.hot_reload import HookReloader
+from openharness.keybindings import load_keybindings
 from openharness.mcp.client import McpClientManager
 from openharness.mcp.config import load_mcp_server_configs
 from openharness.permissions import PermissionChecker
 from openharness.plugins import load_plugins
 from openharness.prompts import build_runtime_system_prompt
-from openharness.state import AppState, AppStateStore
 from openharness.services.session_backend import DEFAULT_SESSION_BACKEND, SessionBackend
+from openharness.state import AppState, AppStateStore
 from openharness.tools import ToolRegistry, create_default_tool_registry
-from openharness.keybindings import load_keybindings
 
 PermissionPrompt = Callable[[str, str], Awaitable[bool]]
 AskUserPrompt = Callable[[str], Awaitable[str]]
@@ -785,8 +785,8 @@ async def _render_command_result(
         await clear_output()
     if result.replay_messages and render_event is not None:
         # Replay restored conversation messages as transcript events
-        from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete
         from openharness.api.usage import UsageSnapshot
+        from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete
 
         await clear_output()
         await print_system("Session restored:")

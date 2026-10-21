@@ -11,7 +11,6 @@ from openharness.config.settings import VisionModelConfig
 from openharness.tools.base import ToolExecutionContext
 from openharness.tools.image_to_text_tool import ImageToTextTool, ImageToTextToolInput
 
-
 # ---------------------------------------------------------------------------
 # is_model_multimodal tests
 # ---------------------------------------------------------------------------

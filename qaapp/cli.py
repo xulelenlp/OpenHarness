@@ -28,13 +28,13 @@ from qaapp.data.datasources import (
     datasources_status,
     load_datasources_config,
 )
+from qaapp.server import QaWebService, configure_logging
 from qaapp.workspace.maintenance import (
     apply_cleanup_plan,
     build_cleanup_plan,
     format_cleanup_plan,
     format_cleanup_result,
 )
-from qaapp.server import QaWebService, configure_logging
 
 app = typer.Typer(
     name="abcqa",

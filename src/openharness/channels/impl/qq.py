@@ -5,7 +5,6 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING
 
-
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus
 from openharness.channels.impl.base import BaseChannel

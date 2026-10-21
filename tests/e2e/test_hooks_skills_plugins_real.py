@@ -8,8 +8,6 @@ Run: python tests/test_hooks_skills_plugins_real.py
 
 from __future__ import annotations
 
-import pytest
-
 import asyncio
 import json
 import os
@@ -18,23 +16,36 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from openharness.config.settings import Settings
 
-API_KEY = os.environ.get("ANTHROPIC_API_KEY", "sk-Ue1kdhq9prvNwuwySlzRtWVD7ek0iJJaHyPdKDa3ecKLwYuG")
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.moonshot.cn/anthropic")
 MODEL = os.environ.get("ANTHROPIC_MODEL", "kimi-k2.5")
-WORKSPACE = Path("/home/tangjiabin/AutoAgent")
+
+pytestmark = pytest.mark.real_api
+
+_WORKSPACE_ENV = os.environ.get("OPENHARNESS_E2E_WORKSPACE", "").strip()
+WORKSPACE = (
+    Path(_WORKSPACE_ENV).expanduser()
+    if _WORKSPACE_ENV
+    else Path("/nonexistent-openharness-e2e-workspace")
+)
 DEFAULT_MAX_TURNS = Settings().max_turns
 
 RESULTS: dict[str, tuple[bool, float]] = {}
+_SKIP_REAL_API = not WORKSPACE.exists() or not API_KEY
 
 
 def collect(events):
     from openharness.engine.stream_events import (
-        AssistantTextDelta, AssistantTurnComplete,
-        ToolExecutionStarted, ToolExecutionCompleted,
+        AssistantTextDelta,
+        AssistantTurnComplete,
+        ToolExecutionCompleted,
+        ToolExecutionStarted,
     )
     r = {"text": "", "tools": [], "tool_errors": [], "turns": 0}
     for ev in events:
@@ -57,7 +68,7 @@ def collect(events):
 # and switches to glob/grep instead. This tests that hooks actually
 # change model behavior in the loop.
 # ====================================================================
-@pytest.mark.skipif(not Path("/home/tangjiabin/AutoAgent").exists(), reason="Needs real API + AutoAgent")
+@pytest.mark.skipif(not WORKSPACE.exists(), reason="Needs real API + AutoAgent")
 async def task_hook_blocks_model_adapts():
     print("=" * 70)
     print("  Task 1: Hook blocks bash → model must adapt to glob/grep")
@@ -66,6 +77,10 @@ async def task_hook_blocks_model_adapts():
     from openharness.api.client import AnthropicApiClient
     from openharness.config.settings import PermissionSettings
     from openharness.engine.query_engine import QueryEngine
+    from openharness.hooks.events import HookEvent
+    from openharness.hooks.executor import HookExecutionContext, HookExecutor
+    from openharness.hooks.loader import HookRegistry
+    from openharness.hooks.schemas import CommandHookDefinition
     from openharness.permissions.checker import PermissionChecker
     from openharness.permissions.modes import PermissionMode
     from openharness.tools.base import ToolRegistry
@@ -73,10 +88,6 @@ async def task_hook_blocks_model_adapts():
     from openharness.tools.file_read_tool import FileReadTool
     from openharness.tools.glob_tool import GlobTool
     from openharness.tools.grep_tool import GrepTool
-    from openharness.hooks.events import HookEvent
-    from openharness.hooks.loader import HookRegistry
-    from openharness.hooks.schemas import CommandHookDefinition
-    from openharness.hooks.executor import HookExecutor, HookExecutionContext
 
     api = AnthropicApiClient(api_key=API_KEY, base_url=BASE_URL)
 
@@ -140,12 +151,13 @@ async def task_hook_blocks_model_adapts():
 # content drives what the model does next. This tests the full
 # skill tool → load → return content → model acts on it loop.
 # ====================================================================
-@pytest.mark.skipif(not Path("/home/tangjiabin/AutoAgent").exists(), reason="Needs real API + AutoAgent")
+@pytest.mark.skipif(not WORKSPACE.exists(), reason="Needs real API + AutoAgent")
 async def task_model_invokes_skill_tool():
     print("\n" + "=" * 70)
     print("  Task 2: Model invokes skill tool, then follows skill instructions")
     print("=" * 70)
 
+    import openharness.skills.loader as sl
     from openharness.api.client import AnthropicApiClient
     from openharness.config.settings import PermissionSettings
     from openharness.engine.query_engine import QueryEngine
@@ -157,7 +169,6 @@ async def task_model_invokes_skill_tool():
     from openharness.tools.glob_tool import GlobTool
     from openharness.tools.grep_tool import GrepTool
     from openharness.tools.skill_tool import SkillTool
-    import openharness.skills.loader as sl
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a skill file that gives specific instructions
@@ -233,12 +244,13 @@ When performing a code review, follow these exact steps:
 # A plugin is loaded with a custom skill. The model uses the skill
 # tool to access the plugin's skill content, then acts on it.
 # ====================================================================
-@pytest.mark.skipif(not Path("/home/tangjiabin/AutoAgent").exists(), reason="Needs real API + AutoAgent")
+@pytest.mark.skipif(not WORKSPACE.exists(), reason="Needs real API + AutoAgent")
 async def task_plugin_skill_in_agent_loop():
     print("\n" + "=" * 70)
     print("  Task 3: Plugin-provided skill used through skill tool in agent loop")
     print("=" * 70)
 
+    import openharness.skills.loader as sl
     from openharness.api.client import AnthropicApiClient
     from openharness.config.settings import PermissionSettings
     from openharness.engine.query_engine import QueryEngine
@@ -250,7 +262,6 @@ async def task_plugin_skill_in_agent_loop():
     from openharness.tools.glob_tool import GlobTool
     from openharness.tools.grep_tool import GrepTool
     from openharness.tools.skill_tool import SkillTool
-    import openharness.skills.loader as sl
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a plugin with a skill
@@ -337,30 +348,30 @@ To scan for hardcoded secrets:
 # certain paths), skill provides a refactoring checklist, model follows
 # it, encounters hook block on protected path, adapts.
 # ====================================================================
-@pytest.mark.skipif(not Path("/home/tangjiabin/AutoAgent").exists(), reason="Needs real API + AutoAgent")
+@pytest.mark.skipif(not WORKSPACE.exists(), reason="Needs real API + AutoAgent")
 async def task_hook_gates_writes_skill_guides():
     print("\n" + "=" * 70)
     print("  Task 4: Hook gates file writes + skill guides refactoring workflow")
     print("=" * 70)
 
+    import openharness.skills.loader as sl
     from openharness.api.client import AnthropicApiClient
     from openharness.config.settings import PermissionSettings
     from openharness.engine.query_engine import QueryEngine
+    from openharness.hooks.events import HookEvent
+    from openharness.hooks.executor import HookExecutionContext, HookExecutor
+    from openharness.hooks.loader import HookRegistry
+    from openharness.hooks.schemas import CommandHookDefinition
     from openharness.permissions.checker import PermissionChecker
     from openharness.permissions.modes import PermissionMode
     from openharness.tools.base import ToolRegistry
     from openharness.tools.bash_tool import BashTool
+    from openharness.tools.file_edit_tool import FileEditTool
     from openharness.tools.file_read_tool import FileReadTool
     from openharness.tools.file_write_tool import FileWriteTool
-    from openharness.tools.file_edit_tool import FileEditTool
     from openharness.tools.glob_tool import GlobTool
     from openharness.tools.grep_tool import GrepTool
     from openharness.tools.skill_tool import SkillTool
-    from openharness.hooks.events import HookEvent
-    from openharness.hooks.loader import HookRegistry
-    from openharness.hooks.schemas import CommandHookDefinition
-    from openharness.hooks.executor import HookExecutor, HookExecutionContext
-    import openharness.skills.loader as sl
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create skill
@@ -489,27 +500,27 @@ def process_v2(data):
 # 2 in-process teammates, each loads a different skill and follows it.
 # Tests: skill tool in teammate context + concurrent skill access.
 # ====================================================================
-@pytest.mark.skipif(not Path("/home/tangjiabin/AutoAgent").exists(), reason="Needs real API + AutoAgent")
+@pytest.mark.skipif(not WORKSPACE.exists(), reason="Needs real API + AutoAgent")
 async def task_swarm_teammates_use_skills():
     print("\n" + "=" * 70)
     print("  Task 5: 2 concurrent teammates each invoke different skills")
     print("=" * 70)
 
-    from openharness.swarm.in_process import start_in_process_teammate, TeammateAbortController
-    from openharness.swarm.types import TeammateSpawnConfig
-    from openharness.engine.query import QueryContext
+    import openharness.skills.loader as sl
     from openharness.api.client import AnthropicApiClient
     from openharness.config.settings import PermissionSettings
+    from openharness.engine.query import QueryContext
     from openharness.permissions.checker import PermissionChecker
     from openharness.permissions.modes import PermissionMode
+    from openharness.swarm.in_process import TeammateAbortController, start_in_process_teammate
+    from openharness.swarm.types import TeammateSpawnConfig
     from openharness.tools.base import ToolRegistry
     from openharness.tools.bash_tool import BashTool
     from openharness.tools.file_read_tool import FileReadTool
+    from openharness.tools.file_write_tool import FileWriteTool
     from openharness.tools.glob_tool import GlobTool
     from openharness.tools.grep_tool import GrepTool
     from openharness.tools.skill_tool import SkillTool
-    from openharness.tools.file_write_tool import FileWriteTool
-    import openharness.skills.loader as sl
 
     with tempfile.TemporaryDirectory() as tmpdir:
         skills_dir = Path(tmpdir) / "skills"

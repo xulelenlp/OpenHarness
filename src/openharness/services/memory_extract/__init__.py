@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from openharness.api.client import ApiMessageCompleteEvent, ApiMessageRequest, SupportsStreamingMessages
+from openharness.api.client import (
+    ApiMessageCompleteEvent,
+    ApiMessageRequest,
+    SupportsStreamingMessages,
+)
 from openharness.engine.messages import ConversationMessage, ToolUseBlock
 from openharness.memory.manager import add_memory_entry
 from openharness.memory.paths import get_project_memory_dir

@@ -6,7 +6,6 @@ import mimetypes
 from pathlib import Path
 from typing import Any, TypeAlias
 
-
 try:
     import nh3
     from mistune import create_markdown
@@ -35,9 +34,10 @@ except ImportError as e:
         "Matrix dependencies not installed. Run: pip install nanobot-ai[matrix]"
     ) from e
 
+from openharness.config.loader import get_data_dir
+
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.impl.base import BaseChannel
-from openharness.config.loader import get_data_dir
 from openharness.utils.helpers import safe_filename
 
 logger = logging.getLogger(__name__)

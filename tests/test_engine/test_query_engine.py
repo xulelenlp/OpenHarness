@@ -7,14 +7,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from openharness.api.client import ApiMessageCompleteEvent, ApiRetryEvent, ApiTextDeltaEvent
 from openharness.api.errors import RequestFailure
 from openharness.api.usage import UsageSnapshot
 from openharness.config.settings import PermissionSettings, Settings
-from openharness.engine.messages import ConversationMessage, TextBlock, ToolUseBlock
+from openharness.engine.messages import (
+    ConversationMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
+from openharness.engine.query import QueryContext, _execute_tool_call, _is_prompt_too_long_error
 from openharness.engine.query_engine import QueryEngine
-from openharness.prompts.context import build_runtime_system_prompt
 from openharness.engine.stream_events import (
     AssistantTextDelta,
     AssistantTurnComplete,
@@ -25,18 +31,16 @@ from openharness.engine.stream_events import (
     ToolExecutionProgress,
     ToolExecutionStarted,
 )
+from openharness.hooks import HookEvent, HookExecutionContext, HookExecutor
+from openharness.hooks.loader import HookRegistry
+from openharness.hooks.schemas import PromptHookDefinition
 from openharness.permissions import PermissionChecker, PermissionMode
+from openharness.prompts.context import build_runtime_system_prompt
 from openharness.tasks import get_task_manager
 from openharness.tools import create_default_tool_registry
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolRegistry, ToolResult
 from openharness.tools.glob_tool import GlobTool
 from openharness.tools.grep_tool import GrepTool
-from pydantic import BaseModel
-from openharness.engine.messages import ToolResultBlock
-from openharness.hooks import HookExecutionContext, HookExecutor, HookEvent
-from openharness.hooks.loader import HookRegistry
-from openharness.hooks.schemas import PromptHookDefinition
-from openharness.engine.query import QueryContext, _execute_tool_call, _is_prompt_too_long_error
 
 
 @dataclass

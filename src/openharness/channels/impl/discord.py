@@ -2,11 +2,11 @@
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import httpx
 import websockets
-import logging
 
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus

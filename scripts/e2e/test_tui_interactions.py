@@ -6,15 +6,10 @@ from __future__ import annotations
 import json
 import os
 import sys
-from pathlib import Path
 
-GREEN = "\033[92m"
-RED = "\033[91m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
+from _common import BOLD, GREEN, RED, RESET, ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FRONTEND_DIR = PROJECT_ROOT / "frontend" / "terminal"
+FRONTEND_DIR = ROOT / "frontend" / "terminal"
 
 
 def _env() -> dict[str, str]:
@@ -163,7 +158,7 @@ def test_no_headless_flag() -> tuple[bool, str]:
     result = subprocess.run(
         [sys.executable, "-m", "openharness", "--help"],
         capture_output=True, text=True, timeout=10,
-        cwd=str(PROJECT_ROOT),
+        cwd=str(ROOT),
     )
     if "--headless" in result.stdout:
         return False, "--headless still present in --help output"

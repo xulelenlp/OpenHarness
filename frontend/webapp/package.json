@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check:render": "node scripts/render-check.mjs",
     "check:attachments": "node scripts/check-attachments.mjs",
-    "check:turn-files": "node scripts/check-turn-files.mjs"
+    "check:turn-files": "node scripts/check-turn-files.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "react": "^18.3.1",

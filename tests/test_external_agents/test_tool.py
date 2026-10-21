@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 import external_agent_tool as tool
+import pytest
 
 
 def test_line_stream_delta_extracts_sse_content():

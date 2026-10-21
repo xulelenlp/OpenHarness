@@ -10,10 +10,8 @@ import sys
 from pathlib import Path
 
 # Colors for output
-GREEN = "\033[92m"
-RED = "\033[91m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
+from _common import BOLD, GREEN, RED, RESET
+
 
 def _env() -> dict[str, str]:
     """Return environment with kimi model configuration."""

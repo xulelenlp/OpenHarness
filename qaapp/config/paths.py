@@ -7,7 +7,6 @@ from pathlib import Path
 
 from ohmo.workspace import get_workspace_root
 
-
 # ---------------------------------------------------------------------------
 
 WEBAPP_FILENAME = "webapp.json"

@@ -21,7 +21,6 @@ from openharness.api.errors import AuthenticationFailure
 from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import ConversationMessage, TextBlock
 
-
 # ---------------------------------------------------------------------------
 # Fake helpers
 # ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ def test_get_config_dir_env_override(tmp_path: Path, monkeypatch):
 def test_get_config_file_path(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("OPENHARNESS_CONFIG_DIR", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.chdir(tmp_path)
     path = get_config_file_path()
     assert path == tmp_path / ".openharness" / "settings.json"
 

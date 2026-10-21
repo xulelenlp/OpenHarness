@@ -28,8 +28,8 @@ from qaapp.config.models import (
     WebappConfig,
 )
 from qaapp.config.paths import (
-    AGENTS_FILENAME,
     AGENT_KINDS,
+    AGENTS_FILENAME,
     DANGEROUS_ACTIONS,
     DANGEROUS_FILENAME,
     DATASOURCES_FILENAME,

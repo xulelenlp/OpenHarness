@@ -15,12 +15,11 @@ from uuid import uuid4
 
 from openharness.api.client import SupportsStreamingMessages
 from openharness.auth.manager import AuthManager
+from openharness.bridge import get_bridge_manager
 from openharness.commands import MemoryCommandBackend
 from openharness.config.settings import CLAUDE_MODEL_ALIAS_OPTIONS, resolve_model_setting
-from openharness.bridge import get_bridge_manager
 from openharness.coordinator.coordinator_mode import is_coordinator_mode
 from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock
-from openharness.themes import list_themes
 from openharness.engine.stream_events import (
     AssistantTextDelta,
     AssistantTurnComplete,
@@ -33,11 +32,17 @@ from openharness.engine.stream_events import (
     ToolExecutionStarted,
 )
 from openharness.output_styles import load_output_styles
-from openharness.tasks import get_task_manager
-from openharness.ui.coordinator_drain import drain_coordinator_async_agents
-from openharness.ui.protocol import BackendEvent, FrontendImageAttachment, FrontendRequest, TranscriptItem
-from openharness.ui.runtime import build_runtime, close_runtime, handle_line, start_runtime
 from openharness.services.session_backend import SessionBackend
+from openharness.tasks import get_task_manager
+from openharness.themes import list_themes
+from openharness.ui.coordinator_drain import drain_coordinator_async_agents
+from openharness.ui.protocol import (
+    BackendEvent,
+    FrontendImageAttachment,
+    FrontendRequest,
+    TranscriptItem,
+)
+from openharness.ui.runtime import build_runtime, close_runtime, handle_line, start_runtime
 
 log = logging.getLogger(__name__)
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import asyncio
 from contextlib import AsyncExitStack
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

@@ -7,7 +7,6 @@ import pytest
 from openharness.swarm.registry import BackendRegistry
 from openharness.swarm.types import TeammateExecutor
 
-
 # ---------------------------------------------------------------------------
 # Default registration
 # ---------------------------------------------------------------------------

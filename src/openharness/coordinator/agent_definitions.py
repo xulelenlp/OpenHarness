@@ -926,8 +926,8 @@ def get_all_agent_definitions() -> list[AgentDefinition]:
 
     # 3. Plugin agents — loaded lazily to avoid import cycles
     try:
-        from openharness.plugins.loader import load_plugins  # noqa: PLC0415
         from openharness.config.settings import load_settings  # noqa: PLC0415
+        from openharness.plugins.loader import load_plugins  # noqa: PLC0415
 
         settings = load_settings()
         import os  # noqa: PLC0415

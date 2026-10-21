@@ -1,6 +1,6 @@
 """Real large tasks testing ALL merged PR features on AutoAgent codebase.
 
-Every test runs on /home/tangjiabin/AutoAgent — a 17K LOC unfamiliar Python project.
+Every test runs on the project pointed to by OPENHARNESS_E2E_WORKSPACE.
 Uses real Kimi K2.5 API via both Anthropic and OpenAI endpoints.
 
 Run: python tests/test_merged_prs_on_autoagent.py
@@ -15,16 +15,23 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import pytest
 
-API_KEY = os.environ.get(
-    "ANTHROPIC_API_KEY",
-    "sk-Ue1kdhq9prvNwuwySlzRtWVD7ek0iJJaHyPdKDa3ecKLwYuG",
-)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+
+API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_BASE = "https://api.moonshot.cn/anthropic"
 OPENAI_BASE = "https://api.moonshot.cn/v1"
 MODEL = "kimi-k2.5"
-WORKSPACE = Path("/home/tangjiabin/AutoAgent")
+
+pytestmark = pytest.mark.real_api
+
+_WORKSPACE_ENV = os.environ.get("OPENHARNESS_E2E_WORKSPACE", "").strip()
+WORKSPACE = (
+    Path(_WORKSPACE_ENV).expanduser()
+    if _WORKSPACE_ENV
+    else Path("/nonexistent-openharness-e2e-workspace")
+)
 
 RESULTS: dict[str, tuple[bool, float]] = {}
 
@@ -36,9 +43,9 @@ RESULTS: dict[str, tuple[bool, float]] = {}
 def _make_registry(extra_tools=None):
     from openharness.tools.base import ToolRegistry
     from openharness.tools.bash_tool import BashTool
+    from openharness.tools.file_edit_tool import FileEditTool
     from openharness.tools.file_read_tool import FileReadTool
     from openharness.tools.file_write_tool import FileWriteTool
-    from openharness.tools.file_edit_tool import FileEditTool
     from openharness.tools.glob_tool import GlobTool
     from openharness.tools.grep_tool import GrepTool
 
@@ -48,6 +55,7 @@ def _make_registry(extra_tools=None):
     for t in (extra_tools or []):
         reg.register(t)
     return reg
+_SKIP_REAL_API = not WORKSPACE.exists() or not API_KEY
 
 
 def _make_checker():
@@ -81,8 +89,10 @@ def make_openai_engine(system_prompt, extra_tools=None):
 
 def collect(events):
     from openharness.engine.stream_events import (
-        AssistantTextDelta, AssistantTurnComplete,
-        ToolExecutionStarted, ToolExecutionCompleted,
+        AssistantTextDelta,
+        AssistantTurnComplete,
+        ToolExecutionCompleted,
+        ToolExecutionStarted,
     )
     r = {"text": "", "tools": [], "errors": [], "turns": 0, "in_tok": 0, "out_tok": 0}
     for ev in events:
@@ -155,11 +165,11 @@ async def task_memory_research_autoagent():
     print("  Task 2: PR#12 — Research AutoAgent → save to memory → search → use")
     print("=" * 70)
 
-    from openharness.memory.search import find_relevant_memories
-    from openharness.memory.scan import scan_memory_files
-    import openharness.memory.paths as mp
     import openharness.memory.manager as mm
+    import openharness.memory.paths as mp
     import openharness.memory.scan as ms
+    from openharness.memory.scan import scan_memory_files
+    from openharness.memory.search import find_relevant_memories
 
     with tempfile.TemporaryDirectory() as tmpdir:
         mem_dir = Path(tmpdir) / "memory"
@@ -329,10 +339,11 @@ async def task_session_resume_autoagent():
     print("  Task 4: PR#16 — Research AutoAgent → save → resume → continue")
     print("=" * 70)
 
-    from openharness.services.session_storage import (
-        save_session_snapshot, load_session_snapshot,
-    )
     from openharness.engine.messages import ConversationMessage
+    from openharness.services.session_storage import (
+        load_session_snapshot,
+        save_session_snapshot,
+    )
 
     with tempfile.TemporaryDirectory() as session_dir:
         # Phase 1: Original 3-turn research session
@@ -414,12 +425,16 @@ async def task_cron_autoagent_maintenance():
     print("  Task 5: PR#16 — Cron scheduler for AutoAgent maintenance")
     print("=" * 70)
 
-    from openharness.services.cron import (
-        load_cron_jobs, upsert_cron_job, delete_cron_job,
-        get_cron_job, set_job_enabled,
-        mark_job_run, next_run_time,
-    )
     import openharness.services.cron as cron_mod
+    from openharness.services.cron import (
+        delete_cron_job,
+        get_cron_job,
+        load_cron_jobs,
+        mark_job_run,
+        next_run_time,
+        set_job_enabled,
+        upsert_cron_job,
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         registry_path = Path(tmpdir) / "cron_jobs.json"
@@ -430,11 +445,11 @@ async def task_cron_autoagent_maintenance():
             # Create maintenance jobs for AutoAgent
             jobs_data = [
                 {"name": "lint-autoagent", "schedule": "0 */6 * * *",
-                 "command": "cd /home/tangjiabin/AutoAgent && ruff check autoagent/"},
+                 "command": f"cd {WORKSPACE} && ruff check autoagent/"},
                 {"name": "test-autoagent", "schedule": "0 2 * * *",
-                 "command": "cd /home/tangjiabin/AutoAgent && python -m pytest tests/ -q"},
+                 "command": f"cd {WORKSPACE} && python -m pytest tests/ -q"},
                 {"name": "count-todos", "schedule": "0 9 * * 1",
-                 "command": "cd /home/tangjiabin/AutoAgent && grep -r TODO autoagent/ | wc -l"},
+                 "command": f"cd {WORKSPACE} && grep -r TODO autoagent/ | wc -l"},
                 {"name": "disk-cleanup", "schedule": "0 3 * * 0",
                  "command": "find /tmp -name '*.pyc' -mtime +7 -delete"},
             ]
@@ -502,16 +517,16 @@ async def task_full_dev_workflow():
     print("  Task 6: ALL PRs — Full development workflow on AutoAgent")
     print("=" * 70)
 
-    from openharness.tools.skill_tool import SkillTool
-    from openharness.memory.scan import scan_memory_files
-    from openharness.memory.search import find_relevant_memories
-    from openharness.services.session_storage import save_session_snapshot, load_session_snapshot
-    from openharness.services.cron import upsert_cron_job, load_cron_jobs, validate_cron_expression
-    from openharness.engine.messages import ConversationMessage
-    import openharness.memory.paths as mp
     import openharness.memory.manager as mm
+    import openharness.memory.paths as mp
     import openharness.memory.scan as ms
     import openharness.services.cron as cron_mod
+    from openharness.engine.messages import ConversationMessage
+    from openharness.memory.scan import scan_memory_files
+    from openharness.memory.search import find_relevant_memories
+    from openharness.services.cron import load_cron_jobs, upsert_cron_job, validate_cron_expression
+    from openharness.services.session_storage import load_session_snapshot, save_session_snapshot
+    from openharness.tools.skill_tool import SkillTool
 
     with tempfile.TemporaryDirectory() as tmpdir:
         mem_dir = Path(tmpdir) / "memory"
@@ -582,7 +597,7 @@ type: project
             upsert_cron_job({
                 "name": "autoagent-lint",
                 "schedule": "0 */4 * * *",
-                "command": "cd /home/tangjiabin/AutoAgent && ruff check autoagent/",
+                "command": f"cd {WORKSPACE} && ruff check autoagent/",
             })
             cron_jobs = load_cron_jobs()
             print(f"    Cron jobs: {[j['name'] for j in cron_jobs]}")

@@ -19,7 +19,6 @@ from typing import Any, Literal
 
 from openharness.swarm.lockfile import exclusive_file_lock
 
-
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------

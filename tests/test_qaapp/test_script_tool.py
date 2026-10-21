@@ -9,8 +9,8 @@ import pytest
 
 from openharness.tools.base import ToolExecutionContext
 from qaapp.config import ConversationWorkspaceConfig
-from qaapp.workspace.files import ConversationPaths
 from qaapp.tools.script import CONVERSATION_DIR_KEY, RunScriptInput, RunScriptTool
+from qaapp.workspace.files import ConversationPaths
 
 
 @pytest.fixture()

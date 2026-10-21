@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -15,8 +15,8 @@ from openharness.services.cron_scheduler import (
     append_history,
     execute_job,
     load_history,
-    start_daemon,
     run_scheduler_loop,
+    start_daemon,
 )
 
 

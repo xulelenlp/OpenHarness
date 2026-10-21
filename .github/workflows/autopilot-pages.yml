@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "docs/autopilot/**"
-      - "autopilot-dashboard/**"
+      - "frontend/autopilot-dashboard/**"
       - ".github/workflows/autopilot-pages.yml"
   workflow_dispatch:
 
@@ -34,14 +34,14 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: autopilot-dashboard/package-lock.json
+          cache-dependency-path: frontend/autopilot-dashboard/package-lock.json
 
       - name: Install dependencies
-        working-directory: autopilot-dashboard
+        working-directory: frontend/autopilot-dashboard
         run: npm ci
 
       - name: Build dashboard
-        working-directory: autopilot-dashboard
+        working-directory: frontend/autopilot-dashboard
         run: npm run build
 
       - name: Configure Pages

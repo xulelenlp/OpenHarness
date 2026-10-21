@@ -37,7 +37,7 @@ ruff check src tests scripts qaapp
 pytest -q
 ```
 
-`tests/` is the CI surface. Manual E2E suites under `scripts/e2e/` need real model
+`tests/` is the CI surface; real-model scenarios in `tests/e2e/` are opt-in via `pytest -m real_api`. Manual E2E suites under `scripts/e2e/` need real model
 calls, Docker, or an interactive TUI; run them only when your change touches those
 areas, and follow [`scripts/README.md`](scripts/README.md).
 

@@ -16,12 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-GREEN = "\033[92m"
-RED = "\033[91m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
+from _common import BOLD, GREEN, RED, RESET, ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SKILLS_REPO = Path("/tmp/anthropic-skills/skills")
 PLUGINS_REPO = Path("/tmp/openharness-test-plugins/plugins")
 
@@ -38,7 +34,7 @@ def _run_oh(*args: str, timeout: int = 90, cwd: str | None = None) -> subprocess
     cmd = [sys.executable, "-m", "openharness", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout,
-        env=_env(), cwd=cwd or str(PROJECT_ROOT),
+        env=_env(), cwd=cwd or str(ROOT),
     )
 
 
@@ -110,8 +106,8 @@ async def test_real_skill_content_quality() -> tuple[bool, str]:
 
 async def test_skill_tool_with_real_skill() -> tuple[bool, str]:
     """Test SkillTool with a real anthropic skill (pdf)."""
-    from openharness.tools.skill_tool import SkillTool, SkillToolInput
     from openharness.tools.base import ToolExecutionContext
+    from openharness.tools.skill_tool import SkillTool, SkillToolInput
 
     tool = SkillTool()
     result = await tool.execute(
@@ -174,7 +170,7 @@ async def test_install_real_plugins() -> tuple[bool, str]:
     if not PLUGINS_REPO.exists():
         return False, f"Plugins repo not found at {PLUGINS_REPO}"
 
-    dest_base = PROJECT_ROOT / ".openharness" / "plugins"
+    dest_base = ROOT / ".openharness" / "plugins"
     dest_base.mkdir(parents=True, exist_ok=True)
 
     installed = []
@@ -199,7 +195,7 @@ async def test_real_plugins_loaded() -> tuple[bool, str]:
     from openharness.plugins.loader import load_plugins
 
     settings = load_settings()
-    plugins = load_plugins(settings, str(PROJECT_ROOT))
+    plugins = load_plugins(settings, str(ROOT))
 
     if not plugins:
         return False, "No plugins discovered"
@@ -219,7 +215,7 @@ async def test_plugin_commands_discovered() -> tuple[bool, str]:
     from openharness.plugins.loader import load_plugins
 
     settings = load_settings()
-    plugins = load_plugins(settings, str(PROJECT_ROOT))
+    plugins = load_plugins(settings, str(ROOT))
 
     total_commands = 0
     total_skills = 0
@@ -239,7 +235,7 @@ async def test_plugin_commands_discovered() -> tuple[bool, str]:
 
 async def test_plugin_hook_structure() -> tuple[bool, str]:
     """Verify that plugin hooks can be loaded (security-guidance has a PreToolUse hook)."""
-    dest = PROJECT_ROOT / ".openharness" / "plugins" / "security-guidance"
+    dest = ROOT / ".openharness" / "plugins" / "security-guidance"
     hooks_file = dest / "hooks" / "hooks.json"
 
     if not hooks_file.exists():
@@ -264,7 +260,7 @@ async def test_plugin_hook_structure() -> tuple[bool, str]:
 
 async def test_commit_command_content() -> tuple[bool, str]:
     """Verify commit-commands plugin has real command content."""
-    dest = PROJECT_ROOT / ".openharness" / "plugins" / "commit-commands"
+    dest = ROOT / ".openharness" / "plugins" / "commit-commands"
     cmd_dir = dest / "commands"
 
     if not cmd_dir.exists():

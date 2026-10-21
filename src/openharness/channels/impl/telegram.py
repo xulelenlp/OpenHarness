@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 
-import logging
 from telegram import BotCommand, ReplyParameters, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest

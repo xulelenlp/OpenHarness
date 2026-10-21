@@ -5,6 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from openharness.auth.storage import (
+    clear_provider_credentials,
+    load_credential,
+    load_external_binding,
+    store_credential,
+)
 from openharness.config.settings import (
     ProviderProfile,
     auth_source_provider_name,
@@ -14,12 +20,6 @@ from openharness.config.settings import (
     default_auth_source_for_provider,
     display_label_for_profile,
     display_model_setting,
-)
-from openharness.auth.storage import (
-    clear_provider_credentials,
-    load_external_binding,
-    load_credential,
-    store_credential,
 )
 
 log = logging.getLogger(__name__)

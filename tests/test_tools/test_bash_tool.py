@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
+import openharness.tools.bash_tool as bash_tool_module
 from openharness.tools.base import ToolExecutionContext
 from openharness.tools.bash_tool import BashTool, BashToolInput
-import openharness.tools.bash_tool as bash_tool_module
 
 
 class _FakeStdout:

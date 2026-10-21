@@ -32,7 +32,6 @@ from openharness.plugins import load_plugins
 from openharness.prompts import build_runtime_system_prompt
 from openharness.tools import create_default_tool_registry
 
-
 ScenarioSetup = Callable[[Path, Path], dict[str, object] | None]
 ScenarioValidate = Callable[[Path, str, list[str], int, int], tuple[bool, str]]
 FIXTURE_SERVER = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "fake_mcp_server.py"

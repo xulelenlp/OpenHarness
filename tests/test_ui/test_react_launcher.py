@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
 from types import SimpleNamespace
 
-from openharness.ui.app import run_print_mode, run_repl, run_task_worker
-from openharness.engine.stream_events import AssistantTurnComplete
+import pytest
+
 from openharness.engine.messages import ConversationMessage, TextBlock
+from openharness.engine.stream_events import AssistantTurnComplete
+from openharness.ui.app import run_print_mode, run_repl, run_task_worker
 from openharness.ui.react_launcher import build_backend_command
 
 

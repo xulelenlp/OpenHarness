@@ -14,12 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-GREEN = "\033[92m"
-RED = "\033[91m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from _common import BOLD, GREEN, RED, RESET, ROOT
 
 
 def _env() -> dict[str, str]:
@@ -34,7 +29,7 @@ def _run_oh(*args: str, timeout: int = 90) -> subprocess.CompletedProcess:
     cmd = [sys.executable, "-m", "openharness", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout,
-        env=_env(), cwd=str(PROJECT_ROOT),
+        env=_env(), cwd=str(ROOT),
     )
 
 
@@ -107,8 +102,8 @@ async def test_skills_in_system_prompt() -> tuple[bool, str]:
 
 async def test_skill_tool_invocation() -> tuple[bool, str]:
     """Test that SkillTool can load a skill's content."""
-    from openharness.tools.skill_tool import SkillTool, SkillToolInput
     from openharness.tools.base import ToolExecutionContext
+    from openharness.tools.skill_tool import SkillTool, SkillToolInput
 
     tool = SkillTool()
     result = await tool.execute(
@@ -140,8 +135,9 @@ async def test_skill_real_model() -> tuple[bool, str]:
 
 async def test_parallel_tools_code() -> tuple[bool, str]:
     """Test that the query loop supports parallel execution path."""
-    from openharness.engine.query import run_query
     import inspect
+
+    from openharness.engine.query import run_query
     source = inspect.getsource(run_query)
     if "asyncio.gather" not in source:
         return False, "asyncio.gather not found in run_query — parallel path missing"
@@ -154,8 +150,8 @@ async def test_parallel_tools_code() -> tuple[bool, str]:
 
 async def test_path_permissions_deny() -> tuple[bool, str]:
     """Test that path-level deny rules work."""
+    from openharness.config.settings import PathRuleConfig, PermissionSettings
     from openharness.permissions.checker import PermissionChecker
-    from openharness.config.settings import PermissionSettings, PathRuleConfig
     from openharness.permissions.modes import PermissionMode
 
     settings = PermissionSettings(
@@ -179,8 +175,8 @@ async def test_path_permissions_deny() -> tuple[bool, str]:
 
 async def test_command_deny_pattern() -> tuple[bool, str]:
     """Test that command deny patterns work."""
-    from openharness.permissions.checker import PermissionChecker
     from openharness.config.settings import PermissionSettings
+    from openharness.permissions.checker import PermissionChecker
     from openharness.permissions.modes import PermissionMode
 
     settings = PermissionSettings(

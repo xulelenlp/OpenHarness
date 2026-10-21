@@ -8,15 +8,19 @@ import os
 import re
 import shutil
 import subprocess
-from datetime import datetime, timezone
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Literal, get_args, Iterable
+from typing import TYPE_CHECKING, Awaitable, Callable, Iterable, Literal, get_args
 
 import pyperclip
 
-from openharness.autopilot import RepoAutopilotStore
+from openharness.api.provider import auth_status, detect_provider
 from openharness.auth.manager import AuthManager
+from openharness.autopilot import RepoAutopilotStore
+from openharness.bridge import get_bridge_manager
+from openharness.bridge.types import WorkSecret
+from openharness.bridge.work_secret import build_sdk_url, decode_work_secret, encode_work_secret
 from openharness.config.paths import (
     get_config_dir,
     get_config_file_path,
@@ -26,11 +30,12 @@ from openharness.config.paths import (
     get_project_issue_file,
     get_project_pr_comments_file,
 )
-from openharness.bridge import get_bridge_manager
-from openharness.bridge.types import WorkSecret
-from openharness.bridge.work_secret import build_sdk_url, decode_work_secret, encode_work_secret
-from openharness.api.provider import auth_status, detect_provider
-from openharness.config.settings import Settings, display_model_setting, load_settings, save_settings
+from openharness.config.settings import (
+    Settings,
+    display_model_setting,
+    load_settings,
+    save_settings,
+)
 from openharness.engine.messages import ConversationMessage, sanitize_conversation_messages
 from openharness.engine.query_engine import QueryEngine
 from openharness.memory import (
@@ -65,8 +70,9 @@ from openharness.memory.team import (
 from openharness.output_styles import load_output_styles
 from openharness.permissions import PermissionChecker, PermissionMode
 from openharness.plugins import load_plugins
-from openharness.prompts import build_runtime_system_prompt
 from openharness.plugins.installer import install_plugin_from_path, uninstall_plugin
+from openharness.plugins.types import PluginCommandDefinition
+from openharness.prompts import build_runtime_system_prompt
 from openharness.services import (
     build_post_compact_messages,
     compact_conversation,
@@ -83,16 +89,15 @@ from openharness.services.autodream import (
     start_dream_now,
 )
 from openharness.services.memory_extract import extract_memories_from_turn
+from openharness.services.session_backend import DEFAULT_SESSION_BACKEND, SessionBackend
 from openharness.services.session_memory import (
     get_session_memory_content,
     get_session_memory_path,
     update_session_memory_file,
 )
-from openharness.services.session_backend import DEFAULT_SESSION_BACKEND, SessionBackend
 from openharness.skills import load_skill_registry
 from openharness.skills.types import SkillDefinition
 from openharness.tasks import get_task_manager
-from openharness.plugins.types import PluginCommandDefinition
 
 if TYPE_CHECKING:
     from openharness.config.settings import ProviderProfile

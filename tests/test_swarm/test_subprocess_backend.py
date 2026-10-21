@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
-from openharness.tasks.manager import BackgroundTaskManager
-from openharness.tasks.types import TaskRecord
 from openharness.swarm.subprocess_backend import SubprocessBackend
 from openharness.swarm.types import TeammateSpawnConfig
+from openharness.tasks.manager import BackgroundTaskManager
+from openharness.tasks.types import TaskRecord
 
 
 def _argv_str(captured: dict) -> str:

@@ -1,7 +1,7 @@
 # qaapp 架构、能力与扩展规范
 
 > 面向后续开发者的**单一事实来源**：先看本文理解「现在有什么、边界在哪、新增能力怎么接」，
-> 再看 [`qaapp/README.md`](../qaapp/README.md) 的启动/部署细节。
+> 再看 [`qaapp/README.md`](../../qaapp/README.md) 的启动/部署细节。
 >
 > 本文描述的是 qaapp（`abcqa`）这一层；底层模型调用、工具循环、插件、MCP、子智能体
 > 仍由 OpenHarness 提供，不在本文重复。
@@ -43,16 +43,16 @@
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │ REST / SSE / WebSocket
 ┌───────────────────────────────▼──────────────────────────────────────────┐
-│ 接入层：qaapp/service.py（Starlette）                                    │
+│ 接入层：qaapp/server/api/app.py（Starlette）                                   │
 │  - 路由、鉴权、会话池（每 conversation 一个 ConversationSession）          │
 │  - 审批 future、SSE 订阅者、附件解析、会话目录                             │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │ 每轮：路由 → 选 Agent → 执行
 ┌───────────────────────────────▼──────────────────────────────────────────┐
 │ 编排层                                                                   │
-│  qaapp/agent_router.py     显式 / 关键词 / 默认 Agent                     │
-│  qaapp/capabilities.py     由 agents.json 生成「可调度能力 + 决策顺序」   │
-│  qaapp/tool_policy.py      tools / disallowed_tools 真正生效              │
+│  qaapp/agents/router.py     显式 / 关键词 / 默认 Agent                     │
+│  qaapp/agents/capabilities.py     由 agents.json 生成「可调度能力 + 决策顺序」   │
+│  qaapp/tools/policy.py      tools / disallowed_tools 真正生效              │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐
@@ -71,7 +71,7 @@
                 │
 ┌───────────────▼──────────────────────────────────────────────────────────┐
 │ 持久化：ohmo session 快照 + trace JSONL + 会话目录（磁盘）                │
-│ 进程内：SSE 订阅、待审批、always_approved（重启丢失，见 README §9.2）      │
+│ 进程内：SSE 订阅、待审批、always_approved（重启丢失，见 [部署文档](DEPLOYMENT.zh-CN.md)）      │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,22 +79,22 @@
 
 | 文件 | 职责 | 扩展时是否常改 |
 | --- | --- | --- |
-| `qaapp/service.py` | HTTP/SSE/WS、会话池、审批、每轮编排 | 少改（新增 API 才改） |
-| `qaapp/config.py` | 配置路径/模型加载 | 新增配置项时改 |
-| `qaapp/datasources.py` | 数据源唯一加载器/运行时 | 数据源变化时改 |
-| `qaapp/data_catalog.py` / `data_query.py` | 业务库元数据/路由/查询/质量 | 取数规则变化时改 |
-| `qaapp/db_query_tool.py` | `db_query` 工具 | 查询能力变化时改 |
-| `qaapp/consult_agents_tool.py` | `consult_agents` 多智能体批量调用 | 编排策略变化时改 |
-| `qaapp/report_tool.py` | `write_report_docx` Word 报告 | 报告版式变化时改 |
-| `qaapp/analysis_scenarios.py` | 10 类业务场景模板 | 新增场景时改 |
-| `qaapp/agent_router.py` | 显式/关键词/默认路由 | 新增路由策略时改 |
-| `qaapp/capabilities.py` | 动态能力清单与决策顺序 | **一般不用改**（配置自动生成） |
-| `qaapp/tool_policy.py` | 按 Agent 裁剪工具 | 一般不用改 |
-| `qaapp/external_agents.py` | 把 `agents.json` 内联配置注入工具 | 一般不用改 |
-| `qaapp/dangerous.py` | 高危操作策略 + 权限检查器 | 策略变化用 JSON，不改代码 |
-| `qaapp/script_tool.py` | `run_script`（会话目录内执行 Python/Node） | 少改 |
-| `qaapp/conversation_files.py` | 会话目录布局、附件索引、上下文块 | 少改 |
-| `qaapp/documents.py` | 上传文档解析 | 新增文件类型时改 |
+| `qaapp/server/service.py` | HTTP/SSE/WS、会话池、审批、每轮编排 | 少改（新增 API 才改） |
+| `qaapp/config/` | 配置路径/模型加载 | 新增配置项时改 |
+| `qaapp/data/datasources.py` | 数据源唯一加载器/运行时 | 数据源变化时改 |
+| `qaapp/data/catalog.py` / `data/query.py` + `resolver.py` / `fetcher.py` / `shaping.py` | 业务库元数据/路由/查询/质量 | 取数规则变化时改 |
+| `qaapp/tools/db_query.py` | `db_query` 工具 | 查询能力变化时改 |
+| `qaapp/tools/consult.py` | `consult_agents` 多智能体批量调用 | 编排策略变化时改 |
+| `qaapp/tools/report.py` | `write_report_docx` Word 报告 | 报告版式变化时改 |
+| `qaapp/agents/scenarios.py` | 10 类业务场景模板 | 新增场景时改 |
+| `qaapp/agents/router.py` | 显式/关键词/默认路由 | 新增路由策略时改 |
+| `qaapp/agents/capabilities.py` | 动态能力清单与决策顺序 | **一般不用改**（配置自动生成） |
+| `qaapp/tools/policy.py` | 按 Agent 裁剪工具 | 一般不用改 |
+| `qaapp/agents/external.py` | 把 `agents.json` 内联配置注入工具 | 一般不用改 |
+| `qaapp/tools/dangerous.py` | 高危操作策略 + 权限检查器 | 策略变化用 JSON，不改代码 |
+| `qaapp/tools/script.py` | `run_script`（会话目录内执行 Python/Node） | 少改 |
+| `qaapp/workspace/files.py` | 会话目录布局、附件索引、上下文块 | 少改 |
+| `qaapp/workspace/documents.py` | 上传文档解析 | 新增文件类型时改 |
 | `config/agents.json` | **所有 Agent 的唯一维护文件** | **新增能力主要改这里** |
 | `config/` 或 `~/.ohmo/webapp.json` | 服务、鉴权、附件、会话目录配置 | 部署时改 |
 | `frontend/webapp/src/` | 参考前端 | 新增交互时改 |
@@ -271,7 +271,7 @@
 3. 如果要给模型上下文，把元数据写进 `bundle.engine.tool_metadata`；
 4. 在 `dangerous-actions.json` 里为它声明默认策略（allow/confirm/deny）；
 5. 加单测：参数校验、成功路径、超时/错误、权限交互；
-6. 更新 README §9.8 工具名清单。
+6. 更新 [部署文档](DEPLOYMENT.zh-CN.md) 的工具名清单。
 
 **方式 B：OpenHarness 插件工具**（跨产品复用）
 
@@ -307,7 +307,7 @@
 
 如果要加新策略（例如按用户/租户、按附件类型）：
 
-1. 在 `qaapp/agent_router.py` 增加纯函数/分支，保持「显式优先」；
+1. 在 `qaapp/agents/router.py` 增加纯函数/分支，保持「显式优先」；
 2. 在 `RoutingConfig` 增加配置字段（带默认值，保证旧配置兼容）；
 3. 加单测覆盖：命中、未命中、目标停用、无默认 Agent；
 4. 在 README 路由顺序里补充；
@@ -318,7 +318,7 @@
 
 ### 6.6 新增配置项
 
-1. 在 `qaapp/config.py` 的对应 `BaseModel` 加字段，**必须有默认值**；
+1. 在 `qaapp/config/` 的对应 `BaseModel` 加字段，**必须有默认值**；
 2. 字段加注释（`#:`）说明单位和风险；
 3. 在 `validate_*` / `config_status` 里确认非法值能报错；
 4. 更新 `qaapp/examples/*.json` 与 README 配置表；
@@ -327,18 +327,18 @@
 
 ### 6.7 新增 API / SSE 事件
 
-1. `qaapp/schemas.py` 增加请求/响应模型；
-2. `qaapp/service.py` 注册路由，注意鉴权与 `conversation_id` 白名单校验；
+1. `qaapp/server/schemas.py` 增加请求/响应模型；
+2. `qaapp/server/service.py` 注册路由，注意鉴权与 `conversation_id` 白名单校验；
 3. 事件统一走 `_emit()`，自动写轨迹；前端 `turn.ts` / `types.ts` 增加处理；
-4. 更新 README §7 的 API 表与事件列表；
+4. 更新 [API 文档](API.zh-CN.md) 的 API 表与事件列表；
 5. 加 TestClient 集成测试（含鉴权、404、非法输入）。
 
 **文件类事件的额外约定**（以 `turn_files` 为例）：
 
 - 只下发**会话相对路径**（`scripts/x.py`、`outputs/reports/x.docx`），不暴露宿主机
   绝对路径；下载仍走 `/files/{path}` 的鉴权与 `resolve_within` 路径校验。
-- 行数、大小等派生字段由 `qaapp/turn_files.py` 的纯函数计算，单测放
-  `tests/test_qaapp/test_turn_files.py`，不要在 `service.py` 里堆 diff 逻辑。
+- 行数、大小等派生字段由 `qaapp/workspace/turns.py` 的纯函数计算，单测放
+  `tests/test_qaapp/test_turn_files.py`，不要在 `server/runtime.py` 里堆 diff 逻辑（纯函数放 `workspace/turns.py`）。
 - 事件必须有上限（文件数、结果数、文本读取预算），否则大目录会把 SSE 帧和轨迹
   JSONL 撑大。
 - **结果文件只收成果性文档**：`outputs/` 下的 Word / PDF / PPT / Excel / Markdown；
@@ -481,7 +481,7 @@ WebSocket 一并纳入网关管控。
 
 | 清理对象 | 负责模块 | 触发方式 |
 | --- | --- | --- |
-| qaapp 会话目录 / 快照 / 轨迹 | `qaapp/maintenance.py` + `abcqa cleanup` | 手动或 cron；默认 dry-run |
+| qaapp 会话目录 / 快照 / 轨迹 | `qaapp/workspace/maintenance.py` + `abcqa cleanup` | 手动或 cron；默认 dry-run |
 | 项目 memory / ohmo personal memory 的软删除 | `openharness.memory.manager.soft_delete_memory_entry()` | `/memory remove`、`abcqa`/`abcag` 命令 |
 | swarm team / worktree 生命周期 | `src/openharness/swarm/team_lifecycle.py`、`worktree.py` | 进程退出 / 会话结束自动回收 |
 | resolved permission 文件 | `src/openharness/swarm/permission_sync.py` | 定期 / 读取后删除 |
@@ -504,11 +504,11 @@ WebSocket 一并纳入网关管控。
 
 ## 12. 相关文档
 
-- 启动、配置、部署、排障：[`qaapp/README.md`](../qaapp/README.md)
-- 参考前端：[`frontend/webapp/README.md`](../frontend/webapp/README.md)
-- 外部 Agent 插件：[`plugins/external-agents/README.md`](../plugins/external-agents/README.md)
-- OpenHarness 配置：[`docs/CONFIGURATION.zh-CN.md`](CONFIGURATION.zh-CN.md)
-- 定制/插件：[`docs/CUSTOMIZATION.zh-CN.md`](CUSTOMIZATION.zh-CN.md)
+- 启动、配置、部署、排障：[`qaapp/README.md`](../../qaapp/README.md)
+- 参考前端：[`frontend/webapp/README.md`](../../frontend/webapp/README.md)
+- 外部 Agent 插件：[`plugins/external-agents/README.md`](../../plugins/external-agents/README.md)
+- OpenHarness 配置：[`docs/CONFIGURATION.zh-CN.md`](../CONFIGURATION.zh-CN.md)
+- 定制/插件：[`docs/CUSTOMIZATION.zh-CN.md`](../CUSTOMIZATION.zh-CN.md)
 
 ---
 
@@ -516,7 +516,7 @@ WebSocket 一并纳入网关管控。
 
 ### 13.1 数据源：唯一入口
 
-MySQL/Redis 连接信息**只**维护在 `datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`），由 `qaapp/datasources.py` 唯一加载，构造一个进程内共享的 `DataRuntime`：
+MySQL/Redis 连接信息**只**维护在 `datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`），由 `qaapp/data/datasources.py` 唯一加载，构造一个进程内共享的 `DataRuntime`：
 
 ```text
 QaWebService
@@ -549,11 +549,11 @@ QaWebService
 
 ### 13.4 业务分析场景
 
-`qaapp/analysis_scenarios.py` 集中定义 10 类场景：经营综合、售电量与市场、电费回收与欠费、供电服务、电网运行、资产投资、新能源政策、区域/企业专题、预测与目标、自定义数据+业务库。每类包含指标关键词、维度、必做分析、外部来源、报告章节；`db_query(outline, scenario=...)` 用它生成数据可得性驱动的大纲。
+`qaapp/agents/scenarios.py` 集中定义 10 类场景：经营综合、售电量与市场、电费回收与欠费、供电服务、电网运行、资产投资、新能源政策、区域/企业专题、预测与目标、自定义数据+业务库。每类包含指标关键词、维度、必做分析、外部来源、报告章节；`db_query(outline, scenario=...)` 用它生成数据可得性驱动的大纲。
 
 ### 13.5 多智能体编排
 
-- `qaapp/capabilities.py` 生成“组合编排矩阵”，按 `AgentEntry.role`（data/analysis/knowledge）动态引用智能体，不写死 ID；
+- `qaapp/agents/capabilities.py` 生成“组合编排矩阵”，按 `AgentEntry.role`（data/analysis/knowledge）动态引用智能体，不写死 ID；
 - 不再暗示“只选一个”；复杂任务要求取数/归因/政策组合；
 - `consult_agents` 一次批量调用，`shared_context` 共享已核验数据；数字仍以 `db_query` 为准；
 - 外部失败重试一次，仍失败切另一个或 `db_query`，不编造。
@@ -563,4 +563,70 @@ QaWebService
 - 无数据/缺表/周期不符/恒定序列/陈旧/异常均有诊断；
 - `high` 级质量问题必须进入回答/报告；
 - 报告使用 `write_report_docx` 生成，`markdown_path` 适合长文分段写；
-- 详细取数口径见 [`docs/database_query/IMPLEMENTATION.zh-CN.md`](database_query/IMPLEMENTATION.zh-CN.md)。
+- 详细取数口径见 [`database/IMPLEMENTATION.zh-CN.md`](database/IMPLEMENTATION.zh-CN.md)。
+
+---
+
+## 14. 仓库目录结构
+
+```text
+qaapp/
+├── cli.py
+├── config/          # 路径、Pydantic 模型、加载/校验
+├── data/            # datasources/env、MySQL/Redis、catalog、query、quality、charting
+├── agents/          # external、router、capabilities、scenarios
+├── workspace/       # files、documents、turns、trace、maintenance
+├── tools/           # db_query、report、script、consult、policy、dangerous
+├── server/          # service、session、runtime、logging、constants
+│   └── api/         # Starlette app 组装与路由
+└── examples/        # abcqa init 模板（随 wheel 安装）
+```
+
+分层依赖：`openharness`（核心）← `ohmo`（个人助手）← `qaapp`（产品服务）。
+核心不得导入 qaapp；qaapp 可导入核心与 ohmo。该约束由 `tests/test_architecture.py` 守护。
+
+## 15. 扩展 Checklist
+
+### 15.1 能力扩展规范
+
+完整的分层架构、能力矩阵、扩展契约与决策链见
+[`docs/qaapp/ARCHITECTURE.zh-CN.md`](ARCHITECTURE.zh-CN.md)。
+这里只放最常用的「新增能力」检查清单。
+
+### 11.1 新增外部智能体（纯配置）
+
+```text
+config/agents.json → agents[] 追加 { id, kind:"external", name, description, external:{...} }
+→ abcqa agents validate
+→ 重启服务
+→ 问一个该领域的问题，确认 agent_routed / tool_started(tool_name=external_agent)
+```
+
+必须写清 `description`（做什么 / 何时用 / 不适用）；**不要**改通用助手的
+`system_prompt`，运行时能力清单会自动生成。
+
+### 11.2 新增 harness 智能体（独立人设/工具边界）
+
+配置 `kind:"harness"`，用 `tools` / `disallowed_tools` 划边界；提示词只写角色、
+工作原则、输出格式。`tools` 现在是硬边界，支持 `*` 与 fnmatch 通配。
+
+### 11.3 新增工具（代码）
+
+1. 继承 `BaseTool`（`qaapp/xxx_tool.py` 或 `plugins/<name>/tools/`）；
+2. 在 `ensure_bundle` 注册（qaapp 会话级）或由插件自动发现；
+3. 声明 `is_read_only`，在 `dangerous-actions.json` 配默认策略；
+4. 输出有上限、错误用 `ToolResult(is_error=True)`；
+5. 加单测并更新 §9.8 工具名清单。
+
+### 11.4 扩展完成的判定
+
+- [ ] 旧配置不写新字段仍能启动；
+- [ ] `abcqa config` / `agents validate` 通过；
+- [ ] 至少一条集成路径（真实消息 → 路由 → 工具/外部 Agent → SSE 事件）；
+- [ ] 前端无需改代码即可看到新能力（或已同步更新前端）；
+- [ ] 文档的配置表 / API 表 / 工具清单已更新；
+- [ ] 只改配置即可关闭新能力，无需回滚代码。
+
+---
+
+

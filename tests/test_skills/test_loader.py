@@ -7,9 +7,9 @@ from pathlib import Path
 
 from openharness.config.settings import Settings
 from openharness.skills import get_user_skills_dir, load_skill_registry
-from openharness.skills.loader import discover_project_skill_dirs, get_user_skill_dirs
 from openharness.skills.bundled import _parse_frontmatter as parse_bundled_frontmatter
 from openharness.skills.loader import _parse_skill_markdown as parse_skill_markdown
+from openharness.skills.loader import discover_project_skill_dirs, get_user_skill_dirs
 
 
 def test_load_skill_registry_includes_bundled(tmp_path: Path, monkeypatch):

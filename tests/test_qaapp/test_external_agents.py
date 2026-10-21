@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 from openharness.tools.base import ToolRegistry
-from qaapp.config import AgentRegistry
 from qaapp.agents.external import (
     build_inline_config,
     external_conversation_id,
@@ -16,6 +15,7 @@ from qaapp.agents.external import (
     install_external_agent_tool,
     merge_configs,
 )
+from qaapp.config import AgentRegistry
 
 
 def _registry(

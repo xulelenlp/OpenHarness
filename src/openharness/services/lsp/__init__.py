@@ -13,7 +13,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-
 _PYTHON_GLOB = "*.py"
 _SKIP_PARTS = {".git", ".hg", ".svn", ".venv", "venv", "__pycache__", "node_modules"}
 

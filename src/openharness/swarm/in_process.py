@@ -347,8 +347,8 @@ async def _run_query_loop(
     - Track tool_use_count and total_tokens.
     """
     # Deferred import to avoid circular dependencies at module load time.
-    from openharness.engine.query import run_query
     from openharness.engine.messages import ConversationMessage
+    from openharness.engine.query import run_query
 
     messages: list[ConversationMessage] = [
         ConversationMessage.from_user_text(config.prompt)

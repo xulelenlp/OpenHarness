@@ -6,9 +6,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from openharness.state.app_state import AppState
 from openharness.bridge.manager import BridgeSessionRecord
 from openharness.mcp.types import McpConnectionStatus
+from openharness.state.app_state import AppState
 from openharness.tasks.types import TaskRecord
 
 

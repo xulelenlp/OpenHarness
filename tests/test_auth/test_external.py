@@ -12,13 +12,17 @@ from openharness.auth.external import (
     CLAUDE_PROVIDER,
     CODEX_PROVIDER,
     ExternalAuthState,
-    describe_external_binding,
     default_binding_for_provider,
+    describe_external_binding,
     get_claude_code_version,
     load_external_credential,
     refresh_claude_oauth_credential,
 )
-from openharness.auth.storage import ExternalAuthBinding, load_external_binding, store_external_binding
+from openharness.auth.storage import (
+    ExternalAuthBinding,
+    load_external_binding,
+    store_external_binding,
+)
 from openharness.cli import app
 from openharness.config.settings import Settings, load_settings
 

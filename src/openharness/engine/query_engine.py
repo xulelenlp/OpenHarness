@@ -6,12 +6,23 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from openharness.api.client import SupportsStreamingMessages
-from openharness.engine.cost_tracker import CostTracker
-from openharness.coordinator.coordinator_mode import get_coordinator_user_context
-from openharness.engine.messages import ConversationMessage, TextBlock, ToolResultBlock, sanitize_conversation_messages
-from openharness.engine.query import AskUserPrompt, PermissionPrompt, QueryContext, remember_user_goal, run_query
-from openharness.engine.stream_events import AssistantTurnComplete, StreamEvent
 from openharness.config.settings import Settings
+from openharness.coordinator.coordinator_mode import get_coordinator_user_context
+from openharness.engine.cost_tracker import CostTracker
+from openharness.engine.messages import (
+    ConversationMessage,
+    TextBlock,
+    ToolResultBlock,
+    sanitize_conversation_messages,
+)
+from openharness.engine.query import (
+    AskUserPrompt,
+    PermissionPrompt,
+    QueryContext,
+    remember_user_goal,
+    run_query,
+)
+from openharness.engine.stream_events import AssistantTurnComplete, StreamEvent
 from openharness.hooks import HookEvent, HookExecutor
 from openharness.permissions.checker import PermissionChecker
 from openharness.services.autodream.service import schedule_auto_dream

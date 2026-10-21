@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from openharness.api.client import OAUTH_BETA_HEADER, AnthropicApiClient
 from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock
-from openharness.api.client import AnthropicApiClient, OAUTH_BETA_HEADER
 
 
 def test_anthropic_client_adds_oauth_beta_header(monkeypatch):

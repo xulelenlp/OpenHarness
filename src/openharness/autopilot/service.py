@@ -1829,7 +1829,7 @@ class RepoAutopilotStore:
         """Return a minimal fallback HTML page.
 
         The primary dashboard is now a React + Vite app built from
-        ``autopilot-dashboard/``.  This fallback is only written when
+        ``frontend/autopilot-dashboard/``.  This fallback is only written when
         no pre-built ``index.html`` already exists in the output
         directory, so local ``snapshot.json`` generation still works
         without a Node.js toolchain.
@@ -1871,11 +1871,11 @@ class RepoAutopilotStore:
     <h1>{repo_name} <span>AUTOPILOT</span></h1>
     <p class="sub">
       This is a fallback page. The full React dashboard is built via CI
-      from <code>autopilot-dashboard/</code>.
+      from <code>frontend/autopilot-dashboard/</code>.
     </p>
     <div class="info">
       <p>To view the full dashboard locally, build the React app:</p>
-      <p><code>cd autopilot-dashboard &amp;&amp; npm install &amp;&amp; npm run build</code></p>
+      <p><code>cd frontend/autopilot-dashboard &amp;&amp; npm install &amp;&amp; npm run build</code></p>
       <p>Then open <code>docs/autopilot/index.html</code> in a browser.</p>
       <p>Snapshot data: <code>snapshot.json</code> (generated {escape(generated)})</p>
     </div>

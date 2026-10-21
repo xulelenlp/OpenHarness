@@ -8,7 +8,13 @@ import pytest
 
 from openharness.api.client import ApiMessageCompleteEvent
 from openharness.api.usage import UsageSnapshot
-from openharness.engine.messages import ConversationMessage, ImageBlock, TextBlock, ToolResultBlock, ToolUseBlock
+from openharness.engine.messages import (
+    ConversationMessage,
+    ImageBlock,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from openharness.hooks import HookEvent
 from openharness.services import (
     build_post_compact_messages,
@@ -23,12 +29,14 @@ from openharness.services.compact import (
     AutoCompactState,
     _is_prompt_too_long_error,
     auto_compact_if_needed,
-    estimate_message_tokens as estimate_compact_message_tokens,
     get_autocompact_threshold,
     microcompact_messages,
     should_autocompact,
     try_context_collapse,
     try_session_memory_compaction,
+)
+from openharness.services.compact import (
+    estimate_message_tokens as estimate_compact_message_tokens,
 )
 
 

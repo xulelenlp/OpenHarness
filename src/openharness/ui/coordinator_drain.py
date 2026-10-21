@@ -21,7 +21,6 @@ from openharness.engine.query import MaxTurnsExceeded
 from openharness.prompts.context import build_runtime_system_prompt
 from openharness.tasks.manager import get_task_manager
 
-
 _TERMINAL_TASK_STATUSES = frozenset({"completed", "failed", "killed"})
 
 

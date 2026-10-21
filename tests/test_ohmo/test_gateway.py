@@ -1,15 +1,42 @@
 import asyncio
 import contextlib
+import json
 import logging
 import subprocess
 import sys
-from types import SimpleNamespace
 from datetime import datetime
-import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from ohmo.gateway.bridge import OhmoGatewayBridge, _format_gateway_error
+from ohmo.gateway.config import load_gateway_config, save_gateway_config
+from ohmo.gateway.group_tool import OhmoCreateFeishuGroupInput, OhmoCreateFeishuGroupTool
+from ohmo.gateway.models import GatewayConfig, GatewayState
+from ohmo.gateway.provider_commands import (
+    handle_gateway_model_command,
+    handle_gateway_provider_command,
+)
+from ohmo.gateway.router import session_key_for_message
+from ohmo.gateway.runtime import (
+    OhmoSessionRuntimePool,
+    _build_inbound_user_message,
+    _format_channel_progress,
+    _sanitize_group_command_metadata,
+    _sanitize_group_command_prompts,
+)
+from ohmo.gateway.service import (
+    OhmoGatewayService,
+    gateway_status,
+    start_gateway_process,
+    stop_gateway_process,
+)
+from ohmo.group_registry import load_managed_group_record, save_managed_group_record
+from ohmo.memory import add_memory_entry as add_ohmo_memory_entry
+from ohmo.memory import list_memory_files as list_ohmo_memory_files
+from ohmo.session_storage import save_session_snapshot
+from ohmo.workspace import get_gateway_restart_notice_path, get_skills_dir, initialize_workspace
 from openharness.api.client import ApiMessageCompleteEvent
 from openharness.api.usage import UsageSnapshot
 from openharness.autopilot.service import RepoAutopilotStore
@@ -34,26 +61,6 @@ from openharness.memory import list_memory_files as list_project_memory_files
 from openharness.permissions import PermissionChecker, PermissionMode
 from openharness.tasks.manager import get_task_manager
 from openharness.tools.base import ToolExecutionContext, ToolRegistry
-
-from ohmo.gateway.bridge import OhmoGatewayBridge, _format_gateway_error
-from ohmo.gateway.config import load_gateway_config, save_gateway_config
-from ohmo.gateway.group_tool import OhmoCreateFeishuGroupInput, OhmoCreateFeishuGroupTool
-from ohmo.gateway.models import GatewayConfig, GatewayState
-from ohmo.gateway.provider_commands import handle_gateway_model_command, handle_gateway_provider_command
-from ohmo.gateway.runtime import (
-    OhmoSessionRuntimePool,
-    _build_inbound_user_message,
-    _format_channel_progress,
-    _sanitize_group_command_metadata,
-    _sanitize_group_command_prompts,
-)
-from ohmo.gateway.service import OhmoGatewayService, gateway_status, start_gateway_process, stop_gateway_process
-from ohmo.group_registry import load_managed_group_record, save_managed_group_record
-from ohmo.memory import add_memory_entry as add_ohmo_memory_entry
-from ohmo.memory import list_memory_files as list_ohmo_memory_files
-from ohmo.gateway.router import session_key_for_message
-from ohmo.session_storage import save_session_snapshot
-from ohmo.workspace import get_gateway_restart_notice_path, get_skills_dir, initialize_workspace
 
 
 def test_gateway_router_uses_thread_and_sender_for_group_when_present():

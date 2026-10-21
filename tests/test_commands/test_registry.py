@@ -8,19 +8,23 @@ from pathlib import Path
 import pytest
 
 import openharness.commands.registry as registry_module
+from openharness.autopilot import RepoVerificationStep
 from openharness.commands.registry import (
     CommandContext,
     MemoryCommandBackend,
     create_default_command_registry,
     lookup_skill_slash_command,
 )
-from openharness.autopilot import RepoVerificationStep
-from openharness.config.paths import get_feedback_log_path, get_project_issue_file, get_project_pr_comments_file
-from openharness.config.settings import load_settings, save_settings, Settings
+from openharness.config.paths import (
+    get_feedback_log_path,
+    get_project_issue_file,
+    get_project_pr_comments_file,
+)
+from openharness.config.settings import Settings, load_settings, save_settings
 from openharness.engine.messages import ConversationMessage, TextBlock
 from openharness.engine.query_engine import QueryEngine
-from openharness.memory.paths import get_project_memory_dir
 from openharness.mcp.types import McpHttpServerConfig, McpStdioServerConfig
+from openharness.memory.paths import get_project_memory_dir
 from openharness.permissions import PermissionChecker
 from openharness.plugins.types import PluginCommandDefinition
 from openharness.state import AppState, AppStateStore

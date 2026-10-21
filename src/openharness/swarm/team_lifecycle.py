@@ -25,7 +25,6 @@ from typing import Any, Literal
 from openharness.swarm.mailbox import get_team_dir
 from openharness.swarm.types import BackendType
 
-
 # ---------------------------------------------------------------------------
 # Name sanitisation (matching TS sanitizeName / sanitizeAgentName)
 # ---------------------------------------------------------------------------

@@ -13,9 +13,9 @@ import contextlib
 import json
 import logging
 import os
-import subprocess
 import shlex
 import signal
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -25,19 +25,13 @@ from typing import Any, Callable
 
 from openharness.config.paths import get_data_dir, get_logs_dir
 from openharness.platforms import get_platform
+from openharness.sandbox import SandboxUnavailableError
 from openharness.services.cron import (
     load_cron_jobs,
     mark_job_run,
     validate_cron_expression,
 )
-from openharness.sandbox import SandboxUnavailableError
 from openharness.utils.shell import create_shell_subprocess
-
-try:
-    from ohmo.gateway.config import load_gateway_config
-except Exception:  # pragma: no cover - ohmo is optional for non-ohmo cron users
-    load_gateway_config = None  # type: ignore[assignment]
-
 
 NOTIFICATION_OUTPUT_LIMIT = 3500
 
@@ -294,8 +288,13 @@ def _command_for_job(job: dict[str, Any]) -> str:
     cwd = str(job.get("cwd") or ".")
     parts = ["ohmo"]
     profile = payload.get("profile") or job.get("provider_profile")
-    if profile is None and load_gateway_config is not None:
-        profile = load_gateway_config().provider_profile
+    if profile is None:
+        try:
+            from ohmo.gateway.config import load_gateway_config
+        except Exception:  # pragma: no cover - ohmo is optional for non-ohmo cron users
+            load_gateway_config = None
+        if load_gateway_config is not None:
+            profile = load_gateway_config().provider_profile
     if profile:
         parts.extend(["--profile", str(profile)])
     parts.extend(

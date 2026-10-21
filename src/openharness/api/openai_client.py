@@ -29,8 +29,8 @@ from openharness.api.errors import (
 )
 from openharness.api.usage import UsageSnapshot
 from openharness.engine.messages import (
-    ConversationMessage,
     ContentBlock,
+    ConversationMessage,
     ImageBlock,
     TextBlock,
     ToolResultBlock,

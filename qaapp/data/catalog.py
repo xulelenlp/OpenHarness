@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from qaapp.data.datasources import MySQLConfig
 from qaapp.data.mysql import DataClientError, MySqlClient
 from qaapp.data.schema import (
     BOUNDARY_INDICATORS,
@@ -30,7 +31,6 @@ from qaapp.data.schema import (
     T_ORG,
     T_SCENE,
 )
-from qaapp.data.datasources import MySQLConfig
 
 _WS = re.compile(r"\s+")
 _PUNCT = re.compile(r"[，。！？、；：“”‘’（）()【】\[\]《》<>\"'`]+")
