@@ -17,6 +17,8 @@ def _registry() -> AgentRegistry:
                     "kind": "external",
                     "name": "电网指标数据分析",
                     "description": "售电量/线损分析\n（趋势、同比、影响因素）",
+                    "best_for": ["趋势分析", "同比环比"],
+                    "not_for": ["单值取数"],
                     "external": {
                         "type": "http",
                         "config": {"endpoint": "http://example.invalid/chat"},
@@ -89,3 +91,53 @@ def test_catalog_none_tools_means_unfiltered():
     catalog = build_capability_catalog(_registry(), current_agent_id="general")
     assert "power-grid-analysis" in catalog
     assert "run_script" in catalog
+
+
+def test_catalog_preserves_general_and_adds_analysis_as_optional():
+    catalog = build_capability_catalog(
+        _registry(),
+        current_agent_id="general",
+        available_tools={
+            "external_agent",
+            "consult_agents",
+            "db_query",
+            "run_script",
+            "write_report_docx",
+            "skill",
+        },
+        now="2026-10-21",
+        data_boundary="售电量 最新 2026-09-30",
+    )
+    # 通用能力仍然是第一原则，不是强制业务分析。
+    assert "能直接回答就直接回答" in catalog
+    assert "通用任务仍按你原有" in catalog
+    assert "深度业务分析/报告才加载" in catalog
+    # 多智能体组合而不是固定一个。
+    assert "组合编排" in catalog
+    assert "consult_agents" in catalog
+    assert "db_query" in catalog
+    assert "write_report_docx" in catalog
+    assert "当前日期：2026-10-21" in catalog
+    assert "售电量 最新 2026-09-30" in catalog
+    assert "不要只选一个" in catalog
+
+
+def test_actual_general_config_keeps_tools_and_analysis_optional():
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    data = json.loads((root / "config" / "agents.json").read_text(encoding="utf-8"))
+    general = next(agent for agent in data["agents"] if agent["id"] == "general")
+    assert general["tools"] == ["*"]
+    assert "能直接回答就直接回答" in general["system_prompt"]
+    assert "业务分析（按需" in general["system_prompt"]
+    assert "不要强行套流程" in general["system_prompt"]
+    assert general["max_turns"] >= 60
+
+
+def test_catalog_lists_agent_metadata():
+    catalog = build_capability_catalog(
+        _registry(), current_agent_id="general", available_tools={"external_agent"}
+    )
+    assert "擅长" in catalog

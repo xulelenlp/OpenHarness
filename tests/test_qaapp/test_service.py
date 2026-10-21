@@ -605,7 +605,13 @@ def test_run_script_tool_is_registered_with_conversation_dir(service):
         session = await service.get_or_create_session("abc123abc123", create=True)
         bundle = await service.ensure_bundle(session)
         assert bundle.tool_registry.get("run_script") is not None
+        assert bundle.tool_registry.get("db_query") is not None
+        assert bundle.tool_registry.get("consult_agents") is not None
+        assert bundle.tool_registry.get("write_report_docx") is not None
         assert bundle.engine.tool_metadata[CONVERSATION_DIR_KEY] == str(session.paths.root)
+        assert bundle.engine.tool_metadata["qaapp_conversation_id"] == session.conversation_id
+        # 项目技能统一从仓库根 skills/ 注入（随 git 维护）。
+        assert any(path.endswith("/skills") for path in bundle.extra_skill_dirs)
         # 系统提示基线只保存一次，后续每轮在此基础上追加会话上下文
         assert session.system_prompt_base is not None
 
