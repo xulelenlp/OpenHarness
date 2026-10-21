@@ -3,6 +3,7 @@
   "host": "0.0.0.0",
   "port": 8787,
   "provider_profile": "",
+  "_datasources_comment": "MySQL/Redis 不写在本文件：连接信息统一放到 datasources.json（可配 ${DB_HOST} 等占位符 + 环境变量/就近 .env），由 qaapp/datasources.py 唯一加载。用 abcqa datasource check 检查连通性。",
   "api_tokens": ["please-change-this-token"],
   "_browser_auth_comment": "浏览器免手工 token：前端启动时请求 GET /api/v1/bootstrap，服务端读取 api_tokens 并签发 HttpOnly 会话 Cookie（值不是 token 本身）。enabled=false 时前端必须用 VITE_API_TOKEN 或由反向代理注入 Authorization；对公网暴露建议关闭并前置 SSO/网关。",
   "browser_auth": {

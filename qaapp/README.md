@@ -59,7 +59,7 @@ qaapp/service.py          Starlette 服务，维护“每对话一个 RuntimeBun
    ├─ qaapp/capabilities.py    动态能力清单（由 agents.json 生成，含决策顺序）
    ├─ qaapp/tool_policy.py     按 Agent 裁剪 tools / disallowed_tools
    ├─ qaapp/dangerous.py       高危操作门禁 + 权限检查器
-   ├─ qaapp/config.py          三份配置的模型与加载
+   ├─ qaapp/config.py          配置模型与加载（webapp/agents/dangerous/datasources 路径）
    ├─ qaapp/conversation_files.py  会话临时目录布局 + 附件索引 + 提示词上下文块
    ├─ qaapp/documents.py       上传文档解析（docx / xlsx / xls / txt / csv…）
    ├─ qaapp/script_tool.py     run_script 工具：脚本写进会话目录后执行
@@ -154,7 +154,7 @@ cd /Users/xulele/Documents/workspace/OpenHarness   # 进入仓库根
 # ① 验证依赖可用
 python -c "import qaapp, openharness, ohmo; print('依赖 OK')"
 
-# ② 写入三份示例配置到 ohmo workspace（默认 ~/.ohmo/）
+# ② 写入四份示例配置到 ohmo workspace（默认 ~/.ohmo/）
 python -m qaapp init
 #    若已生成 abcqa 脚本，也可写：abcqa init
 #    已存在时跳过；想覆盖用 --force
@@ -163,7 +163,7 @@ python -m qaapp init
 #    编辑 ~/.openharness/settings.json，设置 active_profile 与对应 api_key，详见 §5.1
 
 # ④ 校验配置
-python -m qaapp config              # 三份配置的存在性与校验结果
+python -m qaapp config              # 四份配置的存在性与校验结果
 python -m qaapp agents list         # 列出注册的 Agent
 python -m qaapp dangerous validate  # 校验高危操作策略
 
@@ -199,7 +199,7 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 | 层级 | 文件 | 位置 | 内容 |
 | --- | --- | --- | --- |
 | ① OpenHarness 主配置 | `settings.json` | `~/.openharness/` 等（见 §5.1） | 模型 / API Key / 权限 / 沙箱 / MCP |
-| ② qaapp 三份配置 | `webapp.json`、`agents.json`、`dangerous-actions.json` | ohmo workspace（`~/.ohmo/`） | 服务、Agent 注册、高危策略 |
+| ② qaapp 四份配置 | `webapp.json`、`agents.json`、`dangerous-actions.json`、`datasources.json` | ohmo workspace（`~/.ohmo/`） | 服务、Agent 注册、高危策略、数据源 |
 | ③ 外部 Agent 配置 | **内联在 `agents.json`** | 见 §5.3 | `kind=external` 的 Agent 端点（唯一维护文件） |
 
 ### 5.1 ① settings.json（OpenHarness 主配置）
@@ -241,9 +241,9 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 > 仓库 `.openharness/settings.json` 内含一个可用的 qwen 示例（**含明文 key，仅供
 > 本地开发**）。生产环境务必换成你自己的凭据，并注意 §9.9 的密钥安全提醒。
 
-### 5.2 ② qaapp 三份配置（**可见路径优先，随 git 走**）
+### 5.2 ② qaapp 四份配置（**可见路径优先，随 git 走**）
 
-三份文件按下面的顺序解析，**命中即用**（都不存在则回退内置默认值）：
+四份文件按下面的顺序解析，**命中即用**（都不存在则回退内置默认值）：
 
 | 顺序 | 位置 | 用途 |
 | --- | --- | --- |
@@ -257,13 +257,14 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 | --- | --- | --- |
 | `agents.json` | **`config/agents.json`（提交 git）** | 所有 Agent 的唯一维护文件，团队共用、随代码发布 |
 | `dangerous-actions.json` | `config/` 或 workspace 均可 | 属于团队策略就能进 git；含本机特例就放 workspace |
+| `datasources.json` | **workspace 或 `config/` 占位符版本** | 真实凭据放本机 workspace；仓库里只放 `${DB_HOST}` 占位符 |
 | `webapp.json` | **建议只放 workspace**（`~/.ohmo/webapp.json`） | 里面有 `api_tokens`；文件级覆盖不做字段合并，放进 git 容易把 token 也提交上去 |
 
 启动日志会打印**实际生效的文件**，`abcqa config` 也会给出每个文件的路径与来源
 （`project` / `workspace` / `explicit`）：
 
 ```bash
-abcqa config         # 看三份配置实际读了哪个文件
+abcqa config         # 看四份配置实际读了哪个文件
 abcqa agents list    # 第一行就是当前生效的 agents.json 路径
 ```
 
@@ -280,7 +281,7 @@ abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须�
 > `Unknown external agent ... (none configured)`。现在把 agents.json 放进项目可见的
 > `config/` 即可根治；`abcqa init --config-dir ./config` 可直接生成示例。
 
-三份文件缺失或非法时**回退到内置默认值**（不阻塞启动，仅在日志告警），所以
+四份文件缺失或非法时**回退到内置默认值**（不阻塞启动，仅在日志告警），所以
 「文件在但内容非法」要主动用 `abcqa config` 检查。
 
 > 启动时还会做一次外部 Agent 自检：`kind=external` 若只写了 `external_ref` 而对应配置
@@ -491,8 +492,8 @@ settings 的 `allowed_tools` → 基础权限模式。
 ## 6. 命令行速查
 
 ```bash
-abcqa init [--workspace DIR] [--force]     # 写入三份示例配置
-abcqa config [--workspace DIR]             # 三份配置存在性与校验结果
+abcqa init [--workspace DIR] [--force]     # 写入四份示例配置
+abcqa config [--workspace DIR]             # 四份配置存在性与校验结果
 abcqa cleanup [--older-than-days N] [--keep-latest N] [--apply] [--json]
                                            # 清理闲置会话目录/快照/轨迹（默认 dry-run）
 abcqa agents list                          # 列出注册的 Agent
@@ -787,7 +788,10 @@ workspace 下：
 qaapp 额外注入：
 
 - `run_script` —— 会话目录内执行 Python/Node（脚本固定写 `scripts/`，产物 `outputs/`）；
-- `external_agent` —— 调用 `agents.json` 注册的外部智能体（插件提供）。
+- `external_agent` —— 调用 `agents.json` 注册的外部智能体（插件提供）；
+- `db_query` —— 业务库只读查询/EDA/大纲/新闻/图表（qaapp 内置）；
+- `consult_agents` —— 批量调用多个外部智能体（qaapp 内置）；
+- `write_report_docx` —— 生成 Word 报告（qaapp 内置）。
 
 以 `abcqa agents list` / 运行时 `tool_search` 为准。`tools` / `disallowed_tools`
 里的名字必须与真实工具名一致；支持 `*` 与 `web_*`、`mcp_*` 这类通配。
@@ -1007,6 +1011,93 @@ config/agents.json → agents[] 追加 { id, kind:"external", name, description,
 - [ ] 前端无需改代码即可看到新能力（或已同步更新前端）；
 - [ ] 文档的配置表 / API 表 / 工具清单已更新；
 - [ ] 只改配置即可关闭新能力，无需回滚代码。
+
+---
+
+## 12. 业务库直连与多智能体编排（新增）
+
+### 12.1 数据源：只维护 `datasources.json`
+
+MySQL/Redis 的连接信息**不再写进 `webapp.json`/代码**，统一放在 `datasources.json`：
+
+```jsonc
+{
+  "mysql": {
+    "enabled": true,
+    "host": "${DB_HOST}",
+    "port": "${DB_PORT}",
+    "user": "${DB_USER}",
+    "password": "${DB_PASSWORD}",
+    "database": "${DB_NAME}",
+    "read_only": true,
+    "allow_raw_sql": false
+  },
+  "redis": {
+    "enabled": true,
+    "host": "${REDIS_HOST}",
+    "port": "${REDIS_PORT}",
+    "password": "${REDIS_PASSWORD}",
+    "db": 0,
+    "key_prefixes": ["fj_", "daily_"]
+  }
+}
+```
+
+- 解析顺序：`--config-dir` / `QAAPP_CONFIG_DIR` → `<cwd>/config/datasources.json` → `<workspace>/datasources.json`；
+- `${VAR}` 由 `qaapp/datasources.py` 统一解析：**进程环境变量 > 就近 `.env` > JSON 字面值**；
+- 推荐把真实凭据放本机 `~/.ohmo/datasources.json`（0600），仓库里只放占位符版本；
+- `redis.db` 强制为 0（db1 含平台密钥）；MySQL 必须 `read_only=true`；
+- 仓库里的 `config/datasources.json` 是**占位符模板**：未设置 `DB_*` / `REDIS_*` 时 `abcqa config` 会提示缺少 host，这是预期；把真实值放本机 workspace 或设置环境变量即可；
+- 查看/检查：
+
+```bash
+abcqa datasource show    # 密码脱敏，打印实际配置文件路径
+abcqa datasource check   # 只读检查 MySQL/Redis 连通性、关键表/键
+abcqa config             # 四份配置（webapp/agents/dangerous/datasources）路径与校验
+```
+
+### 12.2 新工具
+
+| 工具 | 作用 | 权限 |
+| --- | --- | --- |
+| `db_query` | 指标/维度/机构查询、EDA、大纲、新闻、图表、Redis 预测缓存、受控 SQL | 只读 |
+| `consult_agents` | 1–4 个外部智能体并行/顺序调用，重试、超时、截断、证据落盘 | 只读 |
+| `write_report_docx` | Markdown/结构化章节 → Word（封面/目录/表格/图片/页码/来源） | 写（默认确认） |
+
+- `db_query` 直连业务库，已处理 A1/A2/B1/B2/T/四率路由、月末日期、周期/维度回退、无数据诊断、数据质量；
+- `consult_agents` 不替代 `external_agent`；复杂任务用它一次批量调用三个智能体，`shared_context` 共享已核验数据；
+- 数字以 `db_query` 为准；智能体输出只是素材，最终回答必须重新组织；
+- `write_report_docx` 只写 `<会话目录>/outputs/reports/`；默认需确认，若要免确认：
+  `{"tool":"write_report_docx","action":"allow","reason":"仅写入会话目录 outputs/reports"}`。
+
+### 12.3 业务分析技能
+
+项目内新增三个技能，统一放在仓库根目录 **`skills/`**（随 git 维护，不再放 `.openharness/skills/`）：
+
+- `skills/database-query/`：取数细节、表路由、数据坑；
+- `skills/business-analysis/`：10 类业务场景、四阶段、提纲/EDA/深挖/报告模板；
+- `skills/multi-agent-orchestration/`：三智能体提示词模板、并行/顺序、综合检查表。
+
+`.openharness/settings.json` 的 `project_skill_dirs` 已把 `skills` 放到最后（同层同名时优先级最高）；新增/修改技能只需改这个目录，下一轮自动生效，不需要改 Python 代码。
+
+通用助手仍是默认 Agent，原有开放任务能力不变；只有任务明确是业务分析/报告时才加载 `business-analysis`，不强制四阶段。
+
+### 12.4 依赖
+
+`pyproject.toml` 新增 `pymysql` / `redis` / `matplotlib`。升级后执行：
+
+```bash
+pip install -e .          # 或 pip install pymysql redis matplotlib
+abcqa datasource check
+```
+
+### 12.5 真实库校验（默认跳过）
+
+```bash
+QAAPP_TEST_DB=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASSWORD=... DB_NAME=... pytest tests/test_qaapp/test_db_smoke.py -q
+```
+
+覆盖：厦门售电量、福建第一产业、电费回收率无数据/恒定序列、发电量最新日期、售电场景大纲。
 
 ---
 

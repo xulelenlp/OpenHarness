@@ -1,6 +1,6 @@
 """qaapp 配置模型与加载器。
 
-三份配置文件按下面的**可见路径优先**顺序解析（缺失时回退到内置默认值）：
+配置文件按下面的**可见路径优先**顺序解析（缺失时回退到内置默认值）：
 
 1. ``--config-dir <dir>`` / 环境变量 ``QAAPP_CONFIG_DIR``（显式指定，最高优先）
 2. ``<cwd>/config/<name>`` —— **项目内、可见、随 git 走**（`git pull` 即可在服务器生效）
@@ -9,6 +9,7 @@
 - ``webapp.json``           —— Web 服务配置（含 token，建议只放本机 workspace）
 - ``agents.json``           —— **所有 Agent 的唯一维护文件**（含外部 Agent 的内联访问配置）
 - ``dangerous-actions.json``—— 高危操作策略
+- ``datasources.json``      —— **MySQL/Redis 的唯一维护文件**（连接信息不写入 webapp/代码）
 
 > 不传 ``cwd`` 时（例如纯单元测试）只按 workspace 解析，不会去读项目 ``config/``。
 """
@@ -31,6 +32,8 @@ from ohmo.workspace import get_workspace_root
 WEBAPP_FILENAME = "webapp.json"
 AGENTS_FILENAME = "agents.json"
 DANGEROUS_FILENAME = "dangerous-actions.json"
+#: 数据源配置：MySQL / Redis 的唯一维护文件（连接信息不写入 webapp.json/代码）。
+DATASOURCES_FILENAME = "datasources.json"
 
 #: 项目内可见配置目录（相对于 ``--cwd``），随 git 统一管理。
 PROJECT_CONFIG_DIRNAME = "config"
@@ -110,6 +113,18 @@ def get_dangerous_config_path(
 ) -> Path:
     return resolve_config_path(
         DANGEROUS_FILENAME, workspace, cwd=cwd, config_dir=config_dir
+    )
+
+
+def get_datasources_config_path(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> Path:
+    """返回数据源配置文件（datasources.json）的实际路径。"""
+    return resolve_config_path(
+        DATASOURCES_FILENAME, workspace, cwd=cwd, config_dir=config_dir
     )
 
 
@@ -350,6 +365,13 @@ class AgentEntry(BaseModel):
     external: ExternalAgentSpec | None = None
     # kind=subagent
     subagent_type: str = ""
+    #: 能力角色（orchestrator/data/analysis/knowledge），用于能力清单分组/编排提示。
+    role: str = ""
+    #: 路由辅助：擅长/不擅长/示例（给模型看，不参与硬路由）。
+    best_for: list[str] = Field(default_factory=list)
+    not_for: list[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
+
     # kind=harness
     system_prompt: str = ""
     system_prompt_file: str = ""
@@ -598,17 +620,19 @@ def config_status(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """返回三份配置的**实际解析路径**、存在性与校验结果摘要。"""
+    """返回配置文件的**实际解析路径**、存在性与校验结果摘要。"""
     kwargs = _resolve_kwargs(cwd, config_dir)
     paths = {
         "webapp": get_webapp_config_path(workspace, **kwargs),
         "agents": get_agents_config_path(workspace, **kwargs),
         "dangerous": get_dangerous_config_path(workspace, **kwargs),
+        "datasources": get_datasources_config_path(workspace, **kwargs),
     }
     validators = {
         "webapp": validate_webapp_config,
         "agents": validate_agent_registry,
         "dangerous": validate_dangerous_actions,
+        "datasources": _validate_datasources,
     }
     project_dir = get_project_config_dir(cwd, config_dir)
     result: dict[str, Any] = {
@@ -629,9 +653,22 @@ def config_status(
     return result
 
 
+def _validate_datasources(
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> list[str]:
+    """延迟导入，避免 qaapp.config 与 qaapp.datasources 循环依赖。"""
+    from qaapp.datasources import validate_datasources_config
+
+    return validate_datasources_config(workspace, cwd=cwd, config_dir=config_dir)
+
+
 __all__ = [
     "AGENTS_FILENAME",
     "DANGEROUS_FILENAME",
+    "DATASOURCES_FILENAME",
     "ENV_CONFIG_DIR",
     "PROJECT_CONFIG_DIRNAME",
     "WEBAPP_FILENAME",
@@ -650,6 +687,7 @@ __all__ = [
     "config_status",
     "get_agents_config_path",
     "get_dangerous_config_path",
+    "get_datasources_config_path",
     "get_project_config_dir",
     "get_webapp_config_path",
     "load_agent_registry",

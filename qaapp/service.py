@@ -15,9 +15,11 @@ import os
 import secrets
 import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from ohmo.session_storage import OhmoSessionBackend
 from ohmo.workspace import get_workspace_root
@@ -46,11 +48,13 @@ from qaapp.config import (
     AgentEntry,
     get_agents_config_path,
     get_dangerous_config_path,
+    get_datasources_config_path,
     get_webapp_config_path,
     load_agent_registry,
     load_dangerous_actions,
     load_webapp_config,
 )
+from qaapp.consult_agents_tool import ConsultAgentsTool
 from qaapp.conversation_files import (
     CONVERSATION_ID_PATTERN,
     AttachmentError,
@@ -69,6 +73,12 @@ from qaapp.conversation_files import (
     save_upload,
 )
 from qaapp.dangerous import DangerousActionGate, DangerousPermissionChecker
+from qaapp.datasources import (
+    DataSourceConfigError,
+    create_data_runtime,
+    load_datasources_config,
+)
+from qaapp.db_query_tool import DbQueryTool
 from qaapp.documents import (
     KIND_BY_SUFFIX,
     DocumentTooLarge,
@@ -78,6 +88,7 @@ from qaapp.documents import (
     suffix_of,
 )
 from qaapp.external_agents import external_conversation_id, install_external_agent_tool
+from qaapp.report_tool import WriteReportDocxTool
 from qaapp.script_tool import CONVERSATION_DIR_KEY, RunScriptTool
 from qaapp.tool_policy import build_agent_tool_registry
 from qaapp.trace import ConversationTraceStore
@@ -220,12 +231,38 @@ class QaWebService:
         self.webapp = load_webapp_config(workspace, **self._config_kwargs)
         self.registry = load_agent_registry(workspace, **self._config_kwargs)
         self.dangerous = load_dangerous_actions(workspace, **self._config_kwargs)
+        # 数据源：唯一入口 datasources.json；未配置时 data_runtime=None，通用问答不受影响。
+        self.data_runtime = None
+        try:
+            datasources = load_datasources_config(workspace, **self._config_kwargs)
+            self.data_runtime = create_data_runtime(datasources, workspace, cwd=self.cwd)
+            if self.data_runtime is None or not self.data_runtime.enabled:
+                logger.info("数据源：未启用（datasources.json 缺失、未启用或必填项未配置）")
+            else:
+                mysql = datasources.mysql
+                redis = datasources.redis
+                logger.info(
+                    "数据源已启用：mysql=%s:%s/%s（read_only=%s）；redis=%s:%s/db0",
+                    mysql.host or "-",
+                    mysql.port,
+                    mysql.database or "-",
+                    mysql.read_only,
+                    redis.host or "-",
+                    redis.port,
+                )
+        except DataSourceConfigError as exc:
+            logger.error("数据源配置加载失败：%s", exc)
+            self.data_runtime = None
+        except Exception:  # 数据源故障不能阻断通用问答
+            logger.exception("数据源初始化失败")
+            self.data_runtime = None
         logger.info(
-            "配置来源：agents=%s（%s 个 agent）dangerous=%s webapp=%s",
+            "配置来源：agents=%s（%s 个 agent）dangerous=%s webapp=%s datasources=%s",
             get_agents_config_path(workspace, **self._config_kwargs),
             len(self.registry.agents),
             get_dangerous_config_path(workspace, **self._config_kwargs),
             get_webapp_config_path(workspace, **self._config_kwargs),
+            get_datasources_config_path(workspace, **self._config_kwargs),
         )
         self.gate = DangerousActionGate(self.dangerous)
         self.trace_store = ConversationTraceStore(workspace)
@@ -326,6 +363,9 @@ class QaWebService:
             "restore_messages": restore_messages,
             "restore_tool_metadata": restore_tool_metadata,
             "session_backend": self.session_backend,
+            # 项目技能统一放仓库根 skills/（随 git 维护）；即使自定义 settings 没写
+            # project_skill_dirs，也能通过 extra_skill_dirs 加载。
+            "extra_skill_dirs": (str(_REPO_ROOT / "skills"),),
             "extra_plugin_roots": (str(_REPO_ROOT / "plugins"),),
         }
         if self.webapp.provider_profile:
@@ -340,8 +380,15 @@ class QaWebService:
         # 同时把 conversation_id 统一成「一个 qaapp 会话 = 一个对端会话」，避免
         # harness 把 external_agent 当工具调用时插件每次退化成一个随机 uuid。
         install_external_agent_tool(bundle, self.registry, session.conversation_id)
-        # 把会话目录通过 tool_metadata 传给工具执行上下文（run_script 依赖它）。
+        # 业务库查询 / 多智能体批量调用 / Word 报告：按需注入，未配置数据源时 db_query 会返回明确提示。
+        bundle.tool_registry.register(
+            DbQueryTool(self.data_runtime.query if self.data_runtime is not None else None)
+        )
+        bundle.tool_registry.register(ConsultAgentsTool(session.conversation_id))
+        bundle.tool_registry.register(WriteReportDocxTool())
+        # 把会话目录/会话 ID 通过 tool_metadata 传给工具执行上下文。
         bundle.engine.tool_metadata[CONVERSATION_DIR_KEY] = str(session.paths.root)
+        bundle.engine.tool_metadata["qaapp_conversation_id"] = session.conversation_id
         # 记录 bundle 创建时的默认系统提示：每轮会在此基础上追加「会话工作区」上下文，
         # 因此必须保存未被追加过的原始版本，避免反复拼接。
         session.system_prompt_base = bundle.engine.system_prompt
@@ -548,12 +595,14 @@ class QaWebService:
         return session.attachments.resolve(attachment_ids)
 
     def _conversation_context(self, session: ConversationSession) -> str:
-        return build_context_block(
+        block = build_context_block(
             session.paths,
             session.current_attachments,
             config=self.webapp.attachments,
             inventory_limit=self.webapp.conversation_workspace.inventory_limit,
         )
+        # 会话 ID 对“报告下载链接/会话文件”有用；不包含任何凭据。
+        return f"会话 ID：{session.conversation_id}\n\n{block}"
 
     def _attachment_message_block(self, session: ConversationSession) -> str:
         """给外部 Agent 用的附件上下文（它读不到本地文件，只能把内容带过去）。"""
@@ -668,10 +717,24 @@ class QaWebService:
         #    能力清单每轮从注册表生成：新增 Agent / 受限工具都会自动反映，
         #    不需要再去手改 general 的 system_prompt。
         base_prompt = self._resolve_system_prompt(agent) or session.system_prompt_base or ""
+        data_boundary = ""
+        if self.data_runtime is not None:
+            try:
+                # 数据边界查询会访问 MySQL；放到线程里并加短超时，避免拖慢首轮。
+                data_boundary = await asyncio.wait_for(
+                    asyncio.to_thread(self.data_runtime.boundary_summary),
+                    timeout=8.0,
+                )
+            except TimeoutError:
+                logger.debug("读取数据边界超时，本轮省略数据边界")
+            except Exception:
+                logger.debug("读取数据边界失败", exc_info=True)
         catalog = build_capability_catalog(
             self.registry,
             current_agent_id=agent.id,
             available_tools={tool.name for tool in agent_tools.list_tools()},
+            now=datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d"),
+            data_boundary=data_boundary,
         )
         context_block = self._conversation_context(session)
         prompt_parts = [part for part in (base_prompt, catalog, context_block) if part]
@@ -839,6 +902,8 @@ class QaWebService:
                 except Exception:
                     logger.exception("close_runtime failed for %s", session.conversation_id)
         self._sessions.clear()
+        if self.data_runtime is not None:
+            self.data_runtime.close()
 
     # ------------------------------------------------------------------
     # Starlette 应用
