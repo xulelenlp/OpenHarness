@@ -38,7 +38,7 @@
 | 只发文件不写字 | 合法：只要有一个附件就绪，发送按钮即可用；后端会补一句默认提问 |
 | 发送 | body 带 `attachment_ids`；用户气泡下方渲染附件芯片（本地状态） |
 | 历史回放 | 附件芯片来自轨迹里的 `attachments_ready` 事件（会话快照里只有文本，这是唯一的还原来源） |
-| 右侧「会话文件」抽屉 | 按 `uploads/extracted/scripts/tmp/outputs` 分组列出会话目录文件，支持下载、文本预览（前 2000 字符）、复制会话目录绝对路径；每轮回答结束后自动刷新 |
+| 右侧「会话文件」抽屉 | 按 `uploads/extracted/scripts/tmp/outputs` 分组列出会话目录文件，支持下载、文本预览（前 2000 字符）、复制会话目录绝对路径；**自动同步刷新**：抽屉打开时写文件类工具完成即静默刷新（600ms 防抖），任务结束 / 中断时也会刷新，无需手动关闭重开 |
 | 下载鉴权 | 走 `fetch` + `Blob`（下载接口要 Cookie 或 Bearer，`<a href>` 带不了请求头，token 拼进 URL 又会泄漏） |
 | 上传/回答期间 | 禁止再次选择 / 拖拽 / 删除附件，避免附件被挂到错误的轮次 |
 
@@ -54,9 +54,13 @@ npm run check:attachments
 
 | 卡片 | 数据来源 | 交互 |
 | --- | --- | --- |
-| **已编辑 N 个文件** | `turn_files.changed`（服务端对会话目录做轮次前后 diff；旧轨迹由 `src/turnFiles.ts` 从 `write_file` / `edit_file` / `run_script` / `write_report_docx` 输出推导） | 标题显示文件数与 `+X -Y`；默认展开前 5 个，可「全部 N 个文件 / 收起」；文本类可预览，所有文件可下载 |
-| **结果文件** | `turn_files.results`（`outputs/` 下本轮新增/修改的交付物：正式格式 docx/pdf/pptx/xlsx 优先；没有时取 md/txt；再没有才取图片/数据，最多 8 个） | 整卡点击直接下载；文本类额外提供「预览」。docx / xlsx / pdf 等不提供在线预览，点击即下载 |
+| **已编辑 N 个文件** | `turn_files.changed` 中**排除结果文件**后的部分（服务端对会话目录做轮次前后 diff；旧轨迹由 `src/turnFiles.ts` 从 `write_file` / `edit_file` / `run_script` / `write_report_docx` 输出推导） | 标题显示文件数与 `+X -Y`；默认展开前 5 个，可「全部 N 个文件 / 收起」；文本类可预览，所有文件可下载 |
+| **结果文件** | `turn_files.results`：`outputs/` 下本轮新增/修改的**成果性文档**，只接受 Word / PDF / PPT / Excel / Markdown，最多 8 个 | 整卡点击直接下载；Markdown 额外提供「预览」。docx / xlsx / pdf 等不提供在线预览，点击即下载 |
 
+- **分区规则**：csv、py、txt、json、图片等属于中间过程产物，只在过程区展示，不进入
+  结果区；结果区只放综合处理后的总结性 / 成果性文件。
+- **展示时机**：两组卡片都在 `turn_complete`（任务全部结束）后一次性出现，任务进行中
+  不展示，避免文件列表随工具调用反复增减；中断 / 断流时在流结束时补一次。
 - 事件写入轨迹：刷新页面后靠 `turn_files` 还原；事件缺失（旧会话）时自动降级为
   工具输出推导，并在卡片下方标注「根据本轮工具轨迹整理」。
 - `uploads/` 与 `extracted/` 不计入「已编辑」：前者是用户上传，后者是附件解析产物。

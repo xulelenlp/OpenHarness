@@ -27,7 +27,7 @@ import { makeAccumulator, reduceEvent } from "./turn";
 import type { TurnAccumulator } from "./turn";
 import { MarkdownView, useThrottledText } from "./markdown";
 import { ResultFilesCard, TurnFilesCard } from "./FileCards";
-import { deriveTurnFilesFromSteps } from "./turnFiles";
+import { deriveTurnFilesFromSteps, excludeResultFiles, keepResultFiles } from "./turnFiles";
 import type {
   AgentInfo,
   AttachmentInfo,
@@ -57,6 +57,16 @@ type ApprovalAction = (requestId: string, decision: "approve" | "deny" | "always
 
 /** 文本预览只取前 2000 字符：大 CSV 全量渲染会卡死页面。 */
 const PREVIEW_CHARS = 2000;
+
+/** 这些工具完成时可能往会话目录写文件：抽屉打开时触发一次静默刷新。 */
+const FILE_WRITING_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "notebook_edit",
+  "run_script",
+  "write_report_docx",
+  "bash",
+]);
 
 function shortId(id: string): string {
   return id.slice(0, 8);
@@ -371,6 +381,12 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const assistantIndexRef = useRef<number>(-1);
+  /** 最新 activeId：任务结束时的异步刷新用它判断用户是否已经切走。 */
+  const activeIdRef = useRef<string | null>(null);
+  /** 抽屉是否打开：SSE 回调里读最新值，避免发送消息时的旧闭包。 */
+  const drawerOpenRef = useRef(false);
+  /** 任务进行中「静默刷新」文件列表的防抖定时器。 */
+  const workspaceRefreshTimerRef = useRef<number | null>(null);
   /** 本轮流式事件的累加器；供审批处理同步修改，避免被后续事件覆盖。 */
   const accRef = useRef<TurnAccumulator | null>(null);
   /** 正在提交的审批 id（同步判重），防止连点导致重复提交。 */
@@ -379,6 +395,23 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("qaapp_render_markdown", markdownDefault ? "1" : "0");
   }, [markdownDefault]);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  useEffect(() => {
+    drawerOpenRef.current = drawerOpen;
+  }, [drawerOpen]);
+
+  useEffect(
+    () => () => {
+      if (workspaceRefreshTimerRef.current !== null) {
+        window.clearTimeout(workspaceRefreshTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const handleCopyMessage = useCallback(async (index: number, text: string) => {
     if (await copyText(text)) {
@@ -436,6 +469,7 @@ export default function App() {
   }, []);
 
   const openConversation = useCallback(async (id: string) => {
+    activeIdRef.current = id;
     setActiveId(id);
     setMessages([]);
     setStepOpen({});
@@ -464,20 +498,24 @@ export default function App() {
             attachments: acc.attachments,
           });
         }
-        // 新轨迹直接来自 turn_files 事件；旧轨迹没有该事件，从工具输出推导，
-        // 保证已存在的会话（例如已经生成过报告）也能看到过程/结果文件卡片。
+        // 只有本轮真正结束（有 turn_complete）才恢复文件卡片：任务进行中被刷新时，
+        // 部分工具轨迹不能当成「已完成的文件列表」展示。
+        // 新轨迹用 turn_files 事件；旧轨迹没有事件时从工具输出推导。
+        const finished = Boolean(acc.finished);
         const hasEventFiles = (acc.changedFiles?.length ?? 0) > 0 || (acc.resultFiles?.length ?? 0) > 0;
-        const derived = hasEventFiles ? null : deriveTurnFilesFromSteps(acc.steps);
+        const derived = finished && !hasEventFiles ? deriveTurnFilesFromSteps(acc.steps) : null;
         rebuilt.push({
           role: "assistant",
           content: acc.content,
           agentName: acc.agentName,
           turnId: turn.turn_id,
           steps: acc.steps,
-          changedFiles: acc.changedFiles ?? derived?.changed,
-          resultFiles: acc.resultFiles ?? derived?.results,
-          filesDerived: !hasEventFiles && Boolean(derived?.changed.length),
-          filesTruncated: acc.filesTruncated,
+          changedFiles: finished ? acc.changedFiles ?? derived?.changed : undefined,
+          resultFiles: finished
+            ? keepResultFiles(acc.resultFiles ?? derived?.results ?? [])
+            : undefined,
+          filesDerived: finished && !hasEventFiles && Boolean(derived?.changed.length),
+          filesTruncated: finished ? acc.filesTruncated : undefined,
         });
       });
       setMessages(rebuilt);
@@ -490,6 +528,7 @@ export default function App() {
     try {
       const { conversation_id } = await createConversation();
       await refreshConversations();
+      activeIdRef.current = conversation_id;
       setActiveId(conversation_id);
       setMessages([]);
       setAttachments([]);
@@ -501,30 +540,53 @@ export default function App() {
 
   // ---- 会话文件抽屉 ----
 
-  const refreshWorkspace = useCallback(async () => {
-    if (!activeId) return;
-    setWorkspaceLoading(true);
-    try {
-      setWorkspace(await listConversationFiles(activeId));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setWorkspaceLoading(false);
-    }
-  }, [activeId]);
+  /**
+   * 拉取会话文件列表。
+   *
+   * `conversationId` 可选：任务结束时用发送时的会话 ID 刷新，即使抽屉没打开也
+   * 更新缓存；用户已经切走时只丢弃结果，不污染当前会话的文件列表。
+   */
+  const refreshWorkspace = useCallback(
+    async (conversationId?: string, silent = false) => {
+      const id = conversationId ?? activeId;
+      if (!id) return;
+      if (!silent && activeIdRef.current === id) setWorkspaceLoading(true);
+      try {
+        const data = await listConversationFiles(id);
+        if (activeIdRef.current === id) setWorkspace(data);
+      } catch (e) {
+        if (activeIdRef.current === id) setError((e as Error).message);
+      } finally {
+        if (!silent && activeIdRef.current === id) setWorkspaceLoading(false);
+      }
+    },
+    [activeId],
+  );
+
+  /**
+   * 任务进行中静默刷新抽屉（仅当抽屉打开）。
+   *
+   * 写文件 / 生成脚本的工具完成时触发，600ms 防抖，避免一次任务里几十个工具
+   * 各发一次请求；不显示「刷新中…」，列表原地更新。
+   */
+  const scheduleWorkspaceRefresh = useCallback(
+    (conversationId: string) => {
+      if (!drawerOpenRef.current) return;
+      if (workspaceRefreshTimerRef.current !== null) {
+        window.clearTimeout(workspaceRefreshTimerRef.current);
+      }
+      workspaceRefreshTimerRef.current = window.setTimeout(() => {
+        workspaceRefreshTimerRef.current = null;
+        void refreshWorkspace(conversationId, true);
+      }, 600);
+    },
+    [refreshWorkspace],
+  );
 
   // 抽屉打开（或切换会话）时拉取一次；关闭时不动，省掉无谓请求。
   useEffect(() => {
     if (drawerOpen && activeId) void refreshWorkspace();
   }, [drawerOpen, activeId, refreshWorkspace]);
-
-  // 每轮流式结束（turn_complete → streaming 置回 false）后自动刷新，
-  // 这样 Agent 新生成的脚本无需手动刷新就能出现在面板里。
-  const wasStreamingRef = useRef(false);
-  useEffect(() => {
-    if (wasStreamingRef.current && !streaming && drawerOpen) void refreshWorkspace();
-    wasStreamingRef.current = streaming;
-  }, [streaming, drawerOpen, refreshWorkspace]);
 
   const handleCopyDir = useCallback(async () => {
     const dir = workspace?.dir;
@@ -615,6 +677,7 @@ export default function App() {
       if (!conversationId) {
         try {
           conversationId = (await createConversation()).conversation_id;
+          activeIdRef.current = conversationId;
           setActiveId(conversationId);
           await refreshConversations();
         } catch (e) {
@@ -713,6 +776,7 @@ export default function App() {
     if (!conversationId) {
       try {
         conversationId = (await createConversation()).conversation_id;
+        activeIdRef.current = conversationId;
         setActiveId(conversationId);
         await refreshConversations();
       } catch (e) {
@@ -743,6 +807,27 @@ export default function App() {
 
     const acc = makeAccumulator();
     accRef.current = acc;
+    /** true = 本轮已结束并展示过文件卡片，避免 finally 里重复计算。 */
+    let turnFilesShown = false;
+    /**
+     * 把本轮文件写入消息。
+     *
+     * 只在 `turn_complete`（任务真正结束）时调用：进行中展示文件卡片会随着
+     * 工具调用不断增减，视觉上很凌乱。事件优先，旧轨迹退回工具输出推导。
+     */
+    const applyTurnFiles = (m: ChatMessage): ChatMessage => {
+      const hasEventFiles =
+        (acc.changedFiles?.length ?? 0) > 0 || (acc.resultFiles?.length ?? 0) > 0;
+      const derived = hasEventFiles ? null : deriveTurnFilesFromSteps(acc.steps);
+      return {
+        ...m,
+        changedFiles: acc.changedFiles ?? derived?.changed ?? m.changedFiles,
+        // 只有成果文档才留在结果区；旧后端下发的 csv / 图片等会被还原到过程区。
+        resultFiles: keepResultFiles(acc.resultFiles ?? derived?.results ?? []),
+        filesDerived: hasEventFiles ? false : Boolean(derived?.changed.length),
+        filesTruncated: acc.filesTruncated ?? m.filesTruncated,
+      };
+    };
     const onEvent = (evt: Record<string, unknown>) => {
       // 观测日志：浏览器控制台查看收到的每个 SSE 事件，便于排查断点。
       // eslint-disable-next-line no-console
@@ -758,6 +843,14 @@ export default function App() {
       reduceEvent(acc, evt);
       const idx = assistantIndexRef.current;
       const type = evt.type as string;
+      // 抽屉打开时，写文件类工具一完成就静默刷新（600ms 防抖），
+      // 不必等整轮结束才看到新生成的脚本 / 产物。
+      if (
+        type === "tool_completed" &&
+        FILE_WRITING_TOOLS.has(String(evt.tool_name ?? ""))
+      ) {
+        scheduleWorkspaceRefresh(conversationId);
+      }
       if (type === "error") {
         setError((evt.text as string) ?? "出错了");
       }
@@ -768,31 +861,28 @@ export default function App() {
           updateMessage(idx - 1, (m) => (m.role === "user" ? { ...m, attachments: list } : m));
         }
       }
-      // 文件卡片只在工具完成 / turn_files 时重算，避免每个 assistant_delta 都
-      // 遍历一遍 steps（长报告一轮有上千个增量事件）。
-      const shouldRefreshFiles =
-        type === "tool_completed" || type === "turn_files" || type === "turn_complete";
       updateMessage(idx, (m) => {
-        const hasEventFiles =
-          (acc.changedFiles?.length ?? 0) > 0 || (acc.resultFiles?.length ?? 0) > 0;
-        const derived =
-          shouldRefreshFiles && !hasEventFiles ? deriveTurnFilesFromSteps(acc.steps) : null;
-        return {
+        const next: ChatMessage = {
           ...m,
           content: acc.content,
           agentName: acc.agentName ?? m.agentName,
           steps: JSON.parse(JSON.stringify(acc.steps)) as Step[],
-          changedFiles: acc.changedFiles ?? derived?.changed ?? m.changedFiles,
-          resultFiles: acc.resultFiles ?? derived?.results ?? m.resultFiles,
-          filesDerived: hasEventFiles
-            ? false
-            : derived
-              ? derived.changed.length > 0
-              : m.filesDerived,
-          filesTruncated: acc.filesTruncated ?? m.filesTruncated,
           error: m.error || type === "error",
         };
+        // 过程/结果文件只在任务全部完成后一次性出现；turn_files 事件先到，
+        // 这里等 turn_complete 再落到消息上。
+        return type === "turn_complete" ? applyTurnFiles(next) : next;
       });
+      if (type === "turn_complete") {
+        turnFilesShown = true;
+        // 任务结束：取消待执行的静默刷新，立即刷新一次「会话文件」列表。
+        // 抽屉没打开也更新缓存，用户随后打开即可看到新生成的脚本 / 产物。
+        if (workspaceRefreshTimerRef.current !== null) {
+          window.clearTimeout(workspaceRefreshTimerRef.current);
+          workspaceRefreshTimerRef.current = null;
+        }
+        void refreshWorkspace(conversationId);
+      }
     };
 
     try {
@@ -815,6 +905,18 @@ export default function App() {
       }
     } finally {
       setStreaming(false);
+      // 网络断流 / 中断时可能没收到 turn_complete：流已经结束，补一次文件卡片，
+      // 不要让它永远不出现。
+      if (!turnFilesShown) {
+        const idx = assistantIndexRef.current;
+        if (idx >= 0) updateMessage(idx, applyTurnFiles);
+        // 断流 / 中断没收到 turn_complete：流已结束，同样刷新文件列表。
+        if (workspaceRefreshTimerRef.current !== null) {
+          window.clearTimeout(workspaceRefreshTimerRef.current);
+          workspaceRefreshTimerRef.current = null;
+        }
+        void refreshWorkspace(conversationId);
+      }
       abortRef.current = null;
       void refreshConversations();
     }
@@ -824,6 +926,8 @@ export default function App() {
     input,
     messages.length,
     refreshConversations,
+    refreshWorkspace,
+    scheduleWorkspaceRefresh,
     selectedAgent,
     streaming,
     updateMessage,
@@ -1029,6 +1133,8 @@ export default function App() {
           {messages.map((m, i) => {
             const isAssistant = m.role === "assistant";
             const useMarkdown = renderOverride[i] ?? markdownDefault;
+            // 结果文件只在结果区出现；过程区展示其余文件（脚本/数据/图片/md 等）。
+            const processFiles = excludeResultFiles(m.changedFiles ?? [], m.resultFiles ?? []);
             return (
               <div key={i} className={`message ${m.role}`}>
                 <div className="message-head">
@@ -1086,9 +1192,9 @@ export default function App() {
                     />
                     {/* 正文之后依次是过程文件（可折叠）与结果文件（可直接下载）：
                         结论优先，过程只占用折叠卡片，结果文件紧邻正文便于点击。 */}
-                    {(m.changedFiles?.length ?? 0) > 0 && (
+                    {processFiles.length > 0 && (
                       <TurnFilesCard
-                        files={m.changedFiles ?? []}
+                        files={processFiles}
                         truncated={m.filesTruncated}
                         onPreview={previewPath}
                         onDownload={downloadPath}
@@ -1103,9 +1209,10 @@ export default function App() {
                         downloading={downloadingPath}
                       />
                     )}
-                    {m.filesDerived && (m.resultFiles?.length ?? 0) > 0 && (
-                      <div className="files-derived muted">根据本轮工具轨迹整理，仅供参考</div>
-                    )}
+                    {m.filesDerived &&
+                      (processFiles.length > 0 || (m.resultFiles?.length ?? 0) > 0) && (
+                        <div className="files-derived muted">根据本轮工具轨迹整理，仅供参考</div>
+                      )}
                   </>
                 ) : (
                   <>

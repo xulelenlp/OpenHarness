@@ -23,6 +23,8 @@ const ENTRY = `
 import { makeAccumulator, reduceEvent } from "./src/turn";
 import {
   deriveTurnFilesFromSteps,
+  excludeResultFiles,
+  keepResultFiles,
   kindLabel,
   kindTag,
   normalizeConversationPath,
@@ -50,6 +52,9 @@ reduceEvent(acc, {
     kind: "word", size: 200, mtime: 2, download_path: "/x" }],
   truncated: true,
 });
+
+const doneAcc = makeAccumulator();
+reduceEvent(doneAcc, { type: "turn_complete" });
 
 const nineDocs = Array.from({ length: 9 }, (_, i) => ({
   path: "outputs/r" + i + ".docx", dir: "outputs", action: "created", size: 1,
@@ -100,13 +105,24 @@ export const result = {
     results: acc.resultFiles.length,
     derivedFlag: acc.filesDerived,
     truncated: acc.filesTruncated,
+    finished: acc.finished,
   },
+  doneFinished: doneAcc.finished,
   picked: {
     docs: pickResultFiles(changed).map((f) => f.path),
     assets: pickResultFiles(onlyAssets).map((f) => f.path),
     markdown: pickResultFiles(markdownOnly).map((f) => f.path),
     capped: pickResultFiles(nineDocs).length,
   },
+  process: excludeResultFiles(changed, pickResultFiles(changed)).map((f) => f.path),
+  kept: keepResultFiles([
+    { path: "outputs/report.docx", name: "report.docx", title: "report",
+      kind: "word", size: 1, mtime: 1, download_path: "" },
+    { path: "outputs/data.csv", name: "data.csv", title: "data",
+      kind: "data", size: 1, mtime: 2, download_path: "" },
+    { path: "outputs/chart.png", name: "chart.png", title: "chart",
+      kind: "image", size: 1, mtime: 3, download_path: "" },
+  ]).map((f) => f.path),
   derived: {
     paths: derivedPaths,
     results: derived.results.map((f) => f.path),
@@ -172,23 +188,37 @@ try {
   check("turn_files 事件写入 results", result.acc.results === 1, String(result.acc.results));
   check("事件来源不是推导", result.acc.derivedFlag === false);
   check("truncated 透传", result.acc.truncated === true);
+  check("turn_files 本身不算完成任务", result.acc.finished === undefined);
+  check("turn_complete 标记轮次完成", result.doneFinished === true);
 
   check(
-    "有正式文档时只返回正式文档",
-    JSON.stringify(result.picked.docs) === JSON.stringify(["outputs/report.docx"]),
+    "结果区包含 Word 与 Markdown",
+    JSON.stringify(result.picked.docs) ===
+      JSON.stringify(["outputs/report.docx", "outputs/report.md"]),
     JSON.stringify(result.picked.docs),
   );
   check(
-    "无正式文档时返回 Markdown",
+    "Markdown 单独也是结果",
     JSON.stringify(result.picked.markdown) === JSON.stringify(["outputs/plan.md"]),
     JSON.stringify(result.picked.markdown),
   );
   check(
-    "无文档时退化为资产",
-    JSON.stringify(result.picked.assets) === JSON.stringify(["outputs/chart.png", "outputs/data.csv"]),
+    "csv/图片不进入结果区",
+    JSON.stringify(result.picked.assets) === JSON.stringify([]),
     JSON.stringify(result.picked.assets),
   );
   check("结果文件最多 8 个", result.picked.capped === 8, String(result.picked.capped));
+  check(
+    "过程文件排除结果文件",
+    JSON.stringify(result.process) ===
+      JSON.stringify(["scripts/analyze.py", "outputs/chart.png"]),
+    JSON.stringify(result.process),
+  );
+  check(
+    "结果区过滤非成果文件",
+    JSON.stringify(result.kept) === JSON.stringify(["outputs/report.docx"]),
+    JSON.stringify(result.kept),
+  );
 
   check(
     "write_file 绝对路径归一化",
@@ -206,11 +236,12 @@ try {
     result.derived.paths.includes("outputs/chart.png"), JSON.stringify(result.derived.paths));
   check("write_report_docx 大小", result.derived.reportSize === 123456, String(result.derived.reportSize));
   check(
-    "推导结果只含正式文档",
+    "推导结果只含成果文档",
     JSON.stringify(result.derived.results) ===
       JSON.stringify([
         "outputs/reports/福建报告.docx",
         "outputs/report.docx",
+        "outputs/reports/a.md",
       ]),
     JSON.stringify(result.derived.results),
   );

@@ -341,6 +341,11 @@
   `tests/test_qaapp/test_turn_files.py`，不要在 `service.py` 里堆 diff 逻辑。
 - 事件必须有上限（文件数、结果数、文本读取预算），否则大目录会把 SSE 帧和轨迹
   JSONL 撑大。
+- **结果文件只收成果性文档**：`outputs/` 下的 Word / PDF / PPT / Excel / Markdown；
+  csv / py / txt / json / 图片属于过程文件，只在过程区展示（前端用
+  `excludeResultFiles` 从 `changed` 中剔除结果文件）。
+- **完成后一次性展示**：前端在 `turn_complete` 后才把 `changed/results` 落到消息上，
+  进行中不渲染卡片；中断 / 断流时在流结束的 `finally` 里补一次。
 - 前端除事件外还要能从工具输出推导（`src/turnFiles.ts`
   `deriveTurnFilesFromSteps`），保证旧轨迹/事件缺失时仍可展示；两条路径的筛选规则
   保持一致，并用 `npm run check:turn-files` 覆盖。

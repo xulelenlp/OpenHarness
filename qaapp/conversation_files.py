@@ -512,6 +512,10 @@ def build_context_block(
             "python-docx），直接 `python scripts/xxx.py` 即可。"
         ),
         "  4) 会话目录里已有本会话上传的文件与历史产物，后续问题可直接复用。",
+        (
+            f"  5) 最终交付物（总结 / 方案 / 报告）优先用 Word / PDF / PPT / Excel / Markdown "
+            f"写入 {root / 'outputs'}；脚本、CSV、TXT、图片属于过程文件，不会展示在结果文件区。"
+        ),
     ]
 
     if records:

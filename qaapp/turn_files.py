@@ -10,7 +10,8 @@ qaapp 的会话目录是 Agent 的「工作台」：脚本写在 ``scripts/``、
    mtime、以及小文本文件的内容，用于算行数）。
 2. :func:`compute_turn_files` —— 轮次结束时重新扫描并 diff，得到本轮新增/
    修改的文件；删除不记录（脚本清理临时文件不应刷屏）。
-3. :func:`select_result_files` —— 从变更里挑出 ``outputs/`` 下的交付物。
+3. :func:`select_result_files` —— 从变更里挑出 ``outputs/`` 下的成果性文档
+   （Word / PDF / PPT / Excel / Markdown）。
 4. :func:`build_payload` —— 组装 ``turn_files`` SSE 事件的 payload。
 
 排除 ``uploads/`` 与 ``extracted/``：前者是用户上传的原始文件，后者是附件解析
@@ -46,41 +47,25 @@ MAX_CHANGED_FILES = 100
 #: 结果文件卡片最多展示多少个。
 MAX_RESULT_FILES = 8
 
-#: ``outputs/`` 下算作「正式交付物」的格式（有这类文件时不再展示 md 草稿）。
-FORMAL_RESULT_SUFFIXES = frozenset({".docx", ".pdf", ".pptx", ".xlsx", ".doc", ".ppt", ".xls"})
-#: 没有正式交付物时，md/txt 也算结果（例如纯 Markdown 方案文档）。
-TEXT_RESULT_SUFFIXES = frozenset({".md", ".txt"})
-#: 文档类结果（正式交付 + 文本），保持对外的稳定名称。
-DOC_RESULT_SUFFIXES = FORMAL_RESULT_SUFFIXES | TEXT_RESULT_SUFFIXES
-#: 没有文档类结果时，退化为这些可下载的资产（图片 / 数据 / 压缩包）。
-ASSET_RESULT_SUFFIXES = frozenset(
-    {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".csv", ".json", ".zip"}
+#: 只有 ``outputs/`` 下的「成果性文档」才算结果文件。
+#:
+#: csv / py / txt / json / 图片等是中间过程产物：只在过程文件卡片里给用户看，
+#: 不进入结果区，避免把脚本和数据误当成交付成果。
+RESULT_SUFFIXES = frozenset(
+    {".docx", ".doc", ".pdf", ".pptx", ".ppt", ".xlsx", ".xls", ".md", ".markdown"}
 )
 
-#: 结果卡片排序：越重要的格式越靠前。
+#: 结果卡片排序：越重要的格式越靠前（Word → PDF → PPT → Excel → Markdown）。
 _RESULT_SUFFIX_ORDER = {
     ".docx": 0,
     ".pdf": 1,
     ".pptx": 2,
     ".xlsx": 3,
     ".md": 4,
-    ".txt": 5,
-    ".doc": 6,
-    ".ppt": 7,
-    ".xls": 8,
-}
-
-#: 没有文档类交付物时，资产类内部也按「图片 → 数据/压缩包」排序。
-_ASSET_SUFFIX_ORDER = {
-    ".png": 0,
-    ".jpg": 1,
-    ".jpeg": 2,
-    ".webp": 3,
-    ".gif": 4,
-    ".svg": 5,
-    ".csv": 6,
-    ".json": 7,
-    ".zip": 8,
+    ".doc": 5,
+    ".ppt": 6,
+    ".xls": 7,
+    ".markdown": 8,
 }
 
 #: 这些类型不读取文本内容（zip/PDF/图片字节流里没有有意义的「行数」）。
@@ -285,22 +270,16 @@ def select_result_files(
 
     规则：
     - 只看本轮新建/修改、且位于 ``outputs/`` 下的文件；
-    - 有正式交付物（docx/pdf/xlsx/pptx…）时只返回正式交付物，避免 md 草稿与
-      报告插图抢占；
-    - 没有正式交付物时返回 md/txt；再没有才退化为图片/数据/压缩包；
+    - 只接受成果性文档：Word / PDF / PPT / Excel / Markdown；
+    - csv / py / txt / json / 图片等属于过程文件，不进入结果区；
     - 按格式重要度、再按修改时间倒序，最多 ``MAX_RESULT_FILES`` 个。
     """
     candidates = [
         item for item in changed if item.dir == "outputs" and item.action in {"created", "modified"}
     ]
-    formal = [
-        item for item in candidates if Path(item.path).suffix.lower() in FORMAL_RESULT_SUFFIXES
+    chosen = [
+        item for item in candidates if Path(item.path).suffix.lower() in RESULT_SUFFIXES
     ]
-    text_docs = [
-        item for item in candidates if Path(item.path).suffix.lower() in TEXT_RESULT_SUFFIXES
-    ]
-    assets = [item for item in candidates if Path(item.path).suffix.lower() in ASSET_RESULT_SUFFIXES]
-    chosen = formal or text_docs or assets
     chosen = sorted(chosen, key=lambda item: (_result_rank(item.path), -item.mtime))
     results: list[ResultFile] = []
     for item in chosen[:MAX_RESULT_FILES]:
@@ -424,13 +403,8 @@ def _diff_lines(old: str | None, new: str | None) -> tuple[int | None, int | Non
 
 
 def _result_rank(path: str) -> int:
-    """结果卡片排序权重：文档类 → 图片 → 数据/压缩包。"""
-    suffix = Path(path).suffix.lower()
-    if suffix in _RESULT_SUFFIX_ORDER:
-        return _RESULT_SUFFIX_ORDER[suffix]
-    if suffix in _ASSET_SUFFIX_ORDER:
-        return len(_RESULT_SUFFIX_ORDER) + _ASSET_SUFFIX_ORDER[suffix]
-    return 99
+    """结果卡片排序权重：Word → PDF → PPT → Excel → Markdown。"""
+    return _RESULT_SUFFIX_ORDER.get(Path(path).suffix.lower(), 99)
 
 
 def _top_dir(relative_path: str) -> str:
@@ -445,10 +419,9 @@ def _download_path(conversation_id: str, relative_path: str) -> str:
 
 
 __all__ = [
-    "ASSET_RESULT_SUFFIXES",
-    "DOC_RESULT_SUFFIXES",
     "MAX_CHANGED_FILES",
     "MAX_RESULT_FILES",
+    "RESULT_SUFFIXES",
     "ChangedFile",
     "FileState",
     "ResultFile",

@@ -1,8 +1,9 @@
 /**
  * 一轮回答的两组文件卡片：
  *
- * - `TurnFilesCard`：中间过程文件（本轮新增/修改的脚本、中间产物），折叠展示；
- * - `ResultFilesCard`：`outputs/` 下的结果文件，点击卡片或「下载」直接下载。
+ * - `TurnFilesCard`：中间过程文件（脚本 / 数据 / 图片等，不含结果文件），折叠展示；
+ * - `ResultFilesCard`：`outputs/` 下的成果性文档（Word / PDF / PPT / Excel /
+ *   Markdown），点击卡片或「下载」直接下载。
  *
  * 组件只接收数据与回调，下载鉴权、错误提示由 App 统一处理。
  */

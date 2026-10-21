@@ -20,6 +20,8 @@ export interface TurnAccumulator {
   resultFiles?: ResultFile[];
   filesDerived?: boolean;
   filesTruncated?: boolean;
+  /** true = 收到过 `turn_complete`；历史回放只对已完成的轮次展示文件卡片。 */
+  finished?: boolean;
   /**
    * 本轮携带的附件。
    *
@@ -199,6 +201,7 @@ export function reduceEvent(acc: TurnAccumulator, evt: Record<string, unknown>):
 
     case "turn_complete":
       for (const s of acc.steps) if (s.status === "running") s.status = "done";
+      acc.finished = true;
       break;
   }
 }
