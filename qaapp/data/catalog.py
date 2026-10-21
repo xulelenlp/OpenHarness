@@ -1,7 +1,7 @@
 """业务库元数据目录：指标、机构、维度、可用性与数据边界。
 
-所有查询都通过 :class:`qaapp.data_client.MySqlClient`，表名来自
-:mod:`qaapp.data_schema`。目录在进程内缓存（默认 300 秒），刷新由
+所有查询都通过 :class:`qaapp.data.mysql.MySqlClient`，表名来自
+:mod:`qaapp.data.schema`。目录在进程内缓存（默认 300 秒），刷新由
 ``refresh()`` 或过期触发。
 """
 
@@ -14,8 +14,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from qaapp.data_client import DataClientError, MySqlClient
-from qaapp.data_schema import (
+from qaapp.data.mysql import DataClientError, MySqlClient
+from qaapp.data.schema import (
     BOUNDARY_INDICATORS,
     LEVEL_TABLES,
     PROVINCE_ORG_ID,
@@ -30,7 +30,7 @@ from qaapp.data_schema import (
     T_ORG,
     T_SCENE,
 )
-from qaapp.datasources import MySQLConfig
+from qaapp.data.datasources import MySQLConfig
 
 _WS = re.compile(r"\s+")
 _PUNCT = re.compile(r"[，。！？、；：“”‘’（）()【】\[\]《》<>\"'`]+")

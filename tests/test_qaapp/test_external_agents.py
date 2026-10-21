@@ -9,7 +9,7 @@ import pytest
 
 from openharness.tools.base import ToolRegistry
 from qaapp.config import AgentRegistry
-from qaapp.external_agents import (
+from qaapp.agents.external import (
     build_inline_config,
     external_conversation_id,
     inline_external_entries,
@@ -58,7 +58,7 @@ def _plugin_module():
     import importlib.util
     import sys
 
-    from qaapp.external_agents import _PLUGIN_TOOL_PATH
+    from qaapp.agents.external import _PLUGIN_TOOL_PATH
 
     name = "test_external_agent_tool_module"
     module = sys.modules.get(name)
@@ -173,7 +173,7 @@ def test_plugin_bundled_file_is_empty_after_migration():
     """插件目录那份配置已清空为占位，避免和 agents.json 放两份真实地址。"""
     import json
 
-    from qaapp.external_agents import _PLUGIN_TOOL_PATH
+    from qaapp.agents.external import _PLUGIN_TOOL_PATH
 
     payload = json.loads(
         (_PLUGIN_TOOL_PATH.parent.parent / "external-agents.json").read_text(encoding="utf-8")
@@ -252,7 +252,7 @@ def test_startup_warns_when_external_ref_cannot_be_resolved(tmp_path, monkeypatc
     import logging
 
     from ohmo.workspace import initialize_workspace
-    from qaapp.service import QaWebService
+    from qaapp.server import QaWebService
 
     repo_root = Path(__file__).resolve().parents[2]
     monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / ".openharness"))
@@ -276,7 +276,7 @@ def test_startup_warns_when_external_ref_cannot_be_resolved(tmp_path, monkeypatc
     workspace = tmp_path / ".ohmo"
     initialize_workspace(workspace)
 
-    with caplog.at_level(logging.ERROR, logger="qaapp.service"):
+    with caplog.at_level(logging.ERROR, logger="qaapp.server"):
         QaWebService(workspace=workspace, cwd=str(cwd))
 
     assert any(
@@ -291,7 +291,7 @@ def test_service_loads_agents_from_project_config_dir(tmp_path, monkeypatch, cap
     import logging
 
     from ohmo.workspace import initialize_workspace
-    from qaapp.service import QaWebService
+    from qaapp.server import QaWebService
 
     repo_root = Path(__file__).resolve().parents[2]
     monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / ".openharness"))
@@ -323,7 +323,7 @@ def test_service_loads_agents_from_project_config_dir(tmp_path, monkeypatch, cap
     workspace = tmp_path / ".ohmo"
     initialize_workspace(workspace)  # workspace 里没有 agents.json
 
-    with caplog.at_level(logging.INFO, logger="qaapp.service"):
+    with caplog.at_level(logging.INFO, logger="qaapp.server"):
         service = QaWebService(workspace=workspace, cwd=str(cwd))
 
     assert [a.id for a in service.registry.agents] == ["general", "power-grid-analysis"]

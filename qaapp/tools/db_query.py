@@ -1,7 +1,7 @@
 """``db_query``：业务库结构化查询工具。
 
 设计要点：
-- 只读；所有 SQL 由 :class:`~qaapp.data_query.BusinessQueryService` 生成/校验；
+- 只读；所有 SQL 由 :class:`~qaapp.data.query.BusinessQueryService` 生成/校验；
 - 支持指标解析、描述、场景大纲、查询、EDA、新闻、图表、受控 SQL；
 - 完整结果落 ``outputs/data``，模型只看摘要 + 预览，避免上下文膨胀。
 """
@@ -16,9 +16,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
-from qaapp.charting import render_chart
-from qaapp.data_query import BusinessQueryService
-from qaapp.script_tool import CONVERSATION_DIR_KEY
+from qaapp.data.charting import render_chart
+from qaapp.data.query import BusinessQueryService
+from qaapp.tools.script import CONVERSATION_DIR_KEY
 
 Scenario = Literal[
     "business",

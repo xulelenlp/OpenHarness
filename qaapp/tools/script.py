@@ -29,7 +29,7 @@ from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
 from openharness.utils.process import terminate_process
 from openharness.utils.shell import create_shell_subprocess
 from qaapp.config import ConversationWorkspaceConfig
-from qaapp.conversation_files import ConversationPaths, sanitize_filename
+from qaapp.workspace.files import ConversationPaths, sanitize_filename
 
 #: 会话目录通过 engine.tool_metadata 传给工具执行上下文。
 CONVERSATION_DIR_KEY = "qaapp_conversation_dir"

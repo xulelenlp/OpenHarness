@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from qaapp.datasources import (
+from qaapp.data.datasources import (
     DataSourceConfigError,
     create_data_runtime,
     datasources_status,

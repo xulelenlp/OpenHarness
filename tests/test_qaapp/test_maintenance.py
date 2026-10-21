@@ -11,8 +11,8 @@ import pytest
 
 from ohmo.session_storage import get_session_key_latest_path
 from qaapp.config import ConversationPoolConfig, ConversationWorkspaceConfig, WebappConfig
-from qaapp.conversation_files import ConversationPaths
-from qaapp.maintenance import apply_cleanup_plan, build_cleanup_plan, format_cleanup_plan
+from qaapp.workspace.files import ConversationPaths
+from qaapp.workspace.maintenance import apply_cleanup_plan, build_cleanup_plan, format_cleanup_plan
 
 OLD_ID = "a" * 12
 NEW_ID = "b" * 12

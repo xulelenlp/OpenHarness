@@ -20,6 +20,7 @@ from openharness.ui.prompts import (
     confirm_prompt,
     secret_prompt,
     select_from_menu,
+    select_with_questionary,
     text_prompt,
 )
 from openharness.version import __version__  # noqa: E402
@@ -753,6 +754,16 @@ def _version_callback(value: bool) -> None:
     if value:
         print(f"openharness {__version__}")
         raise typer.Exit()
+
+
+
+# Backwards-compatible private names (tests and older callers use these).
+_can_use_questionary = can_use_questionary
+_select_with_questionary = select_with_questionary
+_text_prompt = text_prompt
+_secret_prompt = secret_prompt
+_confirm_prompt = confirm_prompt
+_select_from_menu = select_from_menu
 
 
 app = typer.Typer(

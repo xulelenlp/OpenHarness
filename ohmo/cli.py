@@ -39,6 +39,14 @@ from openharness.ui.prompts import (
     text_prompt,
 )
 
+
+# Backwards-compatible private names (tests and older callers use these).
+_can_use_questionary = can_use_questionary
+_text_prompt = text_prompt
+_confirm_prompt = confirm_prompt
+_select_from_menu = select_from_menu
+
+
 app = typer.Typer(
     name="abcag",
     help="abcag: the ABC personal-agent app built on OpenHarness.",

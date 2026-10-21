@@ -20,7 +20,7 @@ from docx.shared import Cm, Pt, RGBColor
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
-from qaapp.script_tool import CONVERSATION_DIR_KEY
+from qaapp.tools.script import CONVERSATION_DIR_KEY
 
 _BODY_FONT = "宋体"
 _HEAD_FONT = "黑体"

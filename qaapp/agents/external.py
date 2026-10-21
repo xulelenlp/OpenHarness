@@ -23,7 +23,7 @@ from qaapp.config import KIND_EXTERNAL, AgentEntry, AgentRegistry
 
 logger = logging.getLogger(__name__)
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _PLUGIN_TOOL_PATH = (
     _REPO_ROOT / "plugins" / "external-agents" / "tools" / "external_agent_tool.py"
 )

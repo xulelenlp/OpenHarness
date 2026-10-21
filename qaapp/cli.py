@@ -23,18 +23,18 @@ from qaapp.config import (
     validate_agent_registry,
     validate_dangerous_actions,
 )
-from qaapp.datasources import (
+from qaapp.data.datasources import (
     DataSourceConfigError,
     datasources_status,
     load_datasources_config,
 )
-from qaapp.maintenance import (
+from qaapp.workspace.maintenance import (
     apply_cleanup_plan,
     build_cleanup_plan,
     format_cleanup_plan,
     format_cleanup_result,
 )
-from qaapp.service import QaWebService, configure_logging
+from qaapp.server import QaWebService, configure_logging
 
 app = typer.Typer(
     name="abcqa",
@@ -392,7 +392,7 @@ def datasource_check_cmd(
 
     failed = False
     if config.mysql.enabled:
-        from qaapp.data_client import MySqlClient
+        from qaapp.data.mysql import MySqlClient
 
         client = MySqlClient(config.mysql)
         try:
@@ -423,7 +423,7 @@ def datasource_check_cmd(
             client.close()
 
     if config.redis.enabled:
-        from qaapp.redis_client import RedisClient
+        from qaapp.data.redis import RedisClient
 
         redis = RedisClient(config.redis)
         try:

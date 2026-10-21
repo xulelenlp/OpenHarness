@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from openharness.tools.base import ToolExecutionContext
-from qaapp.db_query_tool import DbQueryInput, DbQueryTool
-from qaapp.script_tool import CONVERSATION_DIR_KEY
+from qaapp.tools.db_query import DbQueryInput, DbQueryTool
+from qaapp.tools.script import CONVERSATION_DIR_KEY
 
 
 class FakeService:

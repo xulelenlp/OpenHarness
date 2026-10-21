@@ -2,7 +2,7 @@
 
 import pytest
 
-from qaapp.agent_router import (
+from qaapp.agents.router import (
     AgentNotFoundError,
     NoDefaultAgentError,
     resolve_agent,

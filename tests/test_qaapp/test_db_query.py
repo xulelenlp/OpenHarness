@@ -7,8 +7,8 @@ from decimal import Decimal
 
 import pytest
 
-from qaapp.analysis_scenarios import SCENARIOS, get_scenario, match_scenario
-from qaapp.data_catalog import (
+from qaapp.agents.scenarios import SCENARIOS, get_scenario, match_scenario
+from qaapp.data.catalog import (
     Availability,
     Dimension,
     DimensionHit,
@@ -17,10 +17,11 @@ from qaapp.data_catalog import (
     Org,
     OrgHit,
 )
-from qaapp.data_client import QueryResult, SqlGuard, SqlSafetyError
-from qaapp.data_quality import check_quality
-from qaapp.data_query import BusinessQueryService, _month_end, _month_start
-from qaapp.datasources import MySQLConfig
+from qaapp.data.mysql import QueryResult, SqlGuard, SqlSafetyError
+from qaapp.data.quality import check_quality
+from qaapp.data.periods import _month_end, _month_start
+from qaapp.data.query import BusinessQueryService
+from qaapp.data.datasources import MySQLConfig
 
 INDICATOR = Indicator(
     index_id="IDX-1006-00010001",

@@ -8,7 +8,7 @@
 3. ``llm``       —— LLM 意图分类（可选，由调用方注入 classifier）
 4. ``default``   —— 默认 Agent
 
-> 注意：``qaapp/service.py`` **目前没有注入** ``llm_classifier``，因此
+> 注意：``qaapp/server/service.py`` **目前没有注入** ``llm_classifier``，因此
 > ``routing.mode=llm`` 实际会直接落到 ``default_agent``。生产推荐「默认 harness +
 > 动态能力清单」的自主编排，而不是每轮先做一次分类调用。
 """

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolRegistry, ToolResult
 from qaapp.config import AgentEntry
-from qaapp.tool_policy import build_agent_tool_registry, tool_allowed
+from qaapp.tools.policy import build_agent_tool_registry, tool_allowed
 
 
 class _EmptyInput(BaseModel):

@@ -15,7 +15,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from qaapp.datasources import MySQLConfig
+from qaapp.data.datasources import MySQLConfig
 
 #: 允许的原始 SQL 首关键字。
 _RAW_SQL_PREFIXES = ("select", "show", "describe", "desc", "explain")

@@ -1,10 +1,10 @@
-"""``qaapp.turn_files``：轮次文件快照、diff 与结果文件筛选。"""
+"""``qaapp.workspace.turns``：轮次文件快照、diff 与结果文件筛选。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from qaapp.turn_files import (
+from qaapp.workspace.turns import (
     ChangedFile,
     build_payload,
     classify_kind,

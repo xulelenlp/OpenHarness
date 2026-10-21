@@ -11,10 +11,10 @@ import os
 
 import pytest
 
-from qaapp.data_catalog import BusinessCatalog
-from qaapp.data_client import MySqlClient
-from qaapp.data_query import BusinessQueryService
-from qaapp.datasources import MySQLConfig
+from qaapp.data.catalog import BusinessCatalog
+from qaapp.data.mysql import MySqlClient
+from qaapp.data.query import BusinessQueryService
+from qaapp.data.datasources import MySQLConfig
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("QAAPP_TEST_DB"), reason="set QAAPP_TEST_DB=1 to run real MySQL smoke tests"

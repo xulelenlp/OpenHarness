@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from qaapp.config import AttachmentsConfig, ConversationWorkspaceConfig
-from qaapp.conversation_files import (
+from qaapp.workspace.files import (
     AttachmentNotFound,
     AttachmentStore,
     ConversationPaths,

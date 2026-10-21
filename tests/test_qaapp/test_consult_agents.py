@@ -8,8 +8,8 @@ import pytest
 from pydantic import BaseModel
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolRegistry, ToolResult
-from qaapp.consult_agents_tool import AgentCall, ConsultAgentsInput, ConsultAgentsTool
-from qaapp.script_tool import CONVERSATION_DIR_KEY
+from qaapp.tools.consult import AgentCall, ConsultAgentsInput, ConsultAgentsTool
+from qaapp.tools.script import CONVERSATION_DIR_KEY
 
 
 class FakeExternalInput(BaseModel):

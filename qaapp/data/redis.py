@@ -1,7 +1,7 @@
 """Redis 只读缓存客户端。
 
 安全边界（重要）：
-- 只允许 ``db=0``；配置成 db1 会在 :class:`~qaapp.datasources.RedisConfig`
+- 只允许 ``db=0``；配置成 db1 会在 :class:`~qaapp.data.datasources.RedisConfig`
   校验阶段被拒绝（db1 含平台配置/密钥）。
 - 只读：本模块不提供 set/delete/expire 等写方法。
 - 只扫描 ``key_prefixes`` 白名单内的键，禁止 ``KEYS``。
@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from qaapp.datasources import RedisConfig
+from qaapp.data.datasources import RedisConfig
 
 
 class RedisClientError(RuntimeError):

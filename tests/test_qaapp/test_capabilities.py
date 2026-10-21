@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from qaapp.capabilities import build_capability_catalog
+from qaapp.agents.capabilities import build_capability_catalog
 from qaapp.config import AgentRegistry
 
 

@@ -12,7 +12,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from ohmo.workspace import initialize_workspace
-from qaapp.service import ConversationSession, QaWebService, _edit_key
+from qaapp.server import ConversationSession, QaWebService, _edit_key
 
 
 class _MockAgentHandler(BaseHTTPRequestHandler):
@@ -599,7 +599,7 @@ def test_run_script_tool_is_registered_with_conversation_dir(service):
     """bundle 建好后应注册 run_script，并把会话目录写进 tool_metadata。"""
     import asyncio
 
-    from qaapp.script_tool import CONVERSATION_DIR_KEY
+    from qaapp.tools.script import CONVERSATION_DIR_KEY
 
     async def _run():
         session = await service.get_or_create_session("abc123abc123", create=True)

@@ -1,7 +1,7 @@
 """执行轨迹存储测试。"""
 
 
-from qaapp.trace import ConversationTraceStore, get_trace_path
+from qaapp.workspace.trace import ConversationTraceStore, get_trace_path
 
 
 def test_append_and_load(tmp_path):

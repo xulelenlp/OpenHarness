@@ -8,14 +8,14 @@ import pytest
 from docx import Document
 
 from openharness.tools.base import ToolExecutionContext
-from qaapp.report_tool import (
+from qaapp.tools.report import (
     ReportSection,
     ReportTable,
     WriteReportDocxInput,
     WriteReportDocxTool,
     parse_markdown,
 )
-from qaapp.script_tool import CONVERSATION_DIR_KEY
+from qaapp.tools.script import CONVERSATION_DIR_KEY
 
 
 def _context(tmp_path: Path) -> ToolExecutionContext:

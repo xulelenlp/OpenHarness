@@ -32,12 +32,12 @@ from typing import Any
 from ohmo.session_storage import get_session_key_latest_path
 from ohmo.workspace import get_sessions_dir, get_workspace_root
 from qaapp.config import WebappConfig
-from qaapp.conversation_files import (
+from qaapp.workspace.files import (
     CONVERSATION_ID_PATTERN,
     META_FILENAME,
     conversations_root,
 )
-from qaapp.trace import TRACES_DIRNAME
+from qaapp.workspace.trace import TRACES_DIRNAME
 
 #: 单次报告最多列多少条明细，避免 CLI 被几百行刷屏。
 REPORT_LIMIT = 50

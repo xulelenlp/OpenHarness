@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from qaapp.documents import (
+from qaapp.workspace.documents import (
     DocumentTooLarge,
     UnsupportedDocument,
     parse_document,

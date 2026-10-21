@@ -3,7 +3,7 @@
 from openharness.config.settings import PermissionSettings
 from openharness.permissions.modes import PermissionMode
 from qaapp.config import DangerousActions
-from qaapp.dangerous import (
+from qaapp.tools.dangerous import (
     ACTION_ALLOW,
     ACTION_CONFIRM,
     ACTION_DENY,
