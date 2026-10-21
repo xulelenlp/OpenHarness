@@ -5,6 +5,7 @@
 | 路径 | 类型 | 说明 |
 | --- | --- | --- |
 | `install.sh` / `install_dev.sh` / `install.ps1` | 运维 | 安装/开发环境引导 |
+| `dev_services.sh` | 运维 | 前后端开发服务后台启动/停止/重启/状态/日志（`start` / `stop` / `restart` / `status` / `logs`） |
 | `sync_nanobot_channels.sh` | 运维 | 从上游同步 nanobot 渠道实现 |
 | `migrate_memory.py` | 迁移 | 调用 `openharness.memory.migrate`，不要在这里复制迁移逻辑 |
 | `e2e/` | 手工 E2E | 需要真实模型 / Docker / TUI 的手工验证脚本，**不在 CI 中运行** |

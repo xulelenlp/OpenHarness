@@ -39,6 +39,17 @@ python -m qaapp config        # show the config files actually in effect
 python -m qaapp webapp run    # 0.0.0.0:8787
 ```
 
+For local development, `scripts/dev_services.sh` runs the backend as a daemon
+and the web client in the background, with logs under `~/.ohmo/logs/` and
+`.openharness/run/`:
+
+```bash
+./scripts/dev_services.sh start     # background: backend :8787 + frontend :5173
+./scripts/dev_services.sh status    # pid / port / health check
+./scripts/dev_services.sh restart   # stop then start
+./scripts/dev_services.sh stop      # stop both
+```
+
 The reference web client lives in [`frontend/webapp/`](frontend/webapp/).
 Agent definitions, external-agent endpoints, and routing hints all live in
 [`config/agents.json`](config/agents.json); the UI no longer asks users to
