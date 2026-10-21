@@ -18,7 +18,7 @@
 | --- | --- |
 | `DatabaseQuerySkill.execute` | `qaapp/tools/db_query.py` + `qaapp/data/query.py` |
 | `IndicatorMatcher` | `qaapp/data/catalog.py`（`zhss_index_basic_info` + `zhss_index_name_sim` + `ai_index_config`） |
-| `TableSelector` A1/A2/B1/B2 | `qaapp/data/query.py::_candidate_tables` |
+| `TableSelector` A1/A2/B1/B2 | `qaapp/data/resolver.py::_candidate_tables` |
 | `OrgMapper` | `qaapp/data/catalog.py::resolve_orgs` |
 | 维度匹配 | `qaapp/data/catalog.py::resolve_dimensions`（`ai_index_dim` 优先） |
 | 执行器/SQL 安全 | `qaapp/data/mysql.py::MySqlClient` + `SqlGuard` |
