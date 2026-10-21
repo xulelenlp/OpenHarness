@@ -25,7 +25,7 @@
 # 可选环境变量：
 #   PYTHON           指定 Python（默认优先 .venv/bin/python）
 #   OHMO_WORKSPACE   指定后端 workspace（默认 ~/.ohmo）
-#   FRONTEND_PORT    覆盖前端端口（默认 5173）
+#   FRONTEND_PORT    覆盖前端端口（默认 5174）
 #   START_TIMEOUT    启动健康检查超时秒数（默认 40）
 #
 # 后端端口不在本脚本里配置：它取自 webapp.json 的 port（默认 8787），
@@ -41,7 +41,7 @@ FRONTEND_LOG="$RUN_DIR/frontend.log"
 
 BACKEND_HOST="127.0.0.1"
 BACKEND_PORT=""
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+FRONTEND_PORT="${FRONTEND_PORT:-5174}"
 START_TIMEOUT="${START_TIMEOUT:-40}"
 
 cd "$ROOT_DIR"
