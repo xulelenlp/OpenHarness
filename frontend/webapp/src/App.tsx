@@ -26,6 +26,8 @@ import {
 import { makeAccumulator, reduceEvent } from "./turn";
 import type { TurnAccumulator } from "./turn";
 import { MarkdownView, useThrottledText } from "./markdown";
+import { ResultFilesCard, TurnFilesCard } from "./FileCards";
+import { deriveTurnFilesFromSteps } from "./turnFiles";
 import type {
   AgentInfo,
   AttachmentInfo,
@@ -363,6 +365,8 @@ export default function App() {
   const [preview, setPreview] = useState<{ name: string; text: string; truncated: boolean } | null>(null);
   /** 「复制路径」按钮的短暂反馈。 */
   const [copiedDir, setCopiedDir] = useState(false);
+  /** 正在下载的文件（相对路径）：按钮显示「下载中…」并禁用，避免重复点击。 */
+  const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -460,12 +464,20 @@ export default function App() {
             attachments: acc.attachments,
           });
         }
+        // 新轨迹直接来自 turn_files 事件；旧轨迹没有该事件，从工具输出推导，
+        // 保证已存在的会话（例如已经生成过报告）也能看到过程/结果文件卡片。
+        const hasEventFiles = (acc.changedFiles?.length ?? 0) > 0 || (acc.resultFiles?.length ?? 0) > 0;
+        const derived = hasEventFiles ? null : deriveTurnFilesFromSteps(acc.steps);
         rebuilt.push({
           role: "assistant",
           content: acc.content,
           agentName: acc.agentName,
           turnId: turn.turn_id,
           steps: acc.steps,
+          changedFiles: acc.changedFiles ?? derived?.changed,
+          resultFiles: acc.resultFiles ?? derived?.results,
+          filesDerived: !hasEventFiles && Boolean(derived?.changed.length),
+          filesTruncated: acc.filesTruncated,
         });
       });
       setMessages(rebuilt);
@@ -526,12 +538,16 @@ export default function App() {
   /**
    * 下载：必须 fetch 成 Blob 再触发 <a download>。
    * 立刻 revokeObjectURL 会让部分浏览器（Safari / Firefox）取消下载，故延后释放。
+   *
+   * 参数是「会话相对路径」而不是 WorkspaceFile：结果文件卡片、过程文件卡片
+   * 与右侧抽屉共用同一个下载入口。
    */
-  const downloadFile = useCallback(
-    async (file: WorkspaceFile) => {
-      if (!activeId) return;
+  const downloadPath = useCallback(
+    async (relativePath: string) => {
+      if (!activeId || downloadingPath) return;
+      setDownloadingPath(relativePath);
       try {
-        const { blob, filename } = await fetchConversationFile(activeId, file.path);
+        const { blob, filename } = await fetchConversationFile(activeId, relativePath);
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -542,20 +558,22 @@ export default function App() {
         window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        setDownloadingPath(null);
       }
     },
-    [activeId],
+    [activeId, downloadingPath],
   );
 
   /** 文本类文件点击预览：读 Blob 文本，只留前 2000 字符。 */
-  const openPreview = useCallback(
-    async (file: WorkspaceFile) => {
+  const previewPath = useCallback(
+    async (relativePath: string) => {
       if (!activeId) return;
       try {
-        const { blob } = await fetchConversationFile(activeId, file.path);
+        const { blob } = await fetchConversationFile(activeId, relativePath);
         const text = await blob.text();
         setPreview({
-          name: file.path,
+          name: relativePath,
           text: text.slice(0, PREVIEW_CHARS),
           truncated: text.length > PREVIEW_CHARS,
         });
@@ -750,13 +768,31 @@ export default function App() {
           updateMessage(idx - 1, (m) => (m.role === "user" ? { ...m, attachments: list } : m));
         }
       }
-      updateMessage(idx, (m) => ({
-        ...m,
-        content: acc.content,
-        agentName: acc.agentName ?? m.agentName,
-        steps: JSON.parse(JSON.stringify(acc.steps)) as Step[],
-        error: m.error || type === "error",
-      }));
+      // 文件卡片只在工具完成 / turn_files 时重算，避免每个 assistant_delta 都
+      // 遍历一遍 steps（长报告一轮有上千个增量事件）。
+      const shouldRefreshFiles =
+        type === "tool_completed" || type === "turn_files" || type === "turn_complete";
+      updateMessage(idx, (m) => {
+        const hasEventFiles =
+          (acc.changedFiles?.length ?? 0) > 0 || (acc.resultFiles?.length ?? 0) > 0;
+        const derived =
+          shouldRefreshFiles && !hasEventFiles ? deriveTurnFilesFromSteps(acc.steps) : null;
+        return {
+          ...m,
+          content: acc.content,
+          agentName: acc.agentName ?? m.agentName,
+          steps: JSON.parse(JSON.stringify(acc.steps)) as Step[],
+          changedFiles: acc.changedFiles ?? derived?.changed ?? m.changedFiles,
+          resultFiles: acc.resultFiles ?? derived?.results ?? m.resultFiles,
+          filesDerived: hasEventFiles
+            ? false
+            : derived
+              ? derived.changed.length > 0
+              : m.filesDerived,
+          filesTruncated: acc.filesTruncated ?? m.filesTruncated,
+          error: m.error || type === "error",
+        };
+      });
     };
 
     try {
@@ -1041,12 +1077,36 @@ export default function App() {
                 )}
 
                 {isAssistant ? (
-                  <AssistantBubble
-                    content={m.content}
-                    streaming={Boolean(m.streaming)}
-                    markdown={useMarkdown}
-                    error={m.error}
-                  />
+                  <>
+                    <AssistantBubble
+                      content={m.content}
+                      streaming={Boolean(m.streaming)}
+                      markdown={useMarkdown}
+                      error={m.error}
+                    />
+                    {/* 正文之后依次是过程文件（可折叠）与结果文件（可直接下载）：
+                        结论优先，过程只占用折叠卡片，结果文件紧邻正文便于点击。 */}
+                    {(m.changedFiles?.length ?? 0) > 0 && (
+                      <TurnFilesCard
+                        files={m.changedFiles ?? []}
+                        truncated={m.filesTruncated}
+                        onPreview={previewPath}
+                        onDownload={downloadPath}
+                        downloading={downloadingPath}
+                      />
+                    )}
+                    {(m.resultFiles?.length ?? 0) > 0 && (
+                      <ResultFilesCard
+                        files={m.resultFiles ?? []}
+                        onPreview={previewPath}
+                        onDownload={downloadPath}
+                        downloading={downloadingPath}
+                      />
+                    )}
+                    {m.filesDerived && (m.resultFiles?.length ?? 0) > 0 && (
+                      <div className="files-derived muted">根据本轮工具轨迹整理，仅供参考</div>
+                    )}
+                  </>
                 ) : (
                   <>
                     {/* 内容为空（只发附件）时不渲染空气泡，避免多出一块空白。 */}
@@ -1149,12 +1209,17 @@ export default function App() {
                       className="ws-file-name"
                       title={isPreviewableText(f.path) ? `${f.path}（点击预览）` : f.path}
                       disabled={!isPreviewableText(f.path)}
-                      onClick={() => void openPreview(f)}
+                      onClick={() => void previewPath(f.path)}
                     >
                       {f.path.split("/").pop()}
                     </button>
-                    <button className="mini-btn" title="下载该文件" onClick={() => void downloadFile(f)}>
-                      下载
+                    <button
+                      className="mini-btn"
+                      title="下载该文件"
+                      disabled={downloadingPath === f.path}
+                      onClick={() => void downloadPath(f.path)}
+                    >
+                      {downloadingPath === f.path ? "下载中…" : "下载"}
                     </button>
                     <div className="ws-file-meta">{workspaceLabel(f)}</div>
                   </div>

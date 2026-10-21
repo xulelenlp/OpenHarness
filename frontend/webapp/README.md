@@ -9,6 +9,8 @@
 - 高危操作审批（允许 / 总是允许 / 拒绝）
 - 中断当前回答
 - **附件上传**（Word / Excel / TXT，最多 2 个，选中即解析）与**会话文件面板**
+- **过程文件 / 结果文件卡片**：每轮正文下方展示「已编辑 N 个文件 +X -Y」与
+  `outputs/` 下的交付物；结果文件点击卡片或「下载」直接下载，文本类可预览
 - 助手回答默认按 Markdown 渲染（表格 / 代码块 / 列表 / 引用），可看源码并一键复制
 - **免手工 token**：启动时自动建立浏览器会话（HttpOnly Cookie），页面不再显示 Bearer Token 输入框
 
@@ -44,6 +46,26 @@
 
 ```bash
 npm run check:attachments
+```
+
+## 过程文件 / 结果文件卡片
+
+每轮助手消息按「正文 → 过程文件 → 结果文件」的顺序展示：
+
+| 卡片 | 数据来源 | 交互 |
+| --- | --- | --- |
+| **已编辑 N 个文件** | `turn_files.changed`（服务端对会话目录做轮次前后 diff；旧轨迹由 `src/turnFiles.ts` 从 `write_file` / `edit_file` / `run_script` / `write_report_docx` 输出推导） | 标题显示文件数与 `+X -Y`；默认展开前 5 个，可「全部 N 个文件 / 收起」；文本类可预览，所有文件可下载 |
+| **结果文件** | `turn_files.results`（`outputs/` 下本轮新增/修改的交付物：正式格式 docx/pdf/pptx/xlsx 优先；没有时取 md/txt；再没有才取图片/数据，最多 8 个） | 整卡点击直接下载；文本类额外提供「预览」。docx / xlsx / pdf 等不提供在线预览，点击即下载 |
+
+- 事件写入轨迹：刷新页面后靠 `turn_files` 还原；事件缺失（旧会话）时自动降级为
+  工具输出推导，并在卡片下方标注「根据本轮工具轨迹整理」。
+- `uploads/` 与 `extracted/` 不计入「已编辑」：前者是用户上传，后者是附件解析产物。
+- 下载复用与右侧抽屉相同的鉴权 fetch，不会把 token 拼进 URL。
+
+纯函数自检（`src/turnFiles.ts`：事件归约、结果筛选、路径归一化、工具输出推导）：
+
+```bash
+npm run check:turn-files
 ```
 
 ## Markdown 渲染

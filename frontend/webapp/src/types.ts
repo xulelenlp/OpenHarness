@@ -94,6 +94,52 @@ export interface WorkspaceFile {
   mtime: number;
 }
 
+/**
+ * 文件图标分类（与后端 `qaapp/turn_files.py` 的 `classify_kind` 对齐）。
+ *
+ * 只用于展示：色块图标 + 类型文案，不参与下载/预览判断。
+ */
+export type FileKind =
+  | "word"
+  | "excel"
+  | "pptx"
+  | "pdf"
+  | "markdown"
+  | "image"
+  | "script"
+  | "data"
+  | "archive"
+  | "text"
+  | "other";
+
+/** 本轮新增/修改的一个文件（`turn_files` 事件 / 前端兜底推导共用）。 */
+export interface ChangedFile {
+  /** 相对会话目录，如 `scripts/analyze.py`。 */
+  path: string;
+  /** 所属目录（scripts / tmp / outputs 等，根目录为空串）。 */
+  dir: string;
+  action: "created" | "modified";
+  size: number;
+  mtime: number;
+  /** 新增/删除行数；二进制或过大的文件为 null。 */
+  added: number | null;
+  removed: number | null;
+  kind: FileKind;
+}
+
+/** `outputs/` 下的一份交付物，可直接下载。 */
+export interface ResultFile {
+  path: string;
+  name: string;
+  /** 去掉扩展名的标题（展示用）。 */
+  title: string;
+  kind: FileKind;
+  size: number;
+  mtime: number;
+  /** 后端拼好的下载路径；前端实际用 `path` + fetch 下载（避免中文未编码）。 */
+  download_path: string;
+}
+
 /** `GET /conversations/{id}/workspace` 的响应。 */
 export interface ConversationWorkspace {
   conversation_id: string;
@@ -115,6 +161,14 @@ export interface ChatMessage {
   approval?: ApprovalEvent | null;
   /** 本轮用户消息携带的附件；历史回放时由 `attachments_ready` 事件还原。 */
   attachments?: AttachmentInfo[];
+  /** 本轮新增/修改的文件（中间过程文件卡片）。 */
+  changedFiles?: ChangedFile[];
+  /** 本轮产出的交付物（结果文件卡片，可直接下载）。 */
+  resultFiles?: ResultFile[];
+  /** true = 卡片来自旧轨迹的工具输出推导（没有 `turn_files` 事件）。 */
+  filesDerived?: boolean;
+  /** true = 本轮文件过多，仅展示了前 N 个。 */
+  filesTruncated?: boolean;
   error?: boolean;
   streaming?: boolean;
 }

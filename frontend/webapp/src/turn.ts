@@ -4,12 +4,22 @@
  * 抽成独立模块（纯函数、不依赖 React）以便自动化验证与复用。
  */
 
-import type { AttachmentInfo, Step } from "./types";
+import type { AttachmentInfo, ChangedFile, ResultFile, Step } from "./types";
 
 export interface TurnAccumulator {
   content: string;
   steps: Step[];
   agentName?: string;
+  /**
+   * 本轮新增/修改的文件与结果文件。
+   *
+   * 来源是后端 `turn_files` 事件（文件系统 diff，权威）；旧轨迹没有该事件，
+   * 由前端从工具输出推导后写入（见 `turnFiles.ts` 的 `deriveTurnFilesFromSteps`）。
+   */
+  changedFiles?: ChangedFile[];
+  resultFiles?: ResultFile[];
+  filesDerived?: boolean;
+  filesTruncated?: boolean;
   /**
    * 本轮携带的附件。
    *
@@ -62,6 +72,15 @@ export function reduceEvent(acc: TurnAccumulator, evt: Record<string, unknown>):
     // 服务端在本轮开始、agent_routed 之前发出；实时流与历史回放都走这里。
     case "attachments_ready":
       acc.attachments = (evt.attachments as AttachmentInfo[] | undefined) ?? acc.attachments;
+      break;
+
+    // 本轮文件：服务端按文件系统 diff 生成，是「过程文件 / 结果文件」的权威来源。
+    // 事件写在轨迹里，刷新页面后的历史回放同样走这里。
+    case "turn_files":
+      acc.changedFiles = (evt.changed as ChangedFile[] | undefined) ?? acc.changedFiles;
+      acc.resultFiles = (evt.results as ResultFile[] | undefined) ?? acc.resultFiles;
+      acc.filesTruncated = Boolean(evt.truncated);
+      acc.filesDerived = false;
       break;
 
     case "status": {

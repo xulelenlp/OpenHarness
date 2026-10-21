@@ -92,6 +92,11 @@ from qaapp.report_tool import WriteReportDocxTool
 from qaapp.script_tool import CONVERSATION_DIR_KEY, RunScriptTool
 from qaapp.tool_policy import build_agent_tool_registry
 from qaapp.trace import ConversationTraceStore
+from qaapp.turn_files import (
+    Snapshot,
+    compute_turn_files_event,
+    snapshot_workspace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -532,7 +537,12 @@ class QaWebService:
         # 新一轮对话开始：重置本轮审批记忆，保证新任务里同工具/同文件仍会确认一次。
         session.turn_approved.clear()
         session.current_attachments = []
+        # 记录轮次开始时的文件状态：结束时 diff 出「本轮新增/修改」的文件，
+        # 以 turn_files 事件下发。走文件系统而不是解析工具输出，脚本内部生成的
+        # 多个产物也能覆盖到。快照可能因取消/异常为 None，此时跳过事件。
+        before_files: Snapshot | None = None
         try:
+            before_files = await self._snapshot_turn_files(session)
             records = self.resolve_attachments(session, attachment_ids or [])
             session.current_attachments = records
             # 附件信息写入轨迹：前端刷新页面后仍能按轮次还原用户上传了哪些文件。
@@ -580,8 +590,47 @@ class QaWebService:
                 logger.exception("save snapshot failed for %s", session.conversation_id)
             with contextlib.suppress(OSError):
                 session.paths.touch_turn()
+            # 文件变更必须在 turn_complete 之前下发：前端靠 turn_id 把它归到本轮，
+            # 且 turn_complete 之后 session.current_turn 会被清空。
+            if before_files is not None:
+                self._emit_turn_files(session, before_files)
             self._emit(session, "turn_complete", {})
             session.current_turn = None
+
+    # ------------------------------------------------------------------
+    # 轮次文件
+    # ------------------------------------------------------------------
+
+    async def _snapshot_turn_files(self, session: ConversationSession) -> Snapshot | None:
+        """轮次开始时快照会话目录；失败/取消时返回 None（不阻断本轮）。"""
+        try:
+            return await asyncio.to_thread(snapshot_workspace, session.paths.root)
+        except Exception:
+            logger.exception("snapshot turn files failed for %s", session.conversation_id)
+            return None
+
+    def _emit_turn_files(self, session: ConversationSession, before: Snapshot) -> None:
+        """把本轮新增/修改的文件作为 ``turn_files`` 事件下发。
+
+        payload 只含会话相对路径；前端据此渲染「中间过程文件」与「结果文件」
+        卡片，下载仍走 ``/files/{path}`` 的鉴权与路径校验。
+
+        这里是同步调用：轮次收尾可能已被取消（用户点「中断」），在 finally 里
+        await 会被 CancelledError 直接打断，导致事件丢失。扫描/读取都有上限
+        （≤500 个文件、文本预算 8MB），同步执行的延迟可以接受。
+        """
+        try:
+            payload = compute_turn_files_event(
+                session.paths.root,
+                before,
+                session.conversation_id,
+            )
+        except Exception:
+            logger.exception("compute turn files failed for %s", session.conversation_id)
+            return
+        if payload is None:
+            return
+        self._emit(session, "turn_files", payload)
 
     def resolve_attachments(
         self, session: ConversationSession, attachment_ids: list[str]

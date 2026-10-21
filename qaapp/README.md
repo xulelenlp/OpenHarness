@@ -575,7 +575,34 @@ GET  /api/v1/conversations/{id}/files/scripts/analyze.py   # 下载（带 Bearer
 
 **SSE 事件类型**：`attachments_ready`（本轮附件，历史回放靠它还原芯片）/ `agent_routed` /
 `status` / `tool_started` / `tool_completed` / `tool_progress` / `assistant_delta` /
-`assistant_complete` / `approval_required` / `error` / `turn_complete`。
+`assistant_complete` / `approval_required` / `turn_files` / `error` / `turn_complete`。
+
+`turn_files` 在 `turn_complete` 之前发出，是「中间过程文件 / 结果文件」卡片的权威来源：
+
+```jsonc
+{
+  "type": "turn_files",
+  "truncated": false,
+  "changed": [
+    { "path": "scripts/analyze.py", "dir": "scripts", "action": "created",
+      "size": 3456, "mtime": 1790000000.1, "added": 120, "removed": 0, "kind": "script" }
+  ],
+  "results": [
+    { "path": "outputs/reports/报告.docx", "name": "报告.docx", "title": "报告",
+      "kind": "word", "size": 124928, "mtime": 1790000012.3,
+      "download_path": "/api/v1/conversations/{id}/files/outputs/reports/报告.docx" }
+  ]
+}
+```
+
+- `changed`：服务端对会话目录做轮次前后 diff 的结果（排除 `uploads/`、`extracted/`、
+  `meta.json`、`attachments.json` 等），最多 100 条；`added/removed` 对二进制文件为 `null`。
+- `results`：`outputs/` 下本轮产出的交付物。有正式交付格式（docx/pdf/pptx/xlsx…）时只
+  返回这些（md 草稿与报告插图不抢占结果卡）；没有正式格式时返回 md/txt；再没有才
+  退化为图片/数据，最多 8 个。前端点击卡片即下载（`download_path` 供外部客户端使用；
+  前端实际用 `path` + 鉴权 fetch，避免中文未编码）。
+- 事件写入轨迹，刷新页面后的历史回放同样依赖它；旧轨迹没有该事件时，参考前端会从
+  工具输出推导（近似结果）。
 
 **审批**：收到 `approval_required`（带 `request_id`）后：
 
@@ -618,7 +645,12 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
   轨迹事件还原附件芯片。
 - **右侧「会话文件」抽屉**：按 uploads/extracted/scripts/tmp/outputs 分组列出会话目录文件，
   支持下载（fetch + Blob，避免 token 进 URL）、文本预览与复制会话目录绝对路径。
-- 前端自检：`npm run check:render`（Markdown 渲染）+ `npm run check:attachments`（附件纯函数）。
+- **过程文件 / 结果文件卡片**：每轮回答正文下方先展示「已编辑 N 个文件 +X -Y」的
+  过程文件卡片（默认展开前 5 个，可看全部 / 折叠），再展示 `outputs/` 下的结果文件卡片；
+  结果文件点击卡片或「下载」即可直接下载，文本类可预览。旧轨迹没有 `turn_files`
+  事件时，前端从工具输出推导，保证历史会话同样可见。
+- 前端自检：`npm run check:render`（Markdown 渲染）+ `npm run check:attachments`（附件纯函数）
+  + `npm run check:turn-files`（过程/结果文件纯函数）。
 
 ### 8.1 配置后端地址（前后端分机部署必读）
 

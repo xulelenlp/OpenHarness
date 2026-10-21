@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Added
 
+- **qaapp 交互优化：过程文件 / 结果文件卡片**：新增 `qaapp/turn_files.py`（会话目录轮次前后快照与 diff、结果文件筛选）与 SSE 事件 `turn_files`（`changed` + `results`，自动写轨迹）；每轮正文下方展示「已编辑 N 个文件 +X -Y」的过程文件卡片与 `outputs/` 结果文件卡片，结果文件点击卡片或「下载」即可直接下载（文本类可预览）。旧轨迹缺少事件时，前端 `src/turnFiles.ts` 从 `write_file` / `edit_file` / `run_script` / `write_report_docx` 输出推导，保证历史会话同样可见；新增 `npm run check:turn-files` 自检与 `tests/test_qaapp/test_turn_files.py`。
 - **业务库直连（qaapp）**：新增 `db_query` 工具与 `qaapp/data_client.py` / `data_catalog.py` / `data_query.py` / `data_quality.py`，按 `docs/database_query/` 的 A1/A2/B1/B2/T/四率逻辑查询客户 MySQL；以 `ai_data_struct` 实际可用性优先、层级表/`_ssx` 回退，处理月末日期、周期/机构/维度回退、无数据诊断、恒定序列/陈旧/异常/空值/单位等质量问题。新增 `docs/database_query/IMPLEMENTATION.zh-CN.md` 记录实测库结构与文档差异。
 - **数据源配置集中管理**：新增唯一 `datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`）与唯一加载器 `qaapp/datasources.py`；MySQL/Redis 连接信息不再散落在 `webapp.json` 或代码里。新增 `abcqa datasource show/check`，MySQL 只读/连接池/超时/行数上限，Redis 只读 db0 + 前缀白名单。
 - **多智能体灵活编排**：新增 `consult_agents` 工具，可一次并行/顺序调用 1–4 个外部智能体，支持单次超时、502/会话失败重试、部分失败、原文落 `outputs/agents/` 与截断预览；能力清单改为“可组合、不要只选一个”，并按 `AgentEntry.role` 动态生成取数/分析/知识组合矩阵。

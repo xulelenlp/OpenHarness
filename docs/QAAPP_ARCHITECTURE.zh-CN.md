@@ -120,8 +120,9 @@
 6. **模型循环**：模型直接回答，或调用 `external_agent` / `run_script` / 其他工具；
    工具执行前经过权限检查，需要确认时通过 SSE 推 `approval_required`。
 7. **事件**：`agent_routed` / `reasoning_delta` / `assistant_delta` / `tool_started` /
-   `tool_completed` / `approval_required` / `turn_complete`。
-8. **持久化**：会话快照 + 轨迹 JSONL；刷新页面后按轨迹还原附件、步骤、审批结果。
+   `tool_completed` / `approval_required` / `turn_files` / `turn_complete`。
+8. **持久化**：会话快照 + 轨迹 JSONL；刷新页面后按轨迹还原附件、步骤、审批结果与
+   过程/结果文件卡片。
 
 ---
 
@@ -331,6 +332,18 @@
 3. 事件统一走 `_emit()`，自动写轨迹；前端 `turn.ts` / `types.ts` 增加处理；
 4. 更新 README §7 的 API 表与事件列表；
 5. 加 TestClient 集成测试（含鉴权、404、非法输入）。
+
+**文件类事件的额外约定**（以 `turn_files` 为例）：
+
+- 只下发**会话相对路径**（`scripts/x.py`、`outputs/reports/x.docx`），不暴露宿主机
+  绝对路径；下载仍走 `/files/{path}` 的鉴权与 `resolve_within` 路径校验。
+- 行数、大小等派生字段由 `qaapp/turn_files.py` 的纯函数计算，单测放
+  `tests/test_qaapp/test_turn_files.py`，不要在 `service.py` 里堆 diff 逻辑。
+- 事件必须有上限（文件数、结果数、文本读取预算），否则大目录会把 SSE 帧和轨迹
+  JSONL 撑大。
+- 前端除事件外还要能从工具输出推导（`src/turnFiles.ts`
+  `deriveTurnFilesFromSteps`），保证旧轨迹/事件缺失时仍可展示；两条路径的筛选规则
+  保持一致，并用 `npm run check:turn-files` 覆盖。
 
 ---
 
