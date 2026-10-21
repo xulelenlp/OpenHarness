@@ -8,16 +8,32 @@ import os
 import sys
 from pathlib import Path
 
-from openharness.api.client import SupportsStreamingMessages
-from openharness.engine.stream_events import AssistantTextDelta, AssistantTurnComplete, CompactProgressEvent, ErrorEvent, StatusEvent
-from openharness.ui.backend_host import run_backend_host
-from openharness.ui.runtime import build_runtime, close_runtime, handle_line, start_runtime
-from openharness.ui.react_launcher import _resolve_branding, _resolve_npm, _resolve_tsx, get_frontend_dir
-
 from ohmo.memory import create_memory_command_backend
 from ohmo.prompts import build_ohmo_system_prompt
 from ohmo.session_storage import OhmoSessionBackend
-from ohmo.workspace import get_memory_dir, get_plugins_dir, get_sessions_dir, get_skills_dir, initialize_workspace
+from ohmo.workspace import (
+    get_memory_dir,
+    get_plugins_dir,
+    get_sessions_dir,
+    get_skills_dir,
+    initialize_workspace,
+)
+from openharness.api.client import SupportsStreamingMessages
+from openharness.engine.stream_events import (
+    AssistantTextDelta,
+    AssistantTurnComplete,
+    CompactProgressEvent,
+    ErrorEvent,
+    StatusEvent,
+)
+from openharness.ui.backend_host import run_backend_host
+from openharness.ui.react_launcher import (
+    _resolve_branding,
+    _resolve_npm,
+    _resolve_tsx,
+    get_frontend_dir,
+)
+from openharness.ui.runtime import build_runtime, close_runtime, handle_line, start_runtime
 
 
 def _ohmo_extra_roots(workspace: str | Path | None) -> tuple[tuple[str, ...], tuple[str, ...]]:

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import difflib
-from pathlib import Path
-
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.diff import unified_diff_with_counts
+from openharness.utils.fs import resolve_path
 
 
 class FileWriteToolInput(BaseModel):
@@ -30,7 +29,7 @@ class FileWriteTool(BaseTool):
         arguments: FileWriteToolInput,
         context: ToolExecutionContext,
     ) -> ToolResult:
-        path = _resolve_path(context.cwd, arguments.path)
+        path = resolve_path(context.cwd, arguments.path)
 
         from openharness.sandbox.session import is_docker_sandbox_active
 
@@ -44,7 +43,7 @@ class FileWriteTool(BaseTool):
         approval_prompt = context.metadata.get("edit_approval_prompt") if context.metadata else None
         if approval_prompt is not None:
             original = path.read_text(encoding="utf-8") if path.exists() else ""
-            diff_text, added, removed = _compute_diff(str(path), original, arguments.content)
+            diff_text, added, removed = unified_diff_with_counts(str(path), original, arguments.content)
             reply = await approval_prompt(str(path), diff_text, added, removed)
             if reply == "reject":
                 return ToolResult(output=f"Write rejected by user: {path}", is_error=True)
@@ -58,28 +57,6 @@ class FileWriteTool(BaseTool):
             path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(arguments.content, encoding="utf-8")
         return ToolResult(output=f"Wrote {path}")
-
-
-def _resolve_path(base: Path, candidate: str) -> Path:
-    path = Path(candidate).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
-
-
-def _compute_diff(filename: str, original: str, updated: str) -> tuple[str, int, int]:
-    diff_lines = list(
-        difflib.unified_diff(
-            original.splitlines(keepends=True),
-            updated.splitlines(keepends=True),
-            fromfile=filename,
-            tofile=filename,
-            lineterm="",
-        )
-    )
-    added = sum(1 for line in diff_lines if line.startswith("+") and not line.startswith("+++"))
-    removed = sum(1 for line in diff_lines if line.startswith("-") and not line.startswith("---"))
-    return "".join(diff_lines), added, removed
 
 
 _ANSI_GREEN = "\033[32m"

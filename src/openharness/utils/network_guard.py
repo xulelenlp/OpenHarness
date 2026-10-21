@@ -10,7 +10,6 @@ from urllib.parse import ParseResult, urljoin, urlparse
 
 import httpx
 
-
 _DEFAULT_PORTS = {
     "http": 80,
     "https": 443,

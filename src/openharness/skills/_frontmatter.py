@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import yaml
+from openharness.utils.frontmatter import parse_markdown_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -47,24 +47,15 @@ def parse_skill_metadata(
     """
     name = default_name
     description = ""
-    frontmatter: dict[str, Any] = {}
+    frontmatter, _body = parse_markdown_frontmatter(content)
     lines = content.splitlines()
 
-    if content.startswith("---\n"):
-        end_index = content.find("\n---\n", 4)
-        if end_index != -1:
-            try:
-                metadata = yaml.safe_load(content[4:end_index])
-                if isinstance(metadata, dict):
-                    frontmatter = metadata
-                    val = metadata.get("name")
-                    if isinstance(val, str) and val.strip():
-                        name = val.strip()
-                    val = metadata.get("description")
-                    if isinstance(val, str) and val.strip():
-                        description = val.strip()
-            except yaml.YAMLError:
-                logger.debug("Failed to parse YAML frontmatter for skill %s", default_name)
+    val = frontmatter.get("name")
+    if isinstance(val, str) and val.strip():
+        name = val.strip()
+    val = frontmatter.get("description")
+    if isinstance(val, str) and val.strip():
+        description = val.strip()
 
     if not description:
         for line in lines:

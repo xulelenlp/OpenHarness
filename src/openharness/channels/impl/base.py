@@ -1,7 +1,7 @@
 """Base channel interface for chat platforms."""
 
-import os
 import logging
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -21,9 +21,9 @@ def resolve_channel_media_dir(channel_name: str) -> Path:
     else:
         ohmo_workspace = os.environ.get("OHMO_WORKSPACE")
         if ohmo_workspace:
-            from ohmo.workspace import get_attachments_dir
-
-            root = get_attachments_dir(ohmo_workspace)
+            # Keep the layering one-way: the core must not import the ohmo app.
+            # The attachment directory is a stable part of the workspace contract.
+            root = Path(ohmo_workspace).expanduser().resolve() / "attachments"
         else:
             root = get_data_dir() / "media"
     media_dir = root / channel_name

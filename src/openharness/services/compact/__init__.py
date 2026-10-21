@@ -19,8 +19,8 @@ from typing import Any, Awaitable, Callable, Literal
 from uuid import uuid4
 
 from openharness.engine.messages import (
-    ConversationMessage,
     ContentBlock,
+    ConversationMessage,
     ImageBlock,
     TextBlock,
     ToolResultBlock,
@@ -29,8 +29,9 @@ from openharness.engine.messages import (
 )
 from openharness.engine.stream_events import CompactProgressEvent
 from openharness.hooks import HookEvent, HookExecutor
-from openharness.services.tool_outputs import is_microcompactable_tool_result
+from openharness.services.errors import is_prompt_too_long_error
 from openharness.services.token_estimation import estimate_tokens
+from openharness.services.tool_outputs import is_microcompactable_tool_result
 
 log = logging.getLogger(__name__)
 
@@ -246,28 +247,8 @@ async def _emit_progress(
     )
 
 
-def _is_prompt_too_long_error(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return any(
-        needle in text
-        for needle in (
-            "prompt too long",
-            "context_length_exceeded",
-            "context length",
-            "maximum context",
-            "context window",
-            "input tokens exceed",
-            "messages resulted in",
-            "reduce the length of the messages",
-            "configured limit",
-            "too many tokens",
-            "too large for the model",
-            "maximum context length",
-            "exceed_context",
-            "exceeds the available context size",
-            "available context size",
-        )
-    )
+# Backwards-compatible private alias for tests and callers.
+_is_prompt_too_long_error = is_prompt_too_long_error
 
 
 def _group_messages_by_prompt_round(
@@ -1150,7 +1131,7 @@ async def compact_conversation(
     Returns:
         Structured compaction result that can be rebuilt into post-compact messages.
     """
-    from openharness.api.client import ApiMessageRequest, ApiMessageCompleteEvent
+    from openharness.api.client import ApiMessageCompleteEvent, ApiMessageRequest
 
     if len(messages) <= preserve_recent:
         return _build_passthrough_compaction_result(

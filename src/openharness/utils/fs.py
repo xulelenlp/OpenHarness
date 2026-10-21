@@ -33,7 +33,21 @@ import stat
 import tempfile
 from pathlib import Path
 
-__all__ = ["atomic_write_bytes", "atomic_write_text"]
+__all__ = ["atomic_write_bytes", "atomic_write_text", "resolve_path"]
+
+
+def resolve_path(base: str | os.PathLike[str], candidate: str | None = None) -> Path:
+    """Resolve a user-supplied path against *base*.
+
+    Relative paths are joined to *base*; ``~`` is expanded; the result is
+    fully resolved. ``candidate=None`` or an empty string means ``base``
+    itself, matching the historical behaviour of the glob/grep tools.
+    """
+    path = Path(candidate or ".").expanduser()
+    if not path.is_absolute():
+        path = Path(base) / path
+    return path.resolve()
+
 
 
 def atomic_write_bytes(path: str | os.PathLike[str], data: bytes, *, mode: int | None = None) -> None:

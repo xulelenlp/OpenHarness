@@ -15,7 +15,14 @@ from urllib.parse import urlparse
 
 import typer
 
-__version__ = "0.1.9"
+from openharness.ui.prompts import (
+    can_use_questionary,
+    confirm_prompt,
+    secret_prompt,
+    select_from_menu,
+    text_prompt,
+)
+from openharness.version import __version__  # noqa: E402
 
 _PREVIEW_STOPWORDS = {
     "a",
@@ -1158,6 +1165,7 @@ def autopilot_run_next_cmd(
 ) -> None:
     """Run the highest-priority queued autopilot card end-to-end."""
     import asyncio
+
     from openharness.autopilot import RepoAutopilotStore
 
     try:
@@ -1186,6 +1194,7 @@ def autopilot_tick_cmd(
 ) -> None:
     """Scan sources and, if idle, run the next queued autopilot task."""
     import asyncio
+
     from openharness.autopilot import RepoAutopilotStore
 
     try:
@@ -1266,101 +1275,6 @@ _AUTH_SOURCE_LABELS: dict[str, str] = {
 }
 
 
-def _can_use_questionary() -> bool:
-    """Return True when a real interactive terminal is available."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return False
-    if sys.stdin is not sys.__stdin__ or sys.stdout is not sys.__stdout__:
-        return False
-    try:
-        import questionary  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def _select_with_questionary(
-    title: str,
-    options: list[tuple[str, str]],
-    *,
-    default_value: str | None = None,
-) -> str:
-    import questionary
-
-    choices = [
-        questionary.Choice(
-            title=label,
-            value=value,
-            checked=(value == default_value),
-        )
-        for value, label in options
-    ]
-    result = questionary.select(title, choices=choices, default=default_value).ask()
-    if result is None:
-        raise typer.Abort()
-    return str(result)
-
-
-def _text_prompt(message: str, *, default: str = "") -> str:
-    """Prompt for text input, preferring questionary in a real TTY."""
-    if _can_use_questionary():
-        import questionary
-
-        result = questionary.text(message, default=default).ask()
-        if result is None:
-            raise typer.Abort()
-        return str(result)
-    return typer.prompt(message, default=default)
-
-
-def _secret_prompt(message: str) -> str:
-    """Prompt for secret text, preferring questionary in a real TTY."""
-    if _can_use_questionary():
-        import questionary
-
-        result = questionary.password(message).ask()
-        if result is None:
-            raise typer.Abort()
-        return str(result)
-    return typer.prompt(message, hide_input=True)
-
-
-def _confirm_prompt(message: str, *, default: bool = False) -> bool:
-    """Prompt for a yes/no confirmation, preferring questionary in a real TTY."""
-    if _can_use_questionary():
-        import questionary
-
-        result = questionary.confirm(message, default=default).ask()
-        if result is None:
-            raise typer.Abort()
-        return bool(result)
-    return bool(typer.confirm(message, default=default))
-
-
-def _select_from_menu(
-    title: str,
-    options: list[tuple[str, str]],
-    *,
-    default_value: str | None = None,
-) -> str:
-    """Render a simple numbered picker and return the selected value."""
-    if _can_use_questionary():
-        return _select_with_questionary(title, options, default_value=default_value)
-    print(title, flush=True)
-    default_index = 1
-    for index, (value, label) in enumerate(options, 1):
-        marker = " (default)" if value == default_value else ""
-        if value == default_value:
-            default_index = index
-        print(f"  {index}. {label}{marker}", flush=True)
-    raw = typer.prompt("Choose", default=str(default_index))
-    try:
-        selected = options[int(raw) - 1]
-    except (ValueError, IndexError):
-        raise typer.BadParameter(f"Invalid selection: {raw}") from None
-    return selected[0]
-
-
 def _prompt_model_for_profile(profile) -> str:
     from openharness.config.settings import (
         CLAUDE_MODEL_ALIAS_OPTIONS,
@@ -1373,18 +1287,18 @@ def _prompt_model_for_profile(profile) -> str:
         if len(profile.allowed_models) == 1:
             return profile.allowed_models[0]
         options = [(value, value) for value in profile.allowed_models]
-        return _select_from_menu("Choose a model setting:", options, default_value=current if current in profile.allowed_models else profile.allowed_models[0])
+        return select_from_menu("Choose a model setting:", options, default_value=current if current in profile.allowed_models else profile.allowed_models[0])
     if is_claude_family_provider(profile.provider):
         options = [(value, f"{label} - {description}") for value, label, description in CLAUDE_MODEL_ALIAS_OPTIONS]
         options.append(("__custom__", "Custom model ID"))
-        selection = _select_from_menu(
+        selection = select_from_menu(
             "Choose a model setting:",
             options,
             default_value=current if any(value == current for value, _, _ in CLAUDE_MODEL_ALIAS_OPTIONS) else "__custom__",
         )
         if selection != "__custom__":
             return selection
-    return _text_prompt("Model", default=current).strip() or current
+    return text_prompt("Model", default=current).strip() or current
 
 
 def _format_profile_choice_label(info: dict[str, object]) -> str:
@@ -1412,7 +1326,7 @@ def _select_setup_workflow(
         "openai-compatible": ("OpenAI / OpenRouter", "fg:#9ece6a"),
     }
 
-    if _can_use_questionary():
+    if can_use_questionary():
         import questionary
 
         choices = []
@@ -1455,7 +1369,7 @@ def _select_setup_workflow(
         if hint is not None:
             label = f"{label} ({hint[0]})"
         options.append((name, label))
-    return _select_from_menu("Choose a provider workflow:", options, default_value=default_value)
+    return select_from_menu("Choose a provider workflow:", options, default_value=default_value)
 
 
 def _default_credential_slot_for_profile(name: str, auth_source: str) -> str | None:
@@ -1469,7 +1383,7 @@ def _default_credential_slot_for_profile(name: str, auth_source: str) -> str | N
 
 
 def _prompt_api_key_for_profile(label: str) -> str:
-    key = _secret_prompt(f"Enter API key for {label}").strip()
+    key = secret_prompt(f"Enter API key for {label}").strip()
     if not key:
         raise typer.BadParameter("API key cannot be empty.")
     return key
@@ -1478,7 +1392,7 @@ def _prompt_api_key_for_profile(label: str) -> str:
 def _configure_custom_profile_via_setup(manager) -> str:
     from openharness.config.settings import ProviderProfile, default_auth_source_for_provider
 
-    family = _select_from_menu(
+    family = select_from_menu(
         "Choose a compatible API family:",
         [
             ("anthropic", "Anthropic-compatible"),
@@ -1487,16 +1401,16 @@ def _configure_custom_profile_via_setup(manager) -> str:
         default_value="anthropic",
     )
     default_name = f"custom-{family}"
-    name = _text_prompt("Profile name", default=default_name).strip()
+    name = text_prompt("Profile name", default=default_name).strip()
     if not name:
         raise typer.BadParameter("Profile name cannot be empty.")
-    label = _text_prompt("Display label", default=name).strip() or name
-    base_url = _text_prompt("Base URL", default="").strip()
+    label = text_prompt("Display label", default=name).strip() or name
+    base_url = text_prompt("Base URL", default="").strip()
     if not base_url:
         raise typer.BadParameter("Base URL cannot be empty.")
 
     auth_source = default_auth_source_for_provider(family, family)
-    model = _text_prompt("Default model", default="").strip()
+    model = text_prompt("Default model", default="").strip()
     if not model:
         raise typer.BadParameter("Default model cannot be empty.")
 
@@ -1551,7 +1465,7 @@ def _specialize_setup_target(manager, target: str) -> str:
     from openharness.config.settings import default_auth_source_for_provider
 
     if target == "claude-api":
-        choice = _select_from_menu(
+        choice = select_from_menu(
             "Choose an Anthropic-compatible provider:",
             [
                 ("claude-api", "Claude official"),
@@ -1569,10 +1483,10 @@ def _specialize_setup_target(manager, target: str) -> str:
             "minimax-anthropic": ("MiniMax (Anthropic-compatible)", "", "MiniMax-M2.7"),
         }
         label, suggested_base_url, suggested_model = defaults[choice]
-        base_url = _text_prompt("Base URL", default=suggested_base_url).strip()
+        base_url = text_prompt("Base URL", default=suggested_base_url).strip()
         if not base_url:
             raise typer.BadParameter("Base URL cannot be empty.")
-        model = _text_prompt("Model", default=suggested_model).strip()
+        model = text_prompt("Model", default=suggested_model).strip()
         if not model:
             raise typer.BadParameter("Model cannot be empty.")
         return _ensure_preset_profile(
@@ -1588,7 +1502,7 @@ def _specialize_setup_target(manager, target: str) -> str:
         )
 
     if target == "openai-compatible":
-        choice = _select_from_menu(
+        choice = select_from_menu(
             "Choose an OpenAI-compatible provider:",
             [
                 ("openai-compatible", "OpenAI official"),
@@ -1598,10 +1512,10 @@ def _specialize_setup_target(manager, target: str) -> str:
         )
         if choice == "openai-compatible":
             return choice
-        base_url = _text_prompt("Base URL", default="https://openrouter.ai/api/v1").strip()
+        base_url = text_prompt("Base URL", default="https://openrouter.ai/api/v1").strip()
         if not base_url:
             raise typer.BadParameter("Base URL cannot be empty.")
-        model = _text_prompt("Default model", default="").strip()
+        model = text_prompt("Default model", default="").strip()
         if not model:
             raise typer.BadParameter("Default model cannot be empty.")
         return _ensure_preset_profile(
@@ -1648,7 +1562,7 @@ def _maybe_update_profile_auth(manager, profile_name: str) -> bool:
     profile = manager.list_profiles()[profile_name]
     if not auth_source_uses_api_key(profile.auth_source):
         return False
-    if not _confirm_prompt(f"Update API key for {profile.label}?", default=False):
+    if not confirm_prompt(f"Update API key for {profile.label}?", default=False):
         return False
     _ensure_profile_auth(manager, profile_name)
     return True

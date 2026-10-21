@@ -1,134 +1,53 @@
-"""Personal memory helpers for ``.ohmo``."""
+"""Personal memory helpers for ``.ohmo``.
+
+The project memory store and ohmo's personal store share the lifecycle
+implementation in :mod:`openharness.memory.manager`; this module only binds
+it to the ``.ohmo`` workspace and personal defaults.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-from re import sub
 
 from ohmo.workspace import get_memory_dir, get_memory_index_path
 from openharness.commands import MemoryCommandBackend
 from openharness.memory.manager import (
     MemoryLocation,
-    effective_memory_signature,
-    next_memory_path,
+    add_memory_entry_at,
+    list_memory_files_at,
     soft_delete_memory_entry,
 )
-from openharness.memory.scan import scan_memory_files
-from openharness.memory.schema import (
-    SCHEMA_VERSION,
-    coerce_int,
-    compute_memory_signature,
-    first_content_line,
-    format_datetime,
-    generate_memory_id,
-    memory_metadata_from_path,
-    render_memory_file,
-    split_memory_file,
-    utc_now,
-)
-from openharness.utils.file_lock import exclusive_file_lock
-from openharness.utils.fs import atomic_write_text
+
+
+def _location(workspace: str | Path | None) -> MemoryLocation:
+    memory_dir = get_memory_dir(workspace)
+    return MemoryLocation(
+        scan_cwd=_scan_cwd(workspace, memory_dir),
+        memory_dir=memory_dir,
+        entrypoint=get_memory_index_path(workspace),
+        default_type="personal",
+        default_category="preference",
+    )
 
 
 def list_memory_files(workspace: str | Path | None = None) -> list[Path]:
     """List ``.ohmo`` memory markdown files."""
-    memory_dir = get_memory_dir(workspace)
-    return sorted(
-        header.path
-        for header in scan_memory_files(
-            _scan_cwd(workspace, memory_dir),
-            max_files=None,
-            memory_dir=memory_dir,
-        )
-    )
+    return list_memory_files_at(_location(workspace))
 
 
 def add_memory_entry(workspace: str | Path | None, title: str, content: str) -> Path:
     """Create a personal memory file and append it to ``MEMORY.md``."""
-    memory_dir = get_memory_dir(workspace)
-    memory_dir.mkdir(parents=True, exist_ok=True)
-    slug = sub(r"[^a-zA-Z0-9]+", "_", title.strip().lower()).strip("_") or "memory"
-    with exclusive_file_lock(memory_dir / ".memory.lock"):
-        memory_type = "personal"
-        category = "preference"
-        body = content.strip() + "\n"
-        signature = compute_memory_signature(body, memory_type, category)
-        existing = scan_memory_files(
-            _scan_cwd(workspace, memory_dir),
-            max_files=None,
-            include_disabled=True,
-            include_expired=True,
-            memory_dir=memory_dir,
-        )
-        duplicate = next(
-            (
-                header
-                for header in existing
-                if effective_memory_signature(header.path, header.signature) == signature
-            ),
-            None,
-        )
-        path = duplicate.path if duplicate is not None else next_memory_path(memory_dir, slug)
-        now = utc_now()
-        now_text = format_datetime(now)
-        if path.exists():
-            metadata, old_body, _, _ = split_memory_file(path.read_text(encoding="utf-8"))
-            metadata = memory_metadata_from_path(
-                path,
-                metadata,
-                old_body,
-                now=now,
-                source=str(metadata.get("source") or "manual"),
-                default_type=memory_type,
-                default_category=category,
-            )
-            created_at = str(metadata.get("created_at") or now_text)
-            memory_id = str(metadata.get("id") or generate_memory_id(now))
-        else:
-            metadata = {}
-            created_at = now_text
-            memory_id = generate_memory_id(now)
-        metadata.update(
-            {
-                "schema_version": SCHEMA_VERSION,
-                "id": memory_id,
-                "name": title.strip(),
-                "description": first_content_line(body) or title.strip(),
-                "type": str(metadata.get("type") or memory_type),
-                "category": str(metadata.get("category") or category),
-                "importance": max(coerce_int(metadata.get("importance"), default=0), 1),
-                "source": "manual",
-                "signature": signature,
-                "created_at": created_at,
-                "updated_at": now_text,
-                "ttl_days": metadata.get("ttl_days"),
-                "disabled": False,
-                "supersedes": metadata.get("supersedes") or [],
-            }
-        )
-        atomic_write_text(path, render_memory_file(metadata, body))
-
-        index_path = get_memory_index_path(workspace)
-        existing_index = index_path.read_text(encoding="utf-8") if index_path.exists() else "# Memory Index\n"
-        if path.name not in existing_index:
-            existing_index = existing_index.rstrip() + f"\n- [{title}]({path.name})\n"
-            atomic_write_text(index_path, existing_index)
-    return path
+    return add_memory_entry_at(
+        _location(workspace),
+        title,
+        content,
+        include_tags=False,
+    )
 
 
 def remove_memory_entry(workspace: str | Path | None, name: str) -> bool:
     """Soft-delete a personal memory file and remove its index entry."""
-    memory_dir = get_memory_dir(workspace)
-    return soft_delete_memory_entry(
-        MemoryLocation(
-            scan_cwd=_scan_cwd(workspace, memory_dir),
-            memory_dir=memory_dir,
-            entrypoint=get_memory_index_path(workspace),
-            default_type="personal",
-            default_category="preference",
-        ),
-        name,
-    )
+    return soft_delete_memory_entry(_location(workspace), name)
 
 
 def load_memory_prompt(workspace: str | Path | None = None, *, max_files: int = 5) -> str | None:

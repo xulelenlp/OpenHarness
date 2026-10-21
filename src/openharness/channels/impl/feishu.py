@@ -1,7 +1,9 @@
 """Feishu/Lark channel implementation using lark-oapi SDK with WebSocket long connection."""
 
 import asyncio
+import importlib.util
 import json
+import logging
 import os
 import re
 import threading
@@ -9,16 +11,12 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
-
 from openharness.channels.bus.events import OutboundMessage
 from openharness.channels.bus.queue import MessageBus
-from openharness.channels.impl.base import BaseChannel
-from openharness.channels.impl.base import resolve_channel_media_dir
+from openharness.channels.impl.base import BaseChannel, resolve_channel_media_dir
+from openharness.channels.policies import normalize_feishu_group_policy
 from openharness.config.schema import FeishuConfig
 from openharness.utils.helpers import safe_filename
-
-import importlib.util
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -148,23 +146,6 @@ def _feishu_mentions_bot(
     return False
 
 
-def _normalize_feishu_group_policy(value: str | None) -> str:
-    normalized = str(value or "").strip().lower().replace("-", "_")
-    aliases = {
-        "all": "open",
-        "always": "open",
-        "always_reply": "open",
-        "managed_mention": "managed_or_mention",
-        "managed_or_at": "managed_or_mention",
-        "at": "mention",
-        "mentions": "mention",
-    }
-    normalized = aliases.get(normalized, normalized)
-    if normalized in {"open", "mention", "managed", "managed_or_mention"}:
-        return normalized
-    return "managed_or_mention"
-
-
 def _is_ohmo_managed_feishu_group(chat_id: str) -> bool:
     workspace = os.environ.get("OHMO_WORKSPACE")
     if not workspace:
@@ -191,7 +172,7 @@ def _should_process_feishu_group_message(
 ) -> bool:
     if str(chat_type or "").strip().lower() != "group":
         return True
-    policy = _normalize_feishu_group_policy(getattr(config, "group_policy", "managed_or_mention"))
+    policy = normalize_feishu_group_policy(getattr(config, "group_policy", "managed_or_mention"))
     if policy == "open":
         return True
     if policy == "mention":
@@ -493,6 +474,7 @@ class FeishuChannel(BaseChannel):
         # "This event loop is already running" errors.
         def run_ws():
             import time
+
             import lark_oapi.ws.client as _lark_ws_client
             ws_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(ws_loop)
@@ -532,7 +514,11 @@ class FeishuChannel(BaseChannel):
 
     def _add_reaction_sync(self, message_id: str, emoji_type: str) -> None:
         """Sync helper for adding reaction (runs in thread pool)."""
-        from lark_oapi.api.im.v1 import CreateMessageReactionRequest, CreateMessageReactionRequestBody, Emoji
+        from lark_oapi.api.im.v1 import (
+            CreateMessageReactionRequest,
+            CreateMessageReactionRequestBody,
+            Emoji,
+        )
         try:
             request = CreateMessageReactionRequest.builder() \
                 .message_id(message_id) \

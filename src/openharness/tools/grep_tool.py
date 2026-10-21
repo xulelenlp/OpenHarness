@@ -10,6 +10,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.fs import resolve_path
+from openharness.utils.process import terminate_process
 
 
 class GrepToolInput(BaseModel):
@@ -38,7 +40,7 @@ class GrepTool(BaseTool):
         return True
 
     async def execute(self, arguments: GrepToolInput, context: ToolExecutionContext) -> ToolResult:
-        root = _resolve_path(context.cwd, arguments.root) if arguments.root else context.cwd
+        root = resolve_path(context.cwd, arguments.root) if arguments.root else context.cwd
         if not root.exists():
             return ToolResult(
                 output=(
@@ -141,12 +143,6 @@ def _python_grep_files(
     return "\n".join(collected)
 
 
-def _resolve_path(base: Path, candidate: str | None) -> Path:
-    path = Path(candidate or ".").expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
-
 
 def _format_rg_result(matches: list[str], timeout_seconds: int) -> ToolResult:
     timed_out = bool(matches and matches[-1] == _timeout_marker(timeout_seconds))
@@ -219,13 +215,13 @@ async def _rg_grep(
         )
     except asyncio.TimeoutError:
         matches.append(_timeout_marker(timeout_seconds))
-        await _terminate_process(process)
+        await terminate_process(process)
     except asyncio.CancelledError:
-        await _terminate_process(process)
+        await terminate_process(process)
         raise
     finally:
         if len(matches) >= limit and process.returncode is None:
-            await _terminate_process(process)
+            await terminate_process(process)
         elif process.returncode is None:
             await process.wait()
 
@@ -293,13 +289,13 @@ async def _rg_grep_file(
         )
     except asyncio.TimeoutError:
         matches.append(_timeout_marker(timeout_seconds))
-        await _terminate_process(process)
+        await terminate_process(process)
     except asyncio.CancelledError:
-        await _terminate_process(process)
+        await terminate_process(process)
         raise
     finally:
         if len(matches) >= limit and process.returncode is None:
-            await _terminate_process(process)
+            await terminate_process(process)
         elif process.returncode is None:
             await process.wait()
 
@@ -353,18 +349,6 @@ async def _collect_rg_file_matches(
         if not line:
             continue
         matches.append(f"{_format_path(path, display_base)}:{line}")
-
-
-async def _terminate_process(process: asyncio.subprocess.Process) -> None:
-    if process.returncode is not None:
-        return
-    process.terminate()
-    try:
-        await asyncio.wait_for(process.wait(), timeout=2.0)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
-    return None
 
 
 def _format_path(path: Path, display_base: Path) -> str:

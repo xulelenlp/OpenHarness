@@ -42,9 +42,9 @@ from openharness.engine.stream_events import (
 )
 from openharness.hooks import HookEvent, HookExecutor
 from openharness.permissions.checker import PermissionChecker
+from openharness.services.errors import is_prompt_too_long_error
 from openharness.services.tool_outputs import tool_output_inline_chars, tool_output_preview_chars
-from openharness.tools.base import ToolExecutionContext
-from openharness.tools.base import ToolRegistry
+from openharness.tools.base import ToolExecutionContext, ToolRegistry
 
 AUTO_COMPACT_STATUS_MESSAGE = "Auto-compacting conversation memory to keep things fast and focused."
 REACTIVE_COMPACT_STATUS_MESSAGE = "Prompt too long; compacting conversation memory and retrying."
@@ -66,28 +66,8 @@ MAX_TRACKED_ACTIVE_ARTIFACTS = 8
 MAX_TRACKED_VERIFIED_WORK = 10
 
 
-def _is_prompt_too_long_error(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return any(
-        needle in text
-        for needle in (
-            "prompt too long",
-            "context_length_exceeded",
-            "context length",
-            "maximum context",
-            "context window",
-            "input tokens exceed",
-            "messages resulted in",
-            "reduce the length of the messages",
-            "configured limit",
-            "too many tokens",
-            "too large for the model",
-            "maximum context length",
-            "exceed_context",
-            "exceeds the available context size",
-            "available context size",
-        )
-    )
+# Backwards-compatible private alias for tests and callers.
+_is_prompt_too_long_error = is_prompt_too_long_error
 
 
 def _bounded_completion_tokens(max_tokens: int, context_window_tokens: int | None = None) -> int:

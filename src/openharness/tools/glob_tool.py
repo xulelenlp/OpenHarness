@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import AliasChoices, BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.fs import resolve_path
 
 
 class GlobToolInput(BaseModel):
@@ -41,21 +42,15 @@ class GlobTool(BaseTool):
         return ToolResult(output="\n".join(matches))
 
 
-def _resolve_path(base: Path, candidate: str | None) -> Path:
-    path = Path(candidate or ".").expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
-
 
 def _resolve_glob_request(base: Path, root_arg: str | None, pattern: str) -> tuple[Path, str]:
     """Return a concrete search root plus a root-relative glob pattern."""
     if not pattern.strip():
-        return (_resolve_path(base, root_arg) if root_arg else base, pattern)
+        return (resolve_path(base, root_arg) if root_arg else base, pattern)
 
     candidate = Path(pattern).expanduser()
     if not candidate.is_absolute():
-        return (_resolve_path(base, root_arg) if root_arg else base, pattern)
+        return (resolve_path(base, root_arg) if root_arg else base, pattern)
 
     parts = candidate.parts
     first_glob_index = next(

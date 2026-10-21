@@ -127,33 +127,44 @@ def list_memory_files(cwd: str | Path) -> list[Path]:
     return sorted(header.path for header in scan_memory_files(cwd, max_files=None))
 
 
-def add_memory_entry(
-    cwd: str | Path,
+def list_memory_files_at(location: MemoryLocation) -> list[Path]:
+    """List memory markdown files in an explicit memory location."""
+    return sorted(
+        header.path
+        for header in scan_memory_files(
+            location.scan_cwd,
+            max_files=None,
+            memory_dir=location.memory_dir,
+        )
+    )
+
+
+def add_memory_entry_at(
+    location: MemoryLocation,
     title: str,
     content: str,
     *,
-    memory_type: MemoryType = DEFAULT_MEMORY_TYPE,
-    scope: MemoryScope = DEFAULT_MEMORY_SCOPE,
+    memory_type: str | None = None,
+    scope: str | None = None,
     description: str = "",
     tags: tuple[str, ...] = (),
+    include_tags: bool = True,
 ) -> Path:
-    """Create or refresh a memory file and append it to MEMORY.md."""
-    if scope == "team":
-        from openharness.memory.team import check_team_memory_secrets, ensure_team_memory_vault
+    """Create or refresh a memory file in *location* and append it to its index.
 
-        secret_error = check_team_memory_secrets(content)
-        if secret_error:
-            raise ValueError(secret_error)
-        memory_dir = ensure_team_memory_vault(cwd)
-    else:
-        memory_dir = get_project_memory_dir(cwd)
+    The project store and ohmo's personal store share this implementation;
+    they differ only in directory, index file, and default type/category.
+    """
+    memory_dir = location.memory_dir
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    effective_type = memory_type or location.default_type
+    category = location.default_category
     slug = sub(r"[^a-zA-Z0-9]+", "_", title.strip().lower()).strip("_") or "memory"
     with exclusive_file_lock(memory_dir / ".memory.lock"):
-        category = "knowledge"
         body = content.strip() + "\n"
-        signature = compute_memory_signature(body, memory_type, category)
+        signature = compute_memory_signature(body, effective_type, category)
         existing = scan_memory_files(
-            cwd,
+            location.scan_cwd,
             max_files=None,
             include_disabled=True,
             include_expired=True,
@@ -178,6 +189,8 @@ def add_memory_entry(
                 old_body,
                 now=now,
                 source=str(metadata.get("source") or "manual"),
+                default_type=effective_type,
+                default_category=category,
             )
             created_at = str(metadata.get("created_at") or now_text)
             memory_id = str(metadata.get("id") or generate_memory_id(now))
@@ -186,34 +199,73 @@ def add_memory_entry(
             created_at = now_text
             memory_id = generate_memory_id(now)
 
-        metadata.update(
-            {
-                "schema_version": SCHEMA_VERSION,
-                "id": memory_id,
-                "name": title.strip(),
-                "description": description.strip() or first_content_line(body) or title.strip(),
-                "type": str(metadata.get("type") or memory_type),
-                "scope": str(metadata.get("scope") or scope),
-                "category": str(metadata.get("category") or category),
-                "importance": max(coerce_int(metadata.get("importance"), default=0), 1),
-                "source": "manual",
-                "signature": signature,
-                "created_at": created_at,
-                "updated_at": now_text,
-                "ttl_days": metadata.get("ttl_days"),
-                "disabled": False,
-                "supersedes": metadata.get("supersedes") or [],
-                "tags": list(dict.fromkeys(str(tag).strip() for tag in tags if str(tag).strip())),
-            }
-        )
+        updated = {
+            "schema_version": SCHEMA_VERSION,
+            "id": memory_id,
+            "name": title.strip(),
+            "description": description.strip() or first_content_line(body) or title.strip(),
+            "type": str(metadata.get("type") or effective_type),
+            "category": str(metadata.get("category") or category),
+            "importance": max(coerce_int(metadata.get("importance"), default=0), 1),
+            "source": "manual",
+            "signature": signature,
+            "created_at": created_at,
+            "updated_at": now_text,
+            "ttl_days": metadata.get("ttl_days"),
+            "disabled": False,
+            "supersedes": metadata.get("supersedes") or [],
+        }
+        if scope is not None:
+            updated["scope"] = str(metadata.get("scope") or scope)
+        if include_tags:
+            updated["tags"] = list(
+                dict.fromkeys(str(tag).strip() for tag in tags if str(tag).strip())
+            )
+        metadata.update(updated)
         atomic_write_text(path, render_memory_file(metadata, body))
 
-        entrypoint = memory_dir / "MEMORY.md"
+        entrypoint = location.entrypoint
         index_text = entrypoint.read_text(encoding="utf-8") if entrypoint.exists() else "# Memory Index\n"
         if path.name not in index_text:
             index_text = index_text.rstrip() + f"\n- [{title}]({path.name})\n"
             atomic_write_text(entrypoint, index_text)
     return path
+
+
+def add_memory_entry(
+    cwd: str | Path,
+    title: str,
+    content: str,
+    *,
+    memory_type: MemoryType = DEFAULT_MEMORY_TYPE,
+    scope: MemoryScope = DEFAULT_MEMORY_SCOPE,
+    description: str = "",
+    tags: tuple[str, ...] = (),
+) -> Path:
+    """Create or refresh a memory file and append it to MEMORY.md."""
+    if scope == "team":
+        from openharness.memory.team import check_team_memory_secrets, ensure_team_memory_vault
+
+        secret_error = check_team_memory_secrets(content)
+        if secret_error:
+            raise ValueError(secret_error)
+        memory_dir = ensure_team_memory_vault(cwd)
+    else:
+        memory_dir = get_project_memory_dir(cwd)
+    location = MemoryLocation(
+        scan_cwd=Path(cwd),
+        memory_dir=memory_dir,
+        entrypoint=memory_dir / "MEMORY.md",
+    )
+    return add_memory_entry_at(
+        location,
+        title,
+        content,
+        memory_type=memory_type,
+        scope=scope,
+        description=description,
+        tags=tags,
+    )
 
 
 def remove_memory_entry(cwd: str | Path, name: str) -> bool:

@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 
 from openharness.sandbox import SandboxUnavailableError
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.process import terminate_process
 from openharness.utils.shell import create_shell_subprocess
-
 
 _READ_REMAINING_OUTPUT_TIMEOUT_SECONDS = 2.0
 
@@ -54,14 +54,14 @@ class BashTool(BaseTool):
             return ToolResult(output=str(exc), is_error=True)
         except asyncio.CancelledError:
             if process is not None:
-                await _terminate_process(process, force=False)
+                await terminate_process(process, force=False)
             raise
 
         try:
             await asyncio.wait_for(process.wait(), timeout=arguments.timeout_seconds)
         except asyncio.TimeoutError:
             output_buffer = await _drain_available_output(process.stdout)
-            await _terminate_process(process, force=True)
+            await terminate_process(process, force=True)
             output_buffer.extend(await _read_remaining_output(process))
             return ToolResult(
                 output=_format_timeout_output(
@@ -73,7 +73,7 @@ class BashTool(BaseTool):
                 metadata={"returncode": process.returncode, "timed_out": True},
             )
         except asyncio.CancelledError:
-            await _terminate_process(process, force=False)
+            await terminate_process(process, force=False)
             raise
 
         output_buffer = await _read_remaining_output(process)
@@ -83,21 +83,6 @@ class BashTool(BaseTool):
             is_error=process.returncode != 0,
             metadata={"returncode": process.returncode},
         )
-
-
-async def _terminate_process(process: asyncio.subprocess.Process, *, force: bool) -> None:
-    if process.returncode is not None:
-        return
-    if force:
-        process.kill()
-        await process.wait()
-        return
-    process.terminate()
-    try:
-        await asyncio.wait_for(process.wait(), timeout=2.0)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
 
 
 async def _read_remaining_output(process: asyncio.subprocess.Process) -> bytearray:

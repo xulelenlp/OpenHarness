@@ -2,16 +2,38 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+import json
 import logging
 import mimetypes
-from pathlib import Path
-import json
 import os
 import re
 import string
+from dataclasses import dataclass
+from pathlib import Path
 
+from ohmo.gateway.config import load_gateway_config
+from ohmo.gateway.group_tool import (
+    CreateFeishuGroup,
+    OhmoCreateFeishuGroupTool,
+    PublishGroupWelcome,
+)
+from ohmo.gateway.provider_commands import (
+    handle_gateway_model_command,
+    handle_gateway_provider_command,
+)
+from ohmo.gateway.text import content_snippet
+from ohmo.group_registry import load_managed_group_record, normalize_cwd
+from ohmo.memory import create_memory_command_backend
+from ohmo.prompts import build_ohmo_system_prompt
+from ohmo.session_storage import OhmoSessionBackend
+from ohmo.workspace import (
+    get_memory_dir,
+    get_plugins_dir,
+    get_sessions_dir,
+    get_skills_dir,
+    initialize_workspace,
+)
 from openharness.channels.bus.events import InboundMessage
 from openharness.commands import CommandContext, CommandResult, lookup_skill_slash_command
 from openharness.engine.messages import (
@@ -31,16 +53,13 @@ from openharness.engine.stream_events import (
     ToolExecutionStarted,
 )
 from openharness.prompts import build_runtime_system_prompt
-from openharness.ui.runtime import RuntimeBundle, _last_user_text, build_runtime, close_runtime, start_runtime
-
-from ohmo.gateway.config import load_gateway_config
-from ohmo.gateway.group_tool import CreateFeishuGroup, OhmoCreateFeishuGroupTool, PublishGroupWelcome
-from ohmo.gateway.provider_commands import handle_gateway_model_command, handle_gateway_provider_command
-from ohmo.group_registry import load_managed_group_record, normalize_cwd
-from ohmo.memory import create_memory_command_backend
-from ohmo.prompts import build_ohmo_system_prompt
-from ohmo.session_storage import OhmoSessionBackend
-from ohmo.workspace import get_memory_dir, get_plugins_dir, get_sessions_dir, get_skills_dir, initialize_workspace
+from openharness.ui.runtime import (
+    RuntimeBundle,
+    _last_user_text,
+    build_runtime,
+    close_runtime,
+    start_runtime,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +193,7 @@ class OhmoSessionRuntimePool:
                     "ohmo runtime reusing session session_key=%s session_id=%s prompt=%r",
                     session_key,
                     bundle.session_id,
-                    _content_snippet(latest_user_prompt or ""),
+                    content_snippet(latest_user_prompt or ""),
                 )
                 bundle.engine.set_system_prompt(self._runtime_system_prompt(bundle, latest_user_prompt))
                 return bundle
@@ -184,7 +203,7 @@ class OhmoSessionRuntimePool:
             "ohmo runtime creating session session_key=%s restored=%s prompt=%r",
             session_key,
             bool(snapshot),
-            _content_snippet(latest_user_prompt or ""),
+            content_snippet(latest_user_prompt or ""),
         )
         bundle = await build_runtime(
             cwd=session_cwd,
@@ -234,7 +253,7 @@ class OhmoSessionRuntimePool:
             message.chat_id,
             session_key,
             bundle.session_id,
-            _content_snippet(user_prompt),
+            content_snippet(user_prompt),
         )
 
         command_context: CommandContext | None = None
@@ -433,7 +452,7 @@ class OhmoSessionRuntimePool:
                         "ohmo runtime image input rejected; retrying without image blocks session_key=%s session_id=%s message=%r",
                         session_key,
                         bundle.session_id,
-                        _content_snippet(event.message),
+                        content_snippet(event.message),
                     )
                     _strip_image_blocks_from_engine_history(bundle.engine)
                     yield GatewayStreamUpdate(
@@ -489,7 +508,7 @@ class OhmoSessionRuntimePool:
                 "ohmo runtime processing complete session_key=%s session_id=%s reply=%r",
                 session_key,
                 bundle.session_id,
-                _content_snippet(reply),
+                content_snippet(reply),
             )
             final_media = _extract_final_reply_media(reply, emitted_media)
             metadata: dict[str, object] = {"_session_key": session_key}
@@ -546,7 +565,7 @@ class OhmoSessionRuntimePool:
                 "ohmo runtime status session_key=%s session_id=%s message=%r",
                 session_key,
                 bundle.session_id,
-                _content_snippet(event.message),
+                content_snippet(event.message),
             )
             yield GatewayStreamUpdate(
                 kind="progress",
@@ -609,7 +628,7 @@ class OhmoSessionRuntimePool:
                 "ohmo runtime error session_key=%s session_id=%s message=%r",
                 session_key,
                 bundle.session_id,
-                _content_snippet(event.message),
+                content_snippet(event.message),
             )
             yield GatewayStreamUpdate(
                 kind="error",
@@ -784,14 +803,6 @@ class OhmoSessionRuntimePool:
         metadata.pop("ohmo_group_request", None)
         metadata.pop("_suppress_next_user_goal", None)
         OhmoSessionRuntimePool._unregister_group_tool(bundle)
-
-
-def _content_snippet(text: str, *, limit: int = 160) -> str:
-    """Return a compact single-line preview for logs."""
-    normalized = " ".join(text.split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 3] + "..."
 
 
 def _sanitize_snapshot_messages(raw_messages: object) -> list[dict[str, object]] | None:

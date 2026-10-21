@@ -224,7 +224,7 @@ class ImageToTextTool(BaseTool):
                 tools=[],
             )
         ):
-            from openharness.api.client import ApiTextDeltaEvent, ApiMessageCompleteEvent
+            from openharness.api.client import ApiMessageCompleteEvent, ApiTextDeltaEvent
 
             if isinstance(event, ApiTextDeltaEvent):
                 collected_text += event.text

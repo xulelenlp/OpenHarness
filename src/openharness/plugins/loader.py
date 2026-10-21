@@ -11,8 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable
 
-import yaml
-
 from openharness.config.paths import get_config_dir
 from openharness.coordinator.agent_definitions import (
     AGENT_COLORS,
@@ -29,6 +27,7 @@ from openharness.plugins.schemas import PluginManifest
 from openharness.plugins.types import LoadedPlugin, PluginCommandDefinition
 from openharness.skills.loader import _parse_skill_metadata
 from openharness.skills.types import SkillDefinition
+from openharness.utils.frontmatter import parse_markdown_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -186,25 +185,6 @@ def load_plugin(path: Path, enabled_plugins: dict[str, bool]) -> LoadedPlugin | 
         mcp_servers=mcp,
         tools=tools,
     )
-
-
-def _parse_frontmatter(content: str, path: Path) -> tuple[dict[str, Any], str]:
-    if not content.startswith("---\n"):
-        return {}, content
-    marker = "\n---\n"
-    end_index = content.find(marker, 4)
-    if end_index == -1:
-        return {}, content
-    raw_frontmatter = content[4:end_index]
-    body = content[end_index + len(marker):]
-    try:
-        parsed = yaml.safe_load(raw_frontmatter) or {}
-    except yaml.YAMLError:
-        logger.debug("Failed to parse frontmatter from %s", path, exc_info=True)
-        parsed = {}
-    if not isinstance(parsed, dict):
-        parsed = {}
-    return parsed, body.strip()
 
 
 def _extract_description(frontmatter: dict[str, Any], body: str, *, fallback: str) -> str:
@@ -462,7 +442,7 @@ def _load_single_command_file(
         return None
     seen.add(resolved)
     content = file_path.read_text(encoding="utf-8")
-    frontmatter, body = _parse_frontmatter(content, file_path)
+    frontmatter, body = parse_markdown_frontmatter(content)
     if metadata_override:
         frontmatter = {
             **frontmatter,

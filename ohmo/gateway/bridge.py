@@ -7,23 +7,15 @@ import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from openharness.channels.bus.events import InboundMessage
-from openharness.channels.bus.events import OutboundMessage
-from openharness.channels.bus.queue import MessageBus
-
-from ohmo.group_registry import load_managed_group_record
 from ohmo.gateway.router import session_key_for_message
 from ohmo.gateway.runtime import OhmoSessionRuntimePool
+from ohmo.gateway.text import content_snippet
+from ohmo.group_registry import load_managed_group_record
+from openharness.channels.bus.events import InboundMessage, OutboundMessage
+from openharness.channels.bus.queue import MessageBus
+from openharness.channels.policies import normalize_feishu_group_policy
 
 logger = logging.getLogger(__name__)
-
-
-def _content_snippet(text: str, *, limit: int = 160) -> str:
-    """Return a single-line preview suitable for logs."""
-    normalized = " ".join(text.split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 3] + "..."
 
 
 def _format_gateway_error(exc: Exception) -> str:
@@ -69,7 +61,7 @@ class OhmoGatewayBridge:
         self._runtime_pool = runtime_pool
         self._restart_gateway = restart_gateway
         self._workspace = workspace
-        self._feishu_group_policy = _normalize_feishu_group_policy(feishu_group_policy)
+        self._feishu_group_policy = normalize_feishu_group_policy(feishu_group_policy)
         self._running = False
         self._session_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_cancel_reasons: dict[str, str] = {}
@@ -91,7 +83,7 @@ class OhmoGatewayBridge:
                     message.chat_id,
                     message.sender_id,
                     self._feishu_group_policy,
-                    _content_snippet(message.content),
+                    content_snippet(message.content),
                 )
                 continue
 
@@ -102,7 +94,7 @@ class OhmoGatewayBridge:
                 message.chat_id,
                 message.sender_id,
                 session_key,
-                _content_snippet(message.content),
+                content_snippet(message.content),
             )
             if message.content.strip() == "/stop":
                 await self._handle_stop(message, session_key)
@@ -273,7 +265,7 @@ class OhmoGatewayBridge:
                     message.chat_id,
                     session_key,
                     update.kind,
-                    _content_snippet(update.text),
+                    content_snippet(update.text),
                 )
                 await self._bus.publish_outbound(
                     OutboundMessage(
@@ -300,7 +292,7 @@ class OhmoGatewayBridge:
                 message.chat_id,
                 message.sender_id,
                 session_key,
-                _content_snippet(message.content),
+                content_snippet(message.content),
             )
             reply = _format_gateway_error(exc)
         if not reply:
@@ -316,7 +308,7 @@ class OhmoGatewayBridge:
             message.channel,
             message.chat_id,
             session_key,
-            _content_snippet(reply),
+            content_snippet(reply),
         )
         await self._bus.publish_outbound(
             OutboundMessage(
@@ -386,23 +378,6 @@ def _build_group_agent_prompt(raw_request: str) -> str:
         "instead of calling the tool. Do not create the group via bash or direct API calls.\n\n"
         f"User /group request:\n{request}"
     )
-
-
-def _normalize_feishu_group_policy(value: str | None) -> str:
-    normalized = str(value or "").strip().lower().replace("-", "_")
-    aliases = {
-        "all": "open",
-        "always": "open",
-        "always_reply": "open",
-        "managed_mention": "managed_or_mention",
-        "managed_or_at": "managed_or_mention",
-        "at": "mention",
-        "mentions": "mention",
-    }
-    normalized = aliases.get(normalized, normalized)
-    if normalized in {"open", "mention", "managed", "managed_or_mention"}:
-        return normalized
-    return "managed_or_mention"
 
 
 def _message_mentions_bot(message: InboundMessage) -> bool:

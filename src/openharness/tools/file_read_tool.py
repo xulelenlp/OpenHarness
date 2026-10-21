@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.fs import resolve_path
 
 
 class FileReadToolInput(BaseModel):
@@ -33,7 +32,7 @@ class FileReadTool(BaseTool):
         arguments: FileReadToolInput,
         context: ToolExecutionContext,
     ) -> ToolResult:
-        path = _resolve_path(context.cwd, arguments.path)
+        path = resolve_path(context.cwd, arguments.path)
 
         from openharness.sandbox.session import is_docker_sandbox_active
 
@@ -64,9 +63,3 @@ class FileReadTool(BaseTool):
             return ToolResult(output=f"(no content in selected range for {path})")
         return ToolResult(output="\n".join(numbered))
 
-
-def _resolve_path(base: Path, candidate: str) -> Path:
-    path = Path(candidate).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()

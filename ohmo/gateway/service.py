@@ -16,10 +16,6 @@ from pathlib import Path
 if sys.platform == "win32":
     import ctypes
 
-from openharness.channels.bus.events import OutboundMessage
-from openharness.channels.bus.queue import MessageBus
-from openharness.channels.impl.manager import ChannelManager
-
 from ohmo.gateway.bridge import OhmoGatewayBridge
 from ohmo.gateway.config import build_channel_manager_config, load_gateway_config
 from ohmo.gateway.models import GatewayState
@@ -31,6 +27,9 @@ from ohmo.workspace import (
     get_workspace_root,
     initialize_workspace,
 )
+from openharness.channels.bus.events import OutboundMessage
+from openharness.channels.bus.queue import MessageBus
+from openharness.channels.impl.manager import ChannelManager
 
 logger = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[2]

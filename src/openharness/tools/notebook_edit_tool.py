@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.fs import resolve_path
 
 
 class NotebookEditToolInput(BaseModel):
@@ -34,7 +35,7 @@ class NotebookEditTool(BaseTool):
         arguments: NotebookEditToolInput,
         context: ToolExecutionContext,
     ) -> ToolResult:
-        path = _resolve_path(context.cwd, arguments.path)
+        path = resolve_path(context.cwd, arguments.path)
         notebook = _load_notebook(path, create_if_missing=arguments.create_if_missing)
         if notebook is None:
             return ToolResult(output=f"Notebook not found: {path}", is_error=True)
@@ -58,12 +59,6 @@ class NotebookEditTool(BaseTool):
         path.write_text(json.dumps(notebook, indent=2) + "\n", encoding="utf-8")
         return ToolResult(output=f"Updated notebook cell {arguments.cell_index} in {path}")
 
-
-def _resolve_path(base: Path, candidate: str) -> Path:
-    path = Path(candidate).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
 
 
 def _load_notebook(path: Path, *, create_if_missing: bool) -> dict | None:

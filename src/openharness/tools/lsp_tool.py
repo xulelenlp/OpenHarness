@@ -15,6 +15,7 @@ from openharness.services.lsp import (
     workspace_symbol_search,
 )
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.fs import resolve_path
 
 
 class LspToolInput(BaseModel):
@@ -69,7 +70,7 @@ class LspTool(BaseTool):
             return ToolResult(output=_format_symbol_locations(results, root))
 
         assert arguments.file_path is not None  # validated above
-        file_path = _resolve_path(root, arguments.file_path)
+        file_path = resolve_path(root, arguments.file_path)
         if not file_path.exists():
             return ToolResult(output=f"File not found: {file_path}", is_error=True)
         if file_path.suffix != ".py":
@@ -117,12 +118,6 @@ class LspTool(BaseTool):
             parts.append(f"docstring: {result.docstring.strip()}")
         return ToolResult(output="\n".join(parts))
 
-
-def _resolve_path(base: Path, candidate: str) -> Path:
-    path = Path(candidate).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
 
 
 def _display_path(path: Path, root: Path) -> str:

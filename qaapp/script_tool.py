@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from openharness.sandbox import SandboxUnavailableError
 from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+from openharness.utils.process import terminate_process
 from openharness.utils.shell import create_shell_subprocess
 from qaapp.config import ConversationWorkspaceConfig
 from qaapp.conversation_files import ConversationPaths, sanitize_filename
@@ -138,9 +139,9 @@ class RunScriptTool(BaseTool):
             await asyncio.wait_for(process.wait(), timeout=timeout)
         except TimeoutError:
             timed_out = True
-            await _terminate_process(process, force=True)
+            await terminate_process(process, force=True, timeout=3.0)
         except asyncio.CancelledError:
-            await _terminate_process(process, force=False)
+            await terminate_process(process, force=False, timeout=3.0)
             raise
 
         output = await _read_output(process)
@@ -219,23 +220,6 @@ class RunScriptTool(BaseTool):
                 return "run_script 执行失败：服务端没有找到 node 可执行文件"
             return [node, str(script_path), *arguments.args]
         return [sys.executable, str(script_path), *arguments.args]
-
-
-async def _terminate_process(process: asyncio.subprocess.Process, *, force: bool) -> None:
-    if process.returncode is not None:
-        return
-    if force:
-        process.kill()
-    else:
-        process.terminate()
-    try:
-        await asyncio.wait_for(process.wait(), timeout=3.0)
-    except TimeoutError:
-        process.kill()
-        try:
-            await asyncio.wait_for(process.wait(), timeout=3.0)
-        except TimeoutError:  # pragma: no cover - 极端情况
-            pass
 
 
 async def _read_output(process: asyncio.subprocess.Process) -> str:

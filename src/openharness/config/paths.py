@@ -8,6 +8,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from openharness.utils.git import find_git_root
+
 _DEFAULT_BASE_DIR = ".openharness"
 _CONFIG_FILE_NAME = "settings.json"
 
@@ -29,18 +31,6 @@ def get_config_dir() -> Path:
     return config_dir
 
 
-def _find_git_root(start: Path) -> Path | None:
-    """Find the nearest git root containing start, if any."""
-    current = start
-    while True:
-        if (current / ".git").exists():
-            return current
-        parent = current.parent
-        if parent == current:
-            return None
-        current = parent
-
-
 def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
     """Return the nearest project ``.openharness/settings.json`` above cwd, if any.
 
@@ -55,7 +45,7 @@ def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
     if not start.is_dir():
         start = start.parent
 
-    git_root = _find_git_root(start)
+    git_root = find_git_root(start)
     home = Path.home().resolve()
     current = start
     while True:

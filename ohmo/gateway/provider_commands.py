@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ohmo.gateway.config import load_gateway_config, save_gateway_config
 from openharness.auth.manager import AuthManager
 from openharness.config import load_settings
-
-from ohmo.gateway.config import load_gateway_config, save_gateway_config
 
 
 def handle_gateway_provider_command(args: str, *, workspace: str | Path | None) -> tuple[str, bool]:

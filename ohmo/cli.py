@@ -9,9 +9,6 @@ from pathlib import Path
 
 import typer
 
-from openharness.auth.manager import AuthManager
-from openharness.config import load_settings
-
 from ohmo.gateway.config import load_gateway_config, save_gateway_config
 from ohmo.gateway.models import GatewayConfig
 from ohmo.gateway.service import (
@@ -26,14 +23,21 @@ from ohmo.session_storage import OhmoSessionBackend
 from ohmo.workspace import (
     get_gateway_config_path,
     get_logs_dir,
-    get_workspace_root,
     get_soul_path,
     get_state_path,
     get_user_path,
+    get_workspace_root,
     initialize_workspace,
     workspace_health,
 )
-
+from openharness.auth.manager import AuthManager
+from openharness.config import load_settings
+from openharness.ui.prompts import (
+    can_use_questionary,
+    confirm_prompt,
+    select_from_menu,
+    text_prompt,
+)
 
 app = typer.Typer(
     name="abcag",
@@ -55,89 +59,6 @@ _INTERACTIVE_CHANNELS = ("telegram", "slack", "discord", "feishu")
 _WORKSPACE_HELP = "Path to the ohmo workspace (defaults to ~/.ohmo)"
 
 
-def _can_use_questionary() -> bool:
-    """Return True when a real interactive terminal is available."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return False
-    if sys.stdin is not sys.__stdin__ or sys.stdout is not sys.__stdout__:
-        return False
-    try:
-        import questionary  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def _select_with_questionary(
-    title: str,
-    options: list[tuple[str, str]],
-    *,
-    default_value: str | None = None,
-) -> str:
-    import questionary
-
-    choices = [
-        questionary.Choice(
-            title=label,
-            value=value,
-            checked=(value == default_value),
-        )
-        for value, label in options
-    ]
-    result = questionary.select(title, choices=choices, default=default_value).ask()
-    if result is None:
-        raise typer.Abort()
-    return str(result)
-
-
-def _confirm_prompt(message: str, *, default: bool = False) -> bool:
-    """Ask for confirmation, preferring questionary in a real TTY."""
-    if _can_use_questionary():
-        import questionary
-
-        result = questionary.confirm(message, default=default).ask()
-        if result is None:
-            raise typer.Abort()
-        return bool(result)
-    return typer.confirm(message, default=default)
-
-
-def _text_prompt(message: str, *, default: str = "") -> str:
-    """Prompt for text input, preferring questionary in a real TTY."""
-    if _can_use_questionary():
-        import questionary
-
-        result = questionary.text(message, default=default).ask()
-        if result is None:
-            raise typer.Abort()
-        return str(result)
-    return typer.prompt(message, default=default)
-
-
-def _select_from_menu(
-    title: str,
-    options: list[tuple[str, str]],
-    *,
-    default_value: str | None = None,
-) -> str:
-    """Render a simple numbered picker and return the selected value."""
-    if _can_use_questionary():
-        return _select_with_questionary(title, options, default_value=default_value)
-    print(title)
-    default_index = 1
-    for index, (value, label) in enumerate(options, 1):
-        marker = " (default)" if value == default_value else ""
-        if value == default_value:
-            default_index = index
-        print(f"  {index}. {label}{marker}")
-    raw = typer.prompt("Choose", default=str(default_index))
-    try:
-        selected = options[int(raw) - 1]
-    except (ValueError, IndexError):
-        raise typer.BadParameter(f"Invalid selection: {raw}") from None
-    return selected[0]
-
-
 def _format_provider_profile_label(info: dict[str, object]) -> str:
     label = str(info["label"])
     if bool(info["configured"]):
@@ -154,7 +75,7 @@ def _prompt_provider_profile(workspace: str | Path) -> str:
         "openai-compatible": ("OpenAI / OpenRouter", "fg:#9ece6a"),
     }
 
-    if _can_use_questionary():
+    if can_use_questionary():
         import questionary
 
         choices = []
@@ -185,7 +106,7 @@ def _prompt_provider_profile(workspace: str | Path) -> str:
         if hint is not None:
             label = f"{label} ({hint[0]})"
         options.append((name, label))
-    return _select_from_menu(
+    return select_from_menu(
         "Choose provider profile for ohmo:",
         options,
         default_value=default_value,
@@ -201,43 +122,43 @@ def _prompt_channels(existing: GatewayConfig) -> tuple[list[str], dict[str, dict
         prior = dict(existing.channel_configs.get(channel, {}))
         if current:
             enabled.append(channel)
-            if not _confirm_prompt(f"Reconfigure {channel}?", default=False):
+            if not confirm_prompt(f"Reconfigure {channel}?", default=False):
                 configs[channel] = prior
                 continue
-        elif not _confirm_prompt(f"Enable {channel}?", default=False):
+        elif not confirm_prompt(f"Enable {channel}?", default=False):
             continue
         else:
             enabled.append(channel)
-        allow_from_raw = _text_prompt(
+        allow_from_raw = text_prompt(
             f"{channel} allow_from (comma separated user/chat IDs; leave blank to deny all; '*' for everyone)",
             default=",".join(prior.get("allow_from", [])),
         )
         allow_from = [item.strip() for item in allow_from_raw.split(",") if item.strip()]
         config: dict[str, object] = {"allow_from": allow_from}
         if channel == "telegram":
-            config["token"] = _text_prompt(
+            config["token"] = text_prompt(
                 "Telegram bot token",
                 default=str(prior.get("token", "")),
             )
-            config["reply_to_message"] = _confirm_prompt(
+            config["reply_to_message"] = confirm_prompt(
                 "Reply to the original Telegram message?",
                 default=bool(prior.get("reply_to_message", True)),
             )
         elif channel == "slack":
-            config["bot_token"] = _text_prompt(
+            config["bot_token"] = text_prompt(
                 "Slack bot token",
                 default=str(prior.get("bot_token", "")),
             )
-            config["app_token"] = _text_prompt(
+            config["app_token"] = text_prompt(
                 "Slack app token",
                 default=str(prior.get("app_token", "")),
             )
             config["mode"] = "socket"
-            config["reply_in_thread"] = _confirm_prompt(
+            config["reply_in_thread"] = confirm_prompt(
                 "Reply in thread?",
                 default=bool(prior.get("reply_in_thread", True)),
             )
-            config["group_policy"] = _select_from_menu(
+            config["group_policy"] = select_from_menu(
                 "Slack group policy:",
                 [
                     ("mention", "Mention only"),
@@ -247,21 +168,21 @@ def _prompt_channels(existing: GatewayConfig) -> tuple[list[str], dict[str, dict
                 default_value=str(prior.get("group_policy", "mention")),
             )
         elif channel == "discord":
-            config["token"] = _text_prompt(
+            config["token"] = text_prompt(
                 "Discord bot token",
                 default=str(prior.get("token", "")),
             )
-            config["gateway_url"] = _text_prompt(
+            config["gateway_url"] = text_prompt(
                 "Discord gateway URL",
                 default=str(prior.get("gateway_url", "wss://gateway.discord.gg/?v=10&encoding=json")),
             )
             config["intents"] = int(
-                _text_prompt(
+                text_prompt(
                     "Discord intents bitmask",
                     default=str(prior.get("intents", 513)),
                 )
             )
-            config["group_policy"] = _select_from_menu(
+            config["group_policy"] = select_from_menu(
                 "Discord group policy:",
                 [
                     ("mention", "Mention only"),
@@ -270,7 +191,7 @@ def _prompt_channels(existing: GatewayConfig) -> tuple[list[str], dict[str, dict
                 default_value=str(prior.get("group_policy", "mention")),
             )
         elif channel == "feishu":
-            config["domain"] = _select_from_menu(
+            config["domain"] = select_from_menu(
                 "Feishu domain:",
                 [
                     ("https://open.feishu.cn", "Feishu (China)"),
@@ -278,27 +199,27 @@ def _prompt_channels(existing: GatewayConfig) -> tuple[list[str], dict[str, dict
                 ],
                 default_value=str(prior.get("domain", "https://open.feishu.cn")),
             )
-            config["app_id"] = _text_prompt(
+            config["app_id"] = text_prompt(
                 "Feishu app id",
                 default=str(prior.get("app_id", "")),
             )
-            config["app_secret"] = _text_prompt(
+            config["app_secret"] = text_prompt(
                 "Feishu app secret",
                 default=str(prior.get("app_secret", "")),
             )
-            config["encrypt_key"] = _text_prompt(
+            config["encrypt_key"] = text_prompt(
                 "Feishu encrypt key",
                 default=str(prior.get("encrypt_key", "")),
             )
-            config["verification_token"] = _text_prompt(
+            config["verification_token"] = text_prompt(
                 "Feishu verification token",
                 default=str(prior.get("verification_token", "")),
             )
-            config["react_emoji"] = _text_prompt(
+            config["react_emoji"] = text_prompt(
                 "Feishu reaction emoji",
                 default=str(prior.get("react_emoji", "OK")),
             )
-            config["group_policy"] = _select_from_menu(
+            config["group_policy"] = select_from_menu(
                 "Feishu group policy:",
                 [
                     ("managed_or_mention", "Managed groups open; other groups require @mention"),
@@ -312,12 +233,12 @@ def _prompt_channels(existing: GatewayConfig) -> tuple[list[str], dict[str, dict
                 prior_bot_names_default = prior_bot_names
             else:
                 prior_bot_names_default = ",".join(str(item) for item in prior_bot_names)
-            bot_names_raw = _text_prompt(
+            bot_names_raw = text_prompt(
                 "Feishu bot mention names (comma separated)",
                 default=prior_bot_names_default,
             )
             config["bot_names"] = [item.strip() for item in bot_names_raw.split(",") if item.strip()]
-            config["bot_open_id"] = _text_prompt(
+            config["bot_open_id"] = text_prompt(
                 "Feishu bot open_id for exact mention detection (optional)",
                 default=str(prior.get("bot_open_id", "")),
             )
@@ -330,22 +251,22 @@ def _run_gateway_config_wizard(workspace: str | Path) -> GatewayConfig:
     existing = load_gateway_config(workspace)
     provider_profile = _prompt_provider_profile(workspace)
     enabled_channels, channel_configs = _prompt_channels(existing)
-    send_progress = _confirm_prompt(
+    send_progress = confirm_prompt(
         "Send progress updates to channels?",
         default=existing.send_progress,
     )
-    send_tool_hints = _confirm_prompt(
+    send_tool_hints = confirm_prompt(
         "Send tool hints to channels?",
         default=existing.send_tool_hints,
     )
-    allow_remote_admin_commands = _confirm_prompt(
+    allow_remote_admin_commands = confirm_prompt(
         "Allow explicitly listed administrative slash commands from remote channels?",
         default=existing.allow_remote_admin_commands,
     )
     default_allowlist = ", ".join(existing.allowed_remote_admin_commands)
     allowed_remote_admin_commands: list[str] = []
     if allow_remote_admin_commands:
-        allowlist_raw = _text_prompt(
+        allowlist_raw = text_prompt(
             "Allowed remote admin commands (comma-separated, e.g. permissions, plan)",
             default=default_allowlist,
         )
@@ -400,7 +321,7 @@ def _maybe_restart_gateway(*, cwd: str | Path, workspace: str | Path) -> None:
     state = gateway_status(cwd, workspace)
     if not state.running:
         return
-    if not _confirm_prompt("Gateway is running. Restart now to apply changes?", default=True):
+    if not confirm_prompt("Gateway is running. Restart now to apply changes?", default=True):
         print("Configuration saved. Restart later with `ohmo gateway restart`.")
         return
     stop_gateway_process(cwd, workspace)
