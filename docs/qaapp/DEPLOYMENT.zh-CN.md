@@ -625,6 +625,9 @@ qaapp 额外注入：
 - `config/backend/.env_dev` / `.env_prod` 是模板，**不要提交真实密钥**；
   模板里的 key/password 应为空，由部署时填写。
 - 历史提交中如出现过明文 key，请视为已泄露并立即轮换。
+- `.env` 里的密码 / Token 可写成 `ENC[...]`（`python scripts/env_crypt.py encrypt config/backend/.env`），
+  服务读取时自动还原；无需密钥文件，启动方式不变。该方案是可逆编码，
+  用于避免明文直接暴露，不能替代密钥管理服务。
 
 ### 9.10 其它
 

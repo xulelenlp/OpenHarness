@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Changed
 
+- **`.env` 密码 / Token 编码**：新增 `scripts/env_crypt.py`（`ENC[...]` 编解码，兼容既有 `DB_PASSWORD=ENC[...]` 格式），`qaapp` / `abc` / `abcag` 读取 `.env` 时自动还原；覆盖 `DB_PASSWORD` / `REDIS_PASSWORD` / `*_API_KEY` / `*_API_TOKENS` 等变量，空值跳过，无需密钥文件。
 - **配置合并（单文件）**：删除 `config/backend/settings.json`，模型 / 凭据 / 品牌 / 运行参数全部收敛到 `config/backend/.env`；新增 `OPENHARNESS_AUTH_SOURCE`、`OPENHARNESS_API_KEY`、`OPENHARNESS_ALLOW_PROJECT_PLUGINS`、`OPENHARNESS_PROJECT_SKILL_DIRS` 等环境变量支持，并修复 env 覆盖会被 `materialize_active_profile()` 回退的问题。`abc` CLI 与 Web 服务现在共用同一份 `.env`；高级结构化配置（权限 / 沙箱 / MCP / hooks）仍可通过用户级 `~/.openharness/settings.json` 维护。
 - **鉴权错误不再终止服务**：单轮执行里的 `SystemExit`（如模型凭据未配置）降级为 SSE `error` 事件 + `turn_complete`；鉴权报错会提示 `auth_source` 的正确写法并对密钥脱敏。
 

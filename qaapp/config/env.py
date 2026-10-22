@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from openharness.config.env_crypt import decrypt_env
 from openharness.config.layers import expand_env, read_env_file
 from qaapp.config.paths import get_env_file_path
 
@@ -41,8 +42,8 @@ def load_dotenv(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> dict[str, str]:
-    """Read the single effective ``.env`` file."""
-    return read_env_file(env_file(workspace, cwd=cwd, config_dir=config_dir))
+    """Read the single effective ``.env`` file (``ENC[...]`` values decoded)."""
+    return decrypt_env(read_env_file(env_file(workspace, cwd=cwd, config_dir=config_dir)))
 
 
 def merged_env(

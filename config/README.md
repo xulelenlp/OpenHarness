@@ -43,6 +43,21 @@ cp config/frontend/.env_prod config/frontend/.env
 > `.env_dev` / `.env_prod` 只保留占位，真实密钥与密码写在本地 `.env`。
 > 从旧版升级可用 `python scripts/migrate_settings_to_env.py` 迁移 `settings.json`。
 
+### 密码 / Token 编码（`ENC[...]`）
+
+```bash
+python scripts/env_crypt.py encrypt config/backend/.env   # 编码敏感项
+python scripts/env_crypt.py decrypt config/backend/.env   # 还原为明文
+```
+
+- 只处理 `ENCRYPTED_ENV_KEYS` 中的变量（`DB_PASSWORD`、`REDIS_PASSWORD`、`LLM_TOKEN`、
+  `*_API_KEY`、`*_API_TOKENS` 等），空值自动跳过。
+- 编码后形如 `DB_PASSWORD=ENC[...]`；`qaapp` / `abc` / `abcag`
+  读取 `.env` 时自动还原，**不需要密钥文件**，启动方式不变。
+- 这是固定种子的可逆编码（与既有项目格式兼容），用于避免密码/Token 在配置、
+  日志、截图中直接暴露；它不是带私钥的强加密，需要更强安全时请用密钥管理服务
+  注入进程环境变量。
+
 ## 前端 `config/frontend/`
 
 | 文件 | 作用 |

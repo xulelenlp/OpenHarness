@@ -9,6 +9,7 @@
 | `sync_nanobot_channels.sh` | 运维 | 从上游同步 nanobot 渠道实现 |
 | `migrate_memory.py` | 迁移 | 调用 `openharness.memory.migrate`，不要在这里复制迁移逻辑 |
 | `migrate_settings_to_env.py` | 迁移 | 把旧 `settings.json` 的模型/品牌/运行参数迁移到 `config/backend/.env`（幂等、自动备份） |
+| `env_crypt.py` | 运维 | 编解码 `.env` 中的密码与 Token（`ENC[...]`，服务读取时自动还原） |
 | `e2e/` | 手工 E2E | 需要真实模型 / Docker / TUI 的手工验证脚本，**不在 CI 中运行** |
 
 ## 新增脚本的规则

@@ -721,10 +721,11 @@ def apply_project_env(cwd: str | Path | None = None) -> None:
     the file works without exporting variables by hand. Existing process
     environment variables always win, matching ``qaapp``'s env layering.
     """
+    from openharness.config.env_crypt import decrypt_env
     from openharness.config.layers import read_env_file
     from openharness.config.paths import get_env_file_path
 
-    for key, value in read_env_file(get_env_file_path(cwd)).items():
+    for key, value in decrypt_env(read_env_file(get_env_file_path(cwd))).items():
         if key not in os.environ:
             os.environ[key] = value
 
