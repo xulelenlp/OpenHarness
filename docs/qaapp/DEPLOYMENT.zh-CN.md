@@ -62,8 +62,8 @@ which abcqa
 本机可能同时存在两个名为 `openharness` 的环境，**二者都可编辑安装指向本仓库、
 依赖齐全、均可用**：
 
-1. `/Users/xulele/anaconda3/envs/openharness`（`conda activate openharness` 激活的）
-2. `/Users/xulele/Documents/workspace/OpenHarness/.conda/envs/openharness`（仓库自带）
+1. `<conda-env>`（`conda activate openharness` 激活的）
+2. `<repo-root>/.conda/envs/openharness`（仓库自带）
 
 确认当前用的是哪个：
 
@@ -92,8 +92,8 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 查找顺序（**`build_runtime` 每次会话懒构建时读取**）：
 
 1. `OPENHARNESS_CONFIG_DIR` 环境变量指向的 `settings.json`
-2. 项目级 `.openharness/settings.json`（从服务启动的 `--cwd` 向上逐级找，到 git 根或 home 为止）
-3. `~/.openharness/settings.json`
+2. 项目级 `config/backend/base/settings.json`（从服务启动的 `--cwd` 向上逐级找，到 git 根或 home 为止）
+3. `~/.openharness/settings.json`（legacy 用户配置）
 
 **必配项**（否则首次真正调用模型会报「未配置认证」并退出）：
 
@@ -106,8 +106,7 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
       "api_format": "openai",
       "auth_source": "dashscope_api_key",
       "default_model": "qwen-plus",
-      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key": "sk-..."         // ← 改成你自己的 key
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
     }
   },
   "model": "qwen-plus",
@@ -123,8 +122,9 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
   为空时**继承**它，非空时**覆盖**它（该 profile 必须在 `profiles` 中定义）。
 - `permission`、`sandbox`、`mcp_servers` 详见 §9。
 
-> 仓库 `.openharness/settings.json` 内含一个可用的 qwen 示例（**含明文 key，仅供
-> 本地开发**）。生产环境务必换成你自己的凭据，并注意 §9.9 的密钥安全提醒。
+> 仓库 `config/backend/base/settings.json` 只保留 profile 模板，**不含任何明文 key**。
+> 真实凭据放 `config/backend/.env.local`（已 gitignore）或进程环境变量；详见
+> [`config/README.md`](../../config/README.md)。
 
 ### 5.2 ② qaapp 四份配置（**可见路径优先，随 git 走**）
 
@@ -132,39 +132,39 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
 
 | 顺序 | 位置 | 用途 |
 | --- | --- | --- |
-| 1 | `--config-dir <dir>` / 环境变量 `QAAPP_CONFIG_DIR` | 显式指定（容器/多环境部署） |
-| 2 | **`<cwd>/config/<name>`** | **项目内、可见、可提交 git**；服务器 `git pull` + 重启即生效（`<cwd>` = `abcqa webapp run --cwd`，默认当前目录） |
-| 3 | `<ohmo workspace>/<name>`（`OHMO_WORKSPACE` / `~/.ohmo`） | 本机覆盖（可选）：端口、token 这类**不该进 git** 的配置放这里 |
+| 1 | `--config-dir` / `QAAPP_CONFIG_DIR` | 显式指定 backend 目录（容器/多环境部署） |
+| 2 | `config/backend/base/<name>.json` | 项目默认值，提交 git |
+| 3 | `config/backend/<QAAPP_ENV>/<name>.json` | dev/prod 覆盖层 |
+| 4 | `config/backend/local/<name>.json` | 本机覆盖（gitignore） |
+| 5 | `<ohmo workspace>/<name>.json` | 旧部署兼容（仅无项目层时） |
 
-各文件的建议位置：
+对象递归合并、数组整体替换；`${VAR}` 占位符由 `config/backend/.env*` / 进程环境变量展开。
 
-| 文件 | 建议放哪 | 原因 |
+| 文件 | 建议放哪 | 说明 |
 | --- | --- | --- |
-| `agents.json` | **`config/agents.json`（提交 git）** | 所有 Agent 的唯一维护文件，团队共用、随代码发布 |
-| `dangerous-actions.json` | `config/` 或 workspace 均可 | 属于团队策略就能进 git；含本机特例就放 workspace |
-| `datasources.json` | **workspace 或 `config/` 占位符版本** | 真实凭据放本机 workspace；仓库里只放 `${DB_HOST}` 占位符 |
-| `webapp.json` | **建议只放 workspace**（`~/.ohmo/webapp.json`） | 里面有 `api_tokens`；文件级覆盖不做字段合并，放进 git 容易把 token 也提交上去 |
+| `agents.json` | `config/backend/base/agents.json` | 所有 Agent 的唯一维护文件；端点用 `${...}`，环境值放 `.env.local` |
+| `dangerous-actions.json` | `config/backend/base/` | 团队策略随 git；本机特例放 `local/` |
+| `datasources.json` | `config/backend/base/` | 只放 `${DB_*}` / `${REDIS_*}` 占位符；真实凭据放 `.env.local` |
+| `webapp.json` | `config/backend/{base,dev,prod}/` | 端口/鉴权/静态目录按层覆盖；token 用 `${QAAPP_API_TOKEN}` |
 
-启动日志会打印**实际生效的文件**，`abcqa config` 也会给出每个文件的路径与来源
-（`project` / `workspace` / `explicit`）：
+启动日志会打印**实际生效的文件**，`abcqa config` 会给出环境、每层路径、来源与校验结果：
 
 ```bash
-abcqa config         # 看四份配置实际读了哪个文件
+QAAPP_ENV=dev  abcqa config
+QAAPP_ENV=prod abcqa config
 abcqa agents list    # 第一行就是当前生效的 agents.json 路径
 ```
 
 **服务器部署（推荐流程）**：
 
 ```bash
-git pull                                   # agents.json 里的 Agent/端点随代码一起更新
-abcqa config                               # 确认 agents=/path/to/repo/config/agents.json
-abcqa webapp stop && abcqa webapp start     # 配置在启动时加载，必须重启
+git pull
+QAAPP_ENV=prod abcqa config          # 确认 base+prod+local 的层级
+abcqa webapp stop && abcqa webapp start
 ```
 
-> 历史坑：早期版本只认 `~/.ohmo/agents.json`（隐藏目录、**不在仓库里**），服务器
-> `git pull` 更新不到它，于是出现「模型说没配置 power-grid-analysis」或
-> `Unknown external agent ... (none configured)`。现在把 agents.json 放进项目可见的
-> `config/` 即可根治；`abcqa init --config-dir ./config` 可直接生成示例。
+> 旧部署仍可读取 `~/.ohmo/<name>.json` 与早期 `<cwd>/config/<name>.json`；新部署请使用
+> `config/backend/{base,dev,prod,local}`，详见 [`config/README.md`](../../config/README.md)。
 
 四份文件缺失或非法时**回退到内置默认值**（不阻塞启动，仅在日志告警），所以
 「文件在但内容非法」要主动用 `abcqa config` 检查。
@@ -296,7 +296,7 @@ settings 的 `allowed_tools` → 基础权限模式。
 ### 5.3 ③ 外部 Agent：内联在 agents.json（唯一维护文件）
 
 **所有 Agent 只在一个文件里维护：`agents.json`**，仓库内推荐路径
-**`config/agents.json`（可见、提交 git、`git pull` 即生效）**；解析顺序见 配置体系
+**`config/backend/base/agents.json`（可见、提交 git、`git pull` 即生效）**；解析顺序见 配置体系
 （`--config-dir` → `<cwd>/config/` → `~/.ohmo/`）。
 `kind=external` 的 Agent 直接内联它的访问配置，qaapp 在会话启动时把它注入
 `external_agent` 工具（内存注入，不再生成第二份配置文件）：
@@ -362,7 +362,7 @@ settings 的 `allowed_tools` → 基础权限模式。
   → 插件自带的 `plugins/external-agents/external-agents.json`（**仓库自带那份已清空为占位**，
   避免和 agents.json 放两份真实地址）。qaapp 的规则是：**同名以内联配置优先**，其余文件里的
   Agent 依然可用。
-- 旧的示例文件 `qaapp/examples/external-agents.json` 已删除；需要给 `abc` / `abcag`
+- 旧的示例文件 `plugins/external-agents/external-agents.json` 已删除；需要给 `abc` / `abcag`
   等不读 agents.json 的入口配置时，才在插件目录那份里添加。
 
 > **问数类智能体只取最终结果**：数据查询类智能体的流式响应会把推理过程、工具调用与
@@ -444,11 +444,11 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
 cd frontend/webapp
 
 # 方式一：命令行临时指定
-VITE_API_TARGET=http://192.168.139.144:8787 npm run dev
+VITE_API_TARGET=http://your-backend:8787 npm run dev
 
-# 方式二：写进 .env.local
-cp .env.example .env.local
-# 编辑 .env.local，例如：VITE_API_TARGET=http://192.168.139.144:8787
+# 方式二：写进集中配置 config/frontend/.env.local（已 gitignore）
+cp config/frontend/.env.local.example config/frontend/.env.local
+# 编辑 config/frontend/.env.local，例如：VITE_API_TARGET=http://your-backend:8787
 npm run dev
 ```
 
@@ -476,7 +476,7 @@ VITE_API_BASE_URL=http://192.168.139.144:8787 npm run build
 | `qaapp/` 或 `src/openharness/` 的 **Python 代码** | **重启服务**（前台 Ctrl+C 重跑，或 `abcqa webapp stop && abcqa webapp start`） | 后端没有热重载，进程内跑的是启动时加载的代码 |
 | `frontend/webapp/src/` 的**前端代码** | `npm run build` 后**刷新浏览器**（同源托管）；`npm run dev` 模式则自动热更新 | 同源托管加载的是 `dist/` 构建产物，不重新构建就仍是旧代码 |
 | 仅改 `~/.ohmo/*.json` 的**配置** | 重启服务 | agent 注册表 / 危险操作策略在服务启动时加载 |
-| 改 `config/agents.json`（提交 git 的那份） | `git pull` + **重启服务** | 配置只在启动时读取；`abcqa config` 可确认实际生效路径（配置体系） |
+| 改 `config/backend/base/agents.json`（提交 git 的那份） | `git pull` + **重启服务** | 配置只在启动时读取；`abcqa config` 可确认实际生效路径（配置体系） |
 
 > 排查「改了没生效」时，先确认这两条：**后端重启了吗？前端重新构建并刷新了吗？**
 
@@ -609,11 +609,10 @@ qaapp 额外注入：
 
 ### 9.9 密钥安全（重要）
 
-- 仓库 `.openharness/settings.json` 目前**含明文 `api_key`**，且根 `.gitignore` 中
-  存在 `!.openharness/settings.json` 例外，**可能被提交进版本库**。
-- 落地时务必：① 从 `settings.json` 移除明文 key，改用环境变量或 `abc auth login`
-  存储凭据；② 确认 `.openharness/settings.json` 不在版本控制内，或单独维护一份脱敏
-  模板；③ 轮换已泄露的 key。
+- 密钥只放 `config/backend/.env.local`（已 gitignore）或部署平台的进程环境变量。
+- `config/backend/base/settings.json` 只保留 profile 模板；`config/backend/local/*.json`
+  用于本机覆盖，同样不提交。
+- 历史提交中如出现过明文 key，请视为已泄露并立即轮换。
 
 ### 9.10 其它
 

@@ -1,8 +1,7 @@
-"""qaapp 配置加载、校验与状态汇总。"""
+"""qaapp 配置加载、校验与状态汇总（分层实现）。"""
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -10,49 +9,103 @@ from typing import Any
 from pydantic import BaseModel
 
 from ohmo.workspace import get_workspace_root
-from qaapp.config.models import (
-    AgentRegistry,
-    DangerousActions,
-    WebappConfig,
-)
+from openharness.config.layers import ConfigLayerError, deep_merge, expand_env, load_json_file
+from qaapp.config.env import merged_env
+from qaapp.config.models import AgentRegistry, DangerousActions, WebappConfig
 from qaapp.config.paths import (
+    AGENTS_FILENAME,
+    DANGEROUS_FILENAME,
+    DATASOURCES_FILENAME,
     ENV_CONFIG_DIR,
     KIND_EXTERNAL,
     KIND_SUBAGENT,
-    get_agents_config_path,
-    get_dangerous_config_path,
-    get_datasources_config_path,
+    WEBAPP_FILENAME,
+    ConfigLayer,
+    get_backend_config_dir,
     get_project_config_dir,
-    get_webapp_config_path,
+    get_qaapp_env,
+    resolve_config_layers,
 )
+
+# ---------------------------------------------------------------------------
+# 分层读取
+# ---------------------------------------------------------------------------
+
+
+def config_layers(
+    filename: str,
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> list[ConfigLayer]:
+    """Return the candidate layers for ``filename`` (lowest priority first)."""
+    return resolve_config_layers(filename, workspace, cwd=cwd, config_dir=config_dir)
+
+
+def load_config_dict(
+    filename: str,
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> tuple[dict[str, Any], list[str], list[ConfigLayer]]:
+    """Merge existing layers and expand ``${VAR}`` placeholders.
+
+    Invalid layers are skipped and reported, so one broken override does not
+    discard a valid base configuration.
+    """
+    layers = config_layers(filename, workspace, cwd=cwd, config_dir=config_dir)
+    merged: dict[str, Any] = {}
+    errors: list[str] = []
+    for layer in layers:
+        if not layer.exists:
+            continue
+        try:
+            raw = load_json_file(layer.path)
+        except ConfigLayerError as exc:
+            errors.append(str(exc))
+            continue
+        merged = deep_merge(merged, raw)
+    env = merged_env(workspace, cwd=cwd, config_dir=config_dir)
+    return expand_env(merged, env), errors, layers
+
+
+def _effective_path(layers: list[ConfigLayer]) -> Path:
+    existing = [layer.path for layer in layers if layer.exists]
+    if existing:
+        return existing[-1]
+    return layers[-1].path if layers else Path("")
+
+
+def _validation_error(path: Path, exc: Exception) -> str:
+    return f"配置非法 {path}: {exc}"
+
+
+def _load_json_model(
+    filename: str,
+    model: type[BaseModel],
+    workspace: str | Path | None = None,
+    *,
+    cwd: str | Path | None = None,
+    config_dir: str | Path | None = None,
+) -> tuple[BaseModel, list[str]]:
+    raw, errors, layers = load_config_dict(
+        filename, workspace, cwd=cwd, config_dir=config_dir
+    )
+    if errors:
+        return model(), errors
+    if not raw:
+        return model(), []
+    try:
+        return model.model_validate(raw), []
+    except ValueError as exc:
+        return model(), [_validation_error(_effective_path(layers), exc)]
+
 
 # ---------------------------------------------------------------------------
 # 加载器
 # ---------------------------------------------------------------------------
-
-
-def _load_json_model(path: Path, model: type[BaseModel]) -> tuple[BaseModel, str | None]:
-    """读取并校验一个 JSON 配置文件。
-
-    返回 ``(model, error)``；文件缺失返回默认模型与 None；内容非法返回默认模型
-    与错误信息（不抛出，便于服务启动时仅告警）。
-    """
-    if not path.exists():
-        return model(), None
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return model(), f"无法读取 {path}: {exc}"
-    try:
-        return model.model_validate(raw), None
-    except (ValueError, OSError) as exc:  # pydantic ValidationError 等
-        return model(), f"配置非法 {path}: {exc}"
-
-
-def _resolve_kwargs(
-    cwd: str | Path | None, config_dir: str | Path | None
-) -> dict[str, Any]:
-    return {"cwd": cwd, "config_dir": config_dir}
 
 
 def load_webapp_config(
@@ -61,10 +114,14 @@ def load_webapp_config(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> WebappConfig:
-    config, _ = _load_json_model(
-        get_webapp_config_path(workspace, **_resolve_kwargs(cwd, config_dir)), WebappConfig
+    model, _ = _load_json_model(
+        WEBAPP_FILENAME,
+        WebappConfig,
+        workspace,
+        cwd=cwd,
+        config_dir=config_dir,
     )
-    return config  # type: ignore[return-value]
+    return model  # type: ignore[return-value]
 
 
 def load_agent_registry(
@@ -73,10 +130,14 @@ def load_agent_registry(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> AgentRegistry:
-    registry, _ = _load_json_model(
-        get_agents_config_path(workspace, **_resolve_kwargs(cwd, config_dir)), AgentRegistry
+    model, _ = _load_json_model(
+        AGENTS_FILENAME,
+        AgentRegistry,
+        workspace,
+        cwd=cwd,
+        config_dir=config_dir,
     )
-    return registry  # type: ignore[return-value]
+    return model  # type: ignore[return-value]
 
 
 def load_dangerous_actions(
@@ -85,11 +146,14 @@ def load_dangerous_actions(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> DangerousActions:
-    config, _ = _load_json_model(
-        get_dangerous_config_path(workspace, **_resolve_kwargs(cwd, config_dir)),
+    model, _ = _load_json_model(
+        DANGEROUS_FILENAME,
         DangerousActions,
+        workspace,
+        cwd=cwd,
+        config_dir=config_dir,
     )
-    return config  # type: ignore[return-value]
+    return model  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -97,8 +161,25 @@ def load_dangerous_actions(
 # ---------------------------------------------------------------------------
 
 
-def _validation_error(path: Path, exc: Exception) -> str:
-    return f"配置非法 {path}: {exc}"
+def _validate_model(
+    filename: str,
+    model: type[BaseModel],
+    workspace: str | Path | None,
+    *,
+    cwd: str | Path | None,
+    config_dir: str | Path | None,
+) -> tuple[BaseModel | None, list[str]]:
+    raw, errors, layers = load_config_dict(
+        filename, workspace, cwd=cwd, config_dir=config_dir
+    )
+    if errors:
+        return None, errors
+    if not raw:
+        return model(), []
+    try:
+        return model.model_validate(raw), []
+    except ValueError as exc:
+        return None, [_validation_error(_effective_path(layers), exc)]
 
 
 def validate_webapp_config(
@@ -108,14 +189,10 @@ def validate_webapp_config(
     config_dir: str | Path | None = None,
 ) -> list[str]:
     """返回 webapp.json 的校验错误列表（空 = 合法）。"""
-    path = get_webapp_config_path(workspace, **_resolve_kwargs(cwd, config_dir))
-    if not path.exists():
-        return []
-    try:
-        WebappConfig.model_validate(json.loads(path.read_text(encoding="utf-8")))
-    except (ValueError, OSError) as exc:
-        return [_validation_error(path, exc)]
-    return []
+    _, errors = _validate_model(
+        WEBAPP_FILENAME, WebappConfig, workspace, cwd=cwd, config_dir=config_dir
+    )
+    return errors
 
 
 def validate_agent_registry(
@@ -125,17 +202,17 @@ def validate_agent_registry(
     config_dir: str | Path | None = None,
 ) -> list[str]:
     """返回 agents.json 的校验错误列表（空 = 合法）。"""
-    path = get_agents_config_path(workspace, **_resolve_kwargs(cwd, config_dir))
-    if not path.exists():
-        return []
-    errors: list[str] = []
-    try:
-        registry = AgentRegistry.model_validate(json.loads(path.read_text(encoding="utf-8")))
-    except (ValueError, OSError) as exc:
-        return [_validation_error(path, exc)]
-
+    registry, errors = _validate_model(
+        AGENTS_FILENAME, AgentRegistry, workspace, cwd=cwd, config_dir=config_dir
+    )
+    if errors or registry is None:
+        return errors
+    typed = registry  # type: AgentRegistry
+    path = _effective_path(
+        config_layers(AGENTS_FILENAME, workspace, cwd=cwd, config_dir=config_dir)
+    )
     ids: set[str] = set()
-    for agent in registry.agents:
+    for agent in typed.agents:
         if not agent.id:
             errors.append(f"{path}: agent 缺少 id")
             continue
@@ -150,10 +227,10 @@ def validate_agent_registry(
         if agent.kind == KIND_SUBAGENT and not agent.subagent_type:
             errors.append(f"{path}: agent '{agent.id}' 为 subagent 但缺少 subagent_type")
 
-    known_ids = {agent.id for agent in registry.agents}
-    if registry.default_agent and registry.default_agent not in known_ids:
-        errors.append(f"{path}: default_agent '{registry.default_agent}' 未在 agents 中定义")
-    for rule in registry.routing.rules:
+    known_ids = {agent.id for agent in typed.agents}
+    if typed.default_agent and typed.default_agent not in known_ids:
+        errors.append(f"{path}: default_agent '{typed.default_agent}' 未在 agents 中定义")
+    for rule in typed.routing.rules:
         if rule.agent not in known_ids:
             errors.append(f"{path}: 路由规则指向未知 agent: {rule.agent}")
     return errors
@@ -166,14 +243,14 @@ def validate_dangerous_actions(
     config_dir: str | Path | None = None,
 ) -> list[str]:
     """返回 dangerous-actions.json 的校验错误列表（空 = 合法）。"""
-    path = get_dangerous_config_path(workspace, **_resolve_kwargs(cwd, config_dir))
-    if not path.exists():
-        return []
-    try:
-        DangerousActions.model_validate(json.loads(path.read_text(encoding="utf-8")))
-    except (ValueError, OSError) as exc:
-        return [_validation_error(path, exc)]
-    return []
+    _, errors = _validate_model(
+        DANGEROUS_FILENAME,
+        DangerousActions,
+        workspace,
+        cwd=cwd,
+        config_dir=config_dir,
+    )
+    return errors
 
 
 def config_status(
@@ -182,13 +259,12 @@ def config_status(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """返回配置文件的**实际解析路径**、存在性与校验结果摘要。"""
-    kwargs = _resolve_kwargs(cwd, config_dir)
-    paths = {
-        "webapp": get_webapp_config_path(workspace, **kwargs),
-        "agents": get_agents_config_path(workspace, **kwargs),
-        "dangerous": get_dangerous_config_path(workspace, **kwargs),
-        "datasources": get_datasources_config_path(workspace, **kwargs),
+    """返回配置文件的实际解析路径、层级、存在性与校验结果摘要。"""
+    names = {
+        "webapp": WEBAPP_FILENAME,
+        "agents": AGENTS_FILENAME,
+        "dangerous": DANGEROUS_FILENAME,
+        "datasources": DATASOURCES_FILENAME,
     }
     validators = {
         "webapp": validate_webapp_config,
@@ -197,20 +273,36 @@ def config_status(
         "datasources": _validate_datasources,
     }
     project_dir = get_project_config_dir(cwd, config_dir)
+    backend_dir = get_backend_config_dir(cwd, config_dir)
     result: dict[str, Any] = {
+        "env": get_qaapp_env(),
         "workspace": str(get_workspace_root(workspace)),
         "project_config_dir": str(project_dir) if project_dir else "",
+        "backend_config_dir": str(backend_dir) if backend_dir else "",
     }
-    for name, path in paths.items():
+    for name, filename in names.items():
+        layers = config_layers(filename, workspace, cwd=cwd, config_dir=config_dir)
+        effective = _effective_path(layers)
+        layer_payload = [
+            {"layer": layer.name, "path": str(layer.path), "exists": layer.exists}
+            for layer in layers
+        ]
+        if backend_dir is not None:
+            source = "+".join(
+                layer.name for layer in layers if layer.exists and layer.name != "workspace"
+            ) or "defaults"
+        elif any(layer.name == "workspace" for layer in layers):
+            source = "workspace"
+        elif config_dir or os.environ.get(ENV_CONFIG_DIR):
+            source = "explicit"
+        else:
+            source = "project"
         result[name] = {
-            "path": str(path),
-            "exists": path.exists(),
-            "source": (
-                "project"
-                if project_dir is not None and path.parent == project_dir
-                else ("explicit" if config_dir or os.environ.get(ENV_CONFIG_DIR) else "workspace")
-            ),
-            "errors": validators[name](workspace, **kwargs),
+            "path": str(effective),
+            "exists": any(layer.exists for layer in layers),
+            "source": source,
+            "layers": layer_payload,
+            "errors": validators[name](workspace, cwd=cwd, config_dir=config_dir),
         }
     return result
 

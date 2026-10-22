@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ## [Unreleased]
 
+### Changed
+
+- **全仓结构与配置重构**：配置集中到 `config/`（`backend/{base,dev,prod,local}` + `frontend`），支持 `QAAPP_ENV=dev|prod` 分层合并与 `${VAR}` 占位符；删除 `.openharness/settings.json`、`qaapp/examples/` 与旧扁平配置，新增 `config/README.md`。
+- **超大文件拆分**：`src/openharness` / `ohmo` / `qaapp` 下生产 Python 文件全部 ≤800 行；`frontend/webapp` 的 `App.tsx` / `styles.css` 拆为组件、hooks 与分职责样式；新增 800 行体积守卫测试。重点拆分包括 `commands/registry`、`cli`、`autopilot/service`、`services/compact`、`channels/impl/feishu`、`channels/impl/mochat`、`ohmo/gateway/runtime`、`swarm/permission_sync`、`config/settings`、`engine/query`、`coordinator/agent_definitions`、`ui/backend_host`、`swarm/team_lifecycle` 及 qaapp 的 `server/api`、`server/runtime`、`workspace/files`、`tools/report`。
+- **清理**：删除无生产引用的旧 Textual TUI / prompt_toolkit 模块、重复手工 E2E 脚本与 `docs/autopilot/` 构建产物；移除 `textual` / `prompt-toolkit` 直接依赖；文档中的绝对路径/内部 IP/明文密钥说明同步清理。
+
 ### Added
 
 - **qaapp 前端视觉重构（国网绿 + Codex 风格）**：`frontend/webapp` 重做设计 token 与布局——国网绿 `#006656` 主色、浅色中性画布、272px 侧边栏、860px 居中对话列、细边框卡片、浮动输入区、移动端侧边栏/文件抽屉、会话搜索、自动增高输入、流式自动跟随、错误 toast、加载骨架、代码块复制、编辑审批 diff 预览、权限审批参数展开；新增 `icons.tsx` / `EmptyState.tsx` / `clipboard.ts`，主要 chrome 不再使用 emoji。自检 `npm run typecheck` / `check:render` / `check:attachments` / `check:turn-files` / `check:questions` / `build` 全部通过。

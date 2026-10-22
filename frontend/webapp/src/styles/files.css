@@ -1,0 +1,506 @@
+/* ---------- 过程文件 / 结果文件卡片 ---------- */
+
+.turn-files {
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.tf-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  text-align: left;
+  background: var(--surface-2);
+  border: 0;
+  transition: background 0.15s ease;
+}
+
+.tf-head:hover {
+  background: var(--surface-3);
+}
+
+.tf-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.tf-title {
+  font-weight: 600;
+}
+
+.tf-stat {
+  display: flex;
+  gap: 6px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-stat .add,
+.tf-lines .add {
+  color: #157a4b;
+}
+
+.tf-stat .del,
+.tf-lines .del {
+  color: var(--danger);
+}
+
+.tf-caret {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.tf-body {
+  padding: 5px 0;
+}
+
+.tf-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+}
+
+.tf-row:hover {
+  background: var(--surface-2);
+}
+
+.tf-name {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+}
+
+.tf-name:hover {
+  color: var(--brand-700);
+  text-decoration: underline;
+}
+
+.tf-lines {
+  display: flex;
+  gap: 6px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-lines.muted {
+  color: var(--muted);
+}
+
+.tf-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.tf-row:hover .tf-actions,
+.tf-actions:focus-within {
+  opacity: 1;
+}
+
+.tf-more {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 12px 4px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--brand-700);
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.tf-more:hover {
+  text-decoration: underline;
+}
+
+.tf-note {
+  padding: 0 12px 8px;
+  font-size: 11px;
+}
+
+/* 文件类型：浅色标签，避免高饱和色块抢视线 */
+.file-kind {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 24px;
+  padding: 0 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #5a6b65;
+  background: #eef2f0;
+  border-radius: 6px;
+}
+
+.file-kind.word {
+  color: #1a56db;
+  background: #e8f0fe;
+}
+
+.file-kind.excel {
+  color: #157a4b;
+  background: #e6f4ec;
+}
+
+.file-kind.pptx {
+  color: #b45309;
+  background: #fdf0e4;
+}
+
+.file-kind.pdf {
+  color: #b42318;
+  background: #fbe9e7;
+}
+
+.file-kind.markdown {
+  color: #6d28d9;
+  background: #f0eafe;
+}
+
+.file-kind.image {
+  color: #0e7490;
+  background: #e5f5f8;
+}
+
+.file-kind.script {
+  color: #475569;
+  background: #eef1f5;
+}
+
+.file-kind.data {
+  color: #0f766e;
+  background: #e5f3f1;
+}
+
+.file-kind.archive {
+  color: #a16207;
+  background: #f8f0dd;
+}
+
+.file-kind.text {
+  color: #596b64;
+  background: #eef2f0;
+}
+
+.result-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.result-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.result-card:hover {
+  border-color: var(--brand-500);
+  box-shadow: var(--shadow-1);
+  transform: translateY(-1px);
+}
+
+.result-card:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 1px;
+}
+
+.result-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.result-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-meta {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.files-derived {
+  padding-left: 2px;
+  font-size: 11px;
+}
+
+/* ---------- 文件抽屉 ---------- */
+
+.drawer-backdrop {
+  display: none;
+}
+
+.file-drawer {
+  z-index: 39;
+  display: flex;
+  flex: 0 0 340px;
+  flex-direction: column;
+  width: 340px;
+  min-width: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px 10px;
+}
+
+.drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.drawer-title svg {
+  color: var(--brand-600);
+}
+
+.drawer-dir {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-dir code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 14px;
+  overflow-y: auto;
+}
+
+.ws-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ws-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.ws-file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "icon name actions"
+    "meta meta meta";
+  gap: 2px 6px;
+  align-items: center;
+  padding: 5px 6px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.ws-file:hover {
+  background: var(--surface-2);
+}
+
+.ws-file-icon {
+  display: inline-flex;
+  grid-area: icon;
+  color: var(--muted);
+}
+
+.ws-file-name {
+  grid-area: name;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink-2);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+}
+
+.ws-file-name:hover:not(:disabled) {
+  color: var(--brand-700);
+  text-decoration: underline;
+}
+
+.ws-file-name:disabled {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.ws-file-meta {
+  grid-area: meta;
+  padding-left: 20px;
+  overflow: hidden;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-file-actions {
+  display: flex;
+  grid-area: actions;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.ws-file:hover .ws-file-actions,
+.ws-file-actions:focus-within {
+  opacity: 1;
+}
+
+.drawer-foot {
+  padding: 9px 14px;
+  font-size: 10.5px;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- 预览弹窗 ---------- */
+
+.preview-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgb(16 32 28 / 42%);
+  backdrop-filter: blur(3px);
+}
+
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  max-height: 82vh;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-2);
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.preview-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.preview-title svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.preview-title strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-panel pre {
+  flex: 1;
+  padding: 12px 14px;
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface-2);
+}
+
+.preview-foot {
+  padding: 7px 14px 10px;
+  font-size: 10.5px;
+  border-top: 1px solid var(--line);
+}

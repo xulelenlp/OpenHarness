@@ -72,3 +72,11 @@ def test_build_system_prompt_custom_product_name():
     env = _make_env()
     prompt = build_system_prompt(env=env, product_name="My Helper")
     assert "You are My Helper, an open-source AI coding assistant CLI" in prompt
+
+
+def test_build_system_prompt_includes_option_clarification_guidance():
+    prompt = build_system_prompt(env=_make_env())
+    assert "# Clarifying Questions" in prompt
+    assert "ask_user_question" in prompt
+    assert "2–4 concrete options" in prompt
+    assert "do not ask the same point again" in prompt

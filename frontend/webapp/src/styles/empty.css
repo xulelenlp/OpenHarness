@@ -1,0 +1,116 @@
+/* ---------- 空状态 ---------- */
+
+.empty-state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: 36px 0 48px;
+  text-align: center;
+}
+
+.empty-brand {
+  margin-bottom: 4px;
+}
+
+.empty-brand .brand-mark {
+  width: 54px !important;
+  height: 54px !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgb(0 102 86 / 18%);
+}
+
+.empty-state h1 {
+  margin: 10px 0 0;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.empty-subtitle {
+  max-width: 520px;
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.empty-suggestions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 760px;
+  margin-top: 20px;
+}
+
+.empty-suggestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 13px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.empty-suggestion:hover {
+  border-color: var(--brand-500);
+  box-shadow: var(--shadow-1);
+  transform: translateY(-1px);
+}
+
+.empty-suggestion-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--brand-600);
+  background: var(--brand-50);
+  border-radius: 8px;
+}
+
+.empty-suggestion-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.empty-suggestion-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.empty-suggestion-hint {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.empty-suggestion-arrow {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--muted);
+  transform: rotate(45deg);
+  opacity: 0.65;
+}
+
+.empty-footnote {
+  margin: 16px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}

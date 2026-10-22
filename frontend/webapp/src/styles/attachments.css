@@ -1,0 +1,97 @@
+/* ---------- 附件芯片 ---------- */
+
+.att-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  max-width: 860px;
+  padding: 0 2px 8px;
+  margin: 0 auto;
+}
+
+.message.user .att-chips {
+  justify-content: flex-end;
+  max-width: none;
+  padding: 0;
+}
+
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.att-chip.pending {
+  background: var(--warn-soft);
+  border-color: #f2d9a8;
+}
+
+.att-chip.failed {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: #f1c7c3;
+}
+
+.att-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.att-kind.word {
+  color: #1a56db;
+}
+
+.att-kind.excel {
+  color: #157a4b;
+}
+
+.att-kind.text,
+.att-kind.markdown,
+.att-kind.csv {
+  color: #4b5f58;
+}
+
+.att-name {
+  max-width: 220px;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.att-size,
+.att-status {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.att-chip.failed .att-status {
+  color: var(--danger);
+}
+
+.att-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 0 2px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+}
+
+.att-remove:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.att-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}

@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Any
+
+from qaapp.data.dates import to_date as _to_date
 
 
 @dataclass
@@ -33,20 +35,6 @@ def _to_float(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
-        return None
-
-
-def _to_date(value: Any) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value or "").strip()[:10]
-    if not text:
-        return None
-    try:
-        return datetime.strptime(text, "%Y-%m-%d").date()  # noqa: DTZ007 - 业务库只有日期
-    except ValueError:
         return None
 
 

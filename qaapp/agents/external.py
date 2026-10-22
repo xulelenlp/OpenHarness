@@ -20,12 +20,12 @@ from types import ModuleType
 from typing import Any
 
 from qaapp.config import KIND_EXTERNAL, AgentEntry, AgentRegistry
+from qaapp.paths import PLUGINS_DIR
 
 logger = logging.getLogger(__name__)
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
 _PLUGIN_TOOL_PATH = (
-    _REPO_ROOT / "plugins" / "external-agents" / "tools" / "external_agent_tool.py"
+    PLUGINS_DIR / "external-agents" / "tools" / "external_agent_tool.py"
 )
 #: 兜底加载插件模块时使用的名字（会登记进 sys.modules）。
 _FALLBACK_MODULE_NAME = "qaapp_external_agent_tool"

@@ -6,16 +6,16 @@
 ## 1. 前置条件
 
 ```bash
-# 后端与前端（默认后端 :8787，前端 :5174）
+# 后端与前端（默认后端 :8787，前端 :5173）
 ./scripts/dev_services.sh restart
 
 # 如果 ~/.ohmo 不在可写目录，可指定仓库内测试工作区：
 # OHMO_WORKSPACE="$PWD/.openharness/run/ohmo-test" ./scripts/dev_services.sh restart
 ```
 
-- `.openharness/settings.json` 里已配置可用模型；`config/agents.json` 的通用助手
+- `config/backend/base/settings.json` 里已配置可用模型；`config/backend/base/agents.json` 的通用助手
   `tools` 为 `["*"]`（包含 `ask_user_question`）。
-- 浏览器打开 `http://localhost:5174`。
+- 浏览器打开 `http://localhost:5173`。
 
 ## 2. 自动化回归
 
@@ -26,7 +26,7 @@ NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1 \
   tests/test_tools/test_ask_user_question.py \
   tests/test_tools/test_integration_flows.py \
   tests/test_engine/test_query_engine.py \
-  tests/test_ui/test_textual_app.py \
+  tests/test_ui/test_react_backend.py \
   tests/test_qaapp/test_capabilities.py \
   tests/test_qaapp/test_service.py -q
 

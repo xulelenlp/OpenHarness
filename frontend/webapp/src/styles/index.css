@@ -1,0 +1,16 @@
+/* 样式按职责拆分；保持此导入顺序（tokens → 布局 → 组件 → 响应式）。 */
+@import "./tokens.css";
+@import "./layout.css";
+@import "./sidebar.css";
+@import "./topbar.css";
+@import "./chat.css";
+@import "./steps.css";
+@import "./controls.css";
+@import "./attachments.css";
+@import "./empty.css";
+@import "./composer.css";
+@import "./markdown.css";
+@import "./files.css";
+@import "./toast.css";
+@import "./animations.css";
+@import "./responsive.css";

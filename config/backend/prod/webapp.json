@@ -1,0 +1,13 @@
+{
+  "_comment": "生产环境覆盖：所有网卡监听、由后端托管前端构建产物、必须配置 QAAPP_API_TOKEN。",
+  "host": "0.0.0.0",
+  "port": 8787,
+  "static_dir": "${WEBAPP_STATIC_DIR}",
+  "api_tokens": ["${QAAPP_API_TOKEN}"],
+  "browser_auth": {
+    "enabled": true,
+    "ttl_seconds": 604800,
+    "cookie_name": "qaapp_session"
+  },
+  "cors_origins": ["*"]
+}

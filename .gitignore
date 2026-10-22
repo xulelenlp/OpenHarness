@@ -31,10 +31,14 @@ frontend/terminal/node_modules/
 
 # User data (never commit API keys or session data)
 .openharness/*
-# Version-controlled project config for portable, centralized setup.
-# Keep secrets (api_key) out of this file; use env vars or `abc auth login`.
-!.openharness/settings.json
 react_tui_smoke.txt
+
+# Centralized config: local overrides and secrets are never committed.
+config/backend/local/
+!config/backend/.env
+config/backend/.env.local
+config/frontend/.env.local
+config/**/*.local
 
 # OS
 .DS_Store

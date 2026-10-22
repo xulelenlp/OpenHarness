@@ -22,18 +22,18 @@
 > 依赖与安装细节见[部署文档](../docs/qaapp/DEPLOYMENT.zh-CN.md)；先确认 `python -c "import qaapp"` 能通过。
 
 ```bash
-cd /Users/xulele/Documents/workspace/OpenHarness   # 进入仓库根
+cd <repo-root>   # 进入仓库根
 
 # ① 验证依赖可用
 python -c "import qaapp, openharness, ohmo; print('依赖 OK')"
 
-# ② 写入四份示例配置到 ohmo workspace（默认 ~/.ohmo/）
+# ② 写入四份配置模板到 config/backend/base（随 git 管理）
 python -m qaapp init
 #    若已生成 abcqa 脚本，也可写：abcqa init
 #    已存在时跳过；想覆盖用 --force
 
 # ③ 配置模型与 API Key（关键！不配无法调用模型）
-#    编辑 ~/.openharness/settings.json，设置 active_profile 与对应 api_key，详见[部署文档](../docs/qaapp/DEPLOYMENT.zh-CN.md)
+#    编辑 config/backend/base/settings.json 的 profile；密钥放 config/backend/.env.local，详见[部署文档](../docs/qaapp/DEPLOYMENT.zh-CN.md)
 
 # ④ 校验配置
 python -m qaapp config              # 四份配置的存在性与校验结果
@@ -68,7 +68,7 @@ curl http://127.0.0.1:8787/api/v1/bootstrap
 ## 命令行速查
 
 ```bash
-abcqa init [--workspace DIR] [--force]     # 写入四份示例配置
+abcqa init [--workspace DIR] [--force]     # 写入 config/backend/base 配置模板
 abcqa config [--workspace DIR]             # 四份配置存在性与校验结果
 abcqa cleanup [--older-than-days N] [--keep-latest N] [--apply] [--json]
                                            # 清理闲置会话目录/快照/轨迹（默认 dry-run）

@@ -14,9 +14,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,14 +22,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from qaapp.config import (
     DATASOURCES_FILENAME,
-    ENV_CONFIG_DIR,
+    config_layers,
     get_datasources_config_path,
-    get_project_config_dir,
+    load_config_dict,
+    load_dotenv,
 )
-from qaapp.data.env import _env_with_dotenv, _substitute, load_dotenv
-
-#: ``${DB_HOST}`` 形式的占位符。
-_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 #: 默认拒绝访问的平台配置/密钥/会话表（原始 SQL 也不允许）。
 DEFAULT_DENIED_TABLES = [
@@ -153,17 +147,15 @@ def load_datasources_config(
 ) -> DataSourcesConfig:
     """加载数据源配置；文件缺失返回默认（全 disabled）。"""
     path = get_datasources_config_path(workspace, cwd=cwd, config_dir=config_dir)
-    if not path.is_file():
+    raw, errors, _ = load_config_dict(
+        DATASOURCES_FILENAME, workspace, cwd=cwd, config_dir=config_dir
+    )
+    if errors:
+        raise DataSourceConfigError("; ".join(errors))
+    if not raw:
         return DataSourcesConfig()
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise DataSourceConfigError(f"无法读取 {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise DataSourceConfigError(f"数据源配置必须是 JSON 对象: {path}")
-    resolved = _substitute(raw, _env_with_dotenv(workspace, cwd=cwd, config_dir=config_dir))
-    try:
-        return DataSourcesConfig.model_validate(resolved)
+        return DataSourcesConfig.model_validate(raw)
     except ValueError as exc:
         raise DataSourceConfigError(f"数据源配置非法 {path}: {exc}") from exc
 
@@ -212,16 +204,25 @@ def datasources_status(
     except DataSourceConfigError:
         config = DataSourcesConfig()
 
-    project_dir = get_project_config_dir(cwd, config_dir)
-    source = (
-        "project"
-        if project_dir is not None and path.parent == project_dir
-        else ("explicit" if config_dir or os.environ.get(ENV_CONFIG_DIR) else "workspace")
+    project_dir = path
+    layers = config_layers(
+        DATASOURCES_FILENAME, workspace, cwd=cwd, config_dir=config_dir
     )
+    existing_layers = [layer.name for layer in layers if layer.exists]
+    if existing_layers:
+        source = "+".join(existing_layers)
+    elif any(layer.name == "workspace" for layer in layers):
+        source = "workspace"
+    else:
+        source = "defaults"
     return {
-        "path": str(path),
-        "exists": path.exists(),
+        "path": str(project_dir),
+        "exists": any(layer.exists for layer in layers),
         "source": source,
+        "layers": [
+            {"layer": layer.name, "path": str(layer.path), "exists": layer.exists}
+            for layer in layers
+        ],
         "errors": errors,
         "mysql": {
             "enabled": config.mysql.enabled,

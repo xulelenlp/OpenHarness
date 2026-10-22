@@ -14,8 +14,10 @@ import typer
 
 from ohmo.workspace import get_logs_dir, get_workspace_root, initialize_workspace
 from qaapp.config import (
+    apply_env_layers,
     config_status,
     get_agents_config_path,
+    get_backend_config_dir,
     get_datasources_config_path,
     load_agent_registry,
     load_dangerous_actions,
@@ -59,7 +61,15 @@ _CONFIG_DIR_HELP = (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_EXAMPLES_DIR = Path(__file__).resolve().parent / "examples"
+_REPO_TEMPLATES_DIR = _REPO_ROOT / "config" / "backend" / "base"
+_PACKAGED_TEMPLATES_DIR = Path(__file__).resolve().parent / "_config" / "backend" / "base"
+
+
+def _templates_dir() -> Path:
+    """Return the canonical config templates (repo checkout or wheel)."""
+    if _REPO_TEMPLATES_DIR.is_dir():
+        return _REPO_TEMPLATES_DIR
+    return _PACKAGED_TEMPLATES_DIR
 
 
 def _pid_file(workspace: str | Path | None) -> Path:
@@ -82,6 +92,9 @@ def _pid_is_running(pid: int) -> bool:
 
 @app.callback()
 def _main(ctx: typer.Context) -> None:
+    # Load centralized environment layers before any config is resolved.
+    # Process environment variables still win (setdefault semantics).
+    apply_env_layers(None, cwd=str(Path.cwd()))
     if ctx.invoked_subcommand is None:
         app.get_help(ctx)
 
@@ -98,6 +111,7 @@ def config_cmd(
     cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
 ) -> None:
     """查看配置文件的**实际解析路径**、存在性与校验结果（含数据源）。"""
+    apply_env_layers(workspace, cwd=cwd, config_dir=config_dir)
     print(
         json.dumps(
             config_status(workspace, cwd=cwd, config_dir=config_dir),
@@ -172,40 +186,45 @@ def cleanup_cmd(
 def init_cmd(
     workspace: str | None = typer.Option(None, "--workspace", help=_WORKSPACE_HELP),
     config_dir: str | None = typer.Option(None, "--config-dir", help=_CONFIG_DIR_HELP),
+    cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
     force: bool = typer.Option(False, "--force", help="覆盖已存在的配置文件"),
 ) -> None:
-    """将示例配置安装到项目 config/ 目录（默认）或 workspace。
-
-    带 ``--config-dir`` 时写入该目录（**可见、随 git 管理**）；不带时写入 workspace，
-    其中 ``agents.json`` 是「所有 Agent 的唯一维护文件」。
-    """
+    """将示例配置安装到项目 ``config/backend/base``（默认）或指定目录。"""
     root = initialize_workspace(workspace)
     if config_dir:
-        target_dir = Path(config_dir).expanduser().resolve()
-        target_dir.mkdir(parents=True, exist_ok=True)
-    else:
+        explicit = Path(config_dir).expanduser().resolve()
+        backend = explicit / "backend" if explicit.name == "config" else explicit
+        target_dir = backend / "base"
+    elif workspace is not None:
+        # Explicit workspace keeps the legacy flat layout for old deployments.
         target_dir = root
+    else:
+        target_dir = Path(cwd).expanduser().resolve() / "config" / "backend" / "base"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    templates = _templates_dir()
     targets = {
+        "settings.json": target_dir / "settings.json",
         "webapp.json": target_dir / "webapp.json",
         "agents.json": target_dir / "agents.json",
         "dangerous-actions.json": target_dir / "dangerous-actions.json",
         "datasources.json": target_dir / "datasources.json",
     }
     for name, target in targets.items():
-        src = _EXAMPLES_DIR / name
+        src = templates / name
+        if not src.is_file():
+            print(f"跳过 {name}（模板缺失：{src}）")
+            continue
         if target.exists() and not force:
             print(f"跳过 {target}（已存在，使用 --force 覆盖）")
             continue
         target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"写入 {target}")
-    print(f"\n配置已就绪，workspace={root}" + (f"，config_dir={target_dir}" if config_dir else ""))
-    print("提示：所有 Agent（含外部 Agent 的 endpoint / 请求体 / 响应解析）统一在 agents.json 里维护，")
-    print("      不再需要 external-agents.json。见 examples/agents.json 的 external 字段示例。")
-    print("      想让服务器 git pull 后直接生效，请把 agents.json 放在项目可见目录 config/ 下：")
-    print("        abcqa init --config-dir ./config --force   # 或手工放 config/agents.json")
-    print("      解析顺序：--config-dir / QAAPP_CONFIG_DIR → <cwd>/config/ → <workspace>/")
-    print("      数据源（MySQL/Redis）只在 datasources.json 维护；用 ${DB_HOST} 等占位符 + 环境变量/就近 .env。")
-    print("      检查连通性：abcqa datasource check")
+    print(f"\n配置已就绪，workspace={root}，config_dir={target_dir}")
+    print("提示：所有 Agent（含外部 Agent 的 endpoint / 请求体 / 响应解析）统一在 agents.json 里维护。")
+    print("      配置分层：config/backend/base → dev/prod → local；用 QAAPP_ENV 选择环境。")
+    print("      数据源（MySQL/Redis）只在 datasources.json 维护；用 ${DB_HOST} 等占位符 + config/backend/.env.local。")
+    print("      检查：abcqa config；连通性：abcqa datasource check")
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +346,7 @@ def webapp_status_cmd(
         if pid is not None and _pid_is_running(pid):
             running = True
     webapp = load_webapp_config(workspace, cwd=cwd, config_dir=config_dir)
+    backend_dir = get_backend_config_dir(cwd, config_dir)
     print(
         json.dumps(
             {
@@ -336,6 +356,7 @@ def webapp_status_cmd(
                 "port": webapp.port,
                 "provider_profile": webapp.provider_profile or "(inherit settings)",
                 "workspace": str(get_workspace_root(workspace)),
+                "backend_config_dir": str(backend_dir) if backend_dir else "",
                 "agents_config": str(
                     get_agents_config_path(workspace, cwd=cwd, config_dir=config_dir)
                 ),

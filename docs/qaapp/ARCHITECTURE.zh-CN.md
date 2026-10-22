@@ -79,13 +79,13 @@
 
 | 文件 | 职责 | 扩展时是否常改 |
 | --- | --- | --- |
-| `qaapp/server/service.py` | HTTP/SSE/WS、会话池、审批、每轮编排 | 少改（新增 API 才改） |
+| `qaapp/server/service.py` + `server/api/` + `server/runtime/` | 服务装配、HTTP/SSE/WS 路由、会话池、审批、每轮编排 | 少改（新增 API 才改） |
 | `qaapp/config/` | 配置路径/模型加载 | 新增配置项时改 |
 | `qaapp/data/datasources.py` | 数据源唯一加载器/运行时 | 数据源变化时改 |
 | `qaapp/data/catalog.py` / `data/query.py` + `resolver.py` / `fetcher.py` / `shaping.py` | 业务库元数据/路由/查询/质量 | 取数规则变化时改 |
 | `qaapp/tools/db_query.py` | `db_query` 工具 | 查询能力变化时改 |
 | `qaapp/tools/consult.py` | `consult_agents` 多智能体批量调用 | 编排策略变化时改 |
-| `qaapp/tools/report.py` | `write_report_docx` Word 报告（固定国网公文格式） | 报告版式变化时改 |
+| `qaapp/tools/report/` | `write_report_docx` Word 报告（固定国网公文格式） | 报告版式变化时改 |
 | `qaapp/agents/scenarios.py` | 10 类业务场景模板 | 新增场景时改 |
 | `qaapp/agents/router.py` | 显式/关键词/默认路由 | 新增路由策略时改 |
 | `qaapp/agents/capabilities.py` | 动态能力清单与决策顺序 | **一般不用改**（配置自动生成） |
@@ -93,10 +93,10 @@
 | `qaapp/agents/external.py` | 把 `agents.json` 内联配置注入工具 | 一般不用改 |
 | `qaapp/tools/dangerous.py` | 高危操作策略 + 权限检查器 | 策略变化用 JSON，不改代码 |
 | `qaapp/tools/script.py` | `run_script`（会话目录内执行 Python/Node） | 少改 |
-| `qaapp/workspace/files.py` | 会话目录布局、附件索引、上下文块 | 少改 |
+| `qaapp/workspace/files/` | 会话目录布局、附件索引、上下文块 | 少改 |
 | `qaapp/workspace/documents.py` | 上传文档解析 | 新增文件类型时改 |
-| `config/agents.json` | **所有 Agent 的唯一维护文件** | **新增能力主要改这里** |
-| `config/` 或 `~/.ohmo/webapp.json` | 服务、鉴权、附件、会话目录配置 | 部署时改 |
+| `config/backend/base/agents.json` | **所有 Agent 的唯一维护文件** | **新增能力主要改这里** |
+| `config/backend/{base,dev,prod,local}/webapp.json` | 服务、鉴权、附件、会话目录配置（`QAAPP_ENV` 选层） | 部署时改 |
 | `frontend/webapp/src/` | 参考前端 | 新增交互时改 |
 
 ---
@@ -163,8 +163,8 @@
 
 | 层级 | 文件 | 解析顺序 | 内容 |
 | --- | --- | --- | --- |
-| ① OpenHarness 主配置 | `settings.json` | `OPENHARNESS_CONFIG_DIR` → `<cwd>/.openharness/` → `~/.openharness/` | 模型、API Key、权限、沙箱、MCP |
-| ② qaapp 配置 | `webapp.json` / `agents.json` / `dangerous-actions.json` / `datasources.json` | `--config-dir` / `QAAPP_CONFIG_DIR` → `<cwd>/config/` → `<workspace>/` | 服务、Agent 注册表、高危策略、数据源 |
+| ① OpenHarness 主配置 | `config/backend/base/settings.json` | `OPENHARNESS_CONFIG_DIR` → `config/backend/base/` → `~/.openharness/`（legacy） | 模型 profile、权限、沙箱、MCP；密钥走 env |
+| ② qaapp 配置 | `config/backend/{base,<QAAPP_ENV>,local}/*.json` | `--config-dir` / `QAAPP_CONFIG_DIR` → base → env → local → legacy workspace | 服务、Agent 注册表、高危策略、数据源 |
 | ③ 外部 Agent 访问配置 | **内联在 `agents.json`** | 同 ② | endpoint / 请求体 / 响应解析 |
 
 ### 5.1 `agents.json` 是唯一 Agent 维护文件
@@ -194,7 +194,7 @@
 
 ### 6.1 新增一个外部智能体（最常见，纯配置）
 
-在 `config/agents.json` 的 `agents[]` 追加：
+在 `config/backend/base/agents.json` 的 `agents[]` 追加：
 
 ```jsonc
 {
@@ -323,7 +323,7 @@
 1. 在 `qaapp/config/` 的对应 `BaseModel` 加字段，**必须有默认值**；
 2. 字段加注释（`#:`）说明单位和风险；
 3. 在 `validate_*` / `config_status` 里确认非法值能报错；
-4. 更新 `qaapp/examples/*.json` 与 README 配置表；
+4. 更新 `config/backend/base/*.json` 与 README 配置表；
 5. 加 `tests/test_qaapp/test_config.py` 用例；
 6. 向后兼容：旧配置文件不写新字段时应能正常启动。
 
@@ -445,7 +445,7 @@ WebSocket 一并纳入网关管控。
 - 只有「思考中…」→ 先比后端 `sse emit` 与控制台 `[sse]`，再看反向代理是否缓冲；
 - 外部 Agent 报「工具未加载」→ 插件缺失；
 - 外部 Agent 报「会话创建失败」→ 对端平台问题，或配置固定 `conversation_id`；
-- 新增 Agent 不生效 → 没重启，或 `config/agents.json` 不是实际生效文件。
+- 新增 Agent 不生效 → 没重启，或 `config/backend/base/agents.json` 不是实际生效文件。
 
 ---
 
@@ -545,7 +545,7 @@ QaWebService
 
 - `general` 仍是默认 Agent，原系统提示词/直接回答/写作/代码/文件/Web/MCP/子智能体能力保持不变；
 - 四阶段业务分析放在 `business-analysis` 技能中，仅当任务明确是业务分析/报告时按需加载；
-- 项目技能统一放在仓库根 `skills/`（随 git 维护），通过 `.openharness/settings.json:project_skill_dirs` + `build_runtime(extra_skill_dirs=...)` 加载；不再放 `.openharness/skills/`；
+- 项目技能统一放在仓库根 `skills/`（随 git 维护），通过 `config/backend/base/settings.json:project_skill_dirs` + `build_runtime(extra_skill_dirs=...)` 加载；不再放 `.openharness/skills/`；
 - 能力清单第一条仍是“能直接回答就直接回答”，不把业务分析设为默认；
 - 新增测试覆盖“写邮件/解释概念”等开放任务不触发 DB/分析流程。
 
@@ -610,7 +610,7 @@ qaapp/
 ### 11.1 新增外部智能体（纯配置）
 
 ```text
-config/agents.json → agents[] 追加 { id, kind:"external", name, description, external:{...} }
+config/backend/base/agents.json → agents[] 追加 { id, kind:"external", name, description, external:{...} }
 → abcqa agents validate
 → 重启服务
 → 问一个该领域的问题，确认 agent_routed / tool_started(tool_name=external_agent)

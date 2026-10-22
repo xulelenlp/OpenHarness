@@ -1,0 +1,113 @@
+/* ==========================================================================
+   qaapp Web 客户端设计系统
+   - 参考 Codex 的信息层级：安静画布、细边框、克制动效、对话优先
+   - 主色：国网绿（Pantone 3292 C 近似 #006656）
+   ========================================================================== */
+
+:root {
+  --brand-50: #eaf5f2;
+  --brand-100: #cde8e2;
+  --brand-500: #00806b;
+  --brand-600: #006656;
+  --brand-700: #005247;
+  --brand-900: #003f37;
+
+  --canvas: #f5f7f6;
+  --surface: #ffffff;
+  --surface-2: #fafbfa;
+  --surface-3: #f2f6f4;
+  --ink: #14201d;
+  --ink-2: #34423e;
+  --muted: #6b7a75;
+  --line: #e4eae8;
+  --line-strong: #d3dcd9;
+
+  --danger: #c2413b;
+  --danger-soft: #fbecea;
+  --warn: #a96500;
+  --warn-soft: #fff6e5;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-1: 0 1px 2px rgb(20 32 29 / 4%), 0 1px 3px rgb(20 32 29 / 4%);
+  --shadow-2: 0 10px 30px rgb(20 32 29 / 10%), 0 2px 6px rgb(20 32 29 / 6%);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --sidebar-w: 272px;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  color: var(--brand-900);
+  background: var(--brand-100);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c9d3d0 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c9d3d0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #aebbb6;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(0 102 86 / 38%);
+  outline-offset: 2px;
+}

@@ -103,7 +103,8 @@ def service(tmp_path: Path, mock_agent_server: str, monkeypatch):
     # 指向仓库自带的 .openharness 配置（含可用的 qwen profile + api key），
     # 使 build_runtime 能成功解析 API client（测试中不会真正发起模型调用）。
     repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / ".openharness"))
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend" / "base"))
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
 
@@ -258,6 +259,90 @@ def test_approval_mechanism(service):
         service.resolve_approval(session, request_id, "approve", None)
         result = await request_task
         assert result is True
+
+    asyncio.run(_run())
+
+
+def test_question_approval_carries_options_and_returns_selection(service):
+    """问题审批载荷保留选项，用户选择后原样回传给工具。"""
+    import asyncio
+
+    async def _run():
+        session = ConversationSession("c-question", service)
+        options = [
+            {"label": "按供电单位", "description": "适合管理汇报", "recommended": True},
+            {"label": "按行业分类", "description": "适合结构分析"},
+        ]
+        task = asyncio.create_task(
+            service._request_approval(
+                session,
+                "question",
+                {"question": "报告按什么口径生成？", "options": options, "allow_other": True},
+            )
+        )
+        await asyncio.sleep(0.05)
+        request = next(iter(session.pending.values()))
+        assert request.payload["question"] == "报告按什么口径生成？"
+        assert request.payload["options"] == options
+        assert request.payload["allow_other"] is True
+
+        service.resolve_approval(session, request.request_id, "approve", "按行业分类")
+        assert await task == "按行业分类"
+
+    asyncio.run(_run())
+
+
+def test_resolve_approval_writes_resolved_trace_event(service):
+    """回答/审批结果写入轨迹，刷新页面后才能还原为已完成态。"""
+    import asyncio
+
+    async def _run():
+        session = ConversationSession("c-resolved", service)
+        task = asyncio.create_task(
+            service._request_approval(
+                session,
+                "question",
+                {
+                    "question": "选一个方案",
+                    "options": [{"label": "方案 A"}, {"label": "方案 B"}],
+                },
+            )
+        )
+        await asyncio.sleep(0.05)
+        request_id = next(iter(session.pending))
+        service.resolve_approval(session, request_id, "approve", "方案 B")
+        assert await task == "方案 B"
+
+        events = service.trace_store.load_trace("c-resolved")
+        resolved = [event for event in events if event.get("type") == "approval_resolved"]
+        assert len(resolved) == 1
+        assert resolved[0]["request_id"] == request_id
+        assert resolved[0]["kind"] == "question"
+        assert resolved[0]["decision"] == "approve"
+        assert resolved[0]["reply"] == "方案 B"
+
+    asyncio.run(_run())
+
+
+def test_question_timeout_emits_resolved_event(service):
+    """超时也必须发解决事件，避免前端问题卡一直停在等待态。"""
+    import asyncio
+
+    async def _run():
+        service.dangerous.approval_timeout_seconds = 0.05
+        session = ConversationSession("c-question-timeout", service)
+        result = await service._request_approval(
+            session,
+            "question",
+            {"question": "还在吗？", "options": [{"label": "是"}, {"label": "否"}]},
+        )
+        assert result == ""
+
+        events = service.trace_store.load_trace("c-question-timeout")
+        resolved = [event for event in events if event.get("type") == "approval_resolved"]
+        assert len(resolved) == 1
+        assert resolved[0]["decision"] == "timeout"
+        assert resolved[0]["kind"] == "question"
 
     asyncio.run(_run())
 
@@ -660,7 +745,8 @@ def _write_inline_agents(workspace: Path, endpoint: str, *, conversation_id: str
 @pytest.fixture()
 def inline_service(tmp_path: Path, mock_agent_server: str, monkeypatch):
     repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / ".openharness"))
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend" / "base"))
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
     workspace = tmp_path / ".ohmo"
@@ -696,7 +782,8 @@ def test_inline_external_agent_can_pin_conversation_id(tmp_path, mock_agent_serv
     _MockAgentHandler.received.clear()
     _MockAgentHandler.paths.clear()
     repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / ".openharness"))
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend" / "base"))
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
     workspace = tmp_path / ".ohmo"

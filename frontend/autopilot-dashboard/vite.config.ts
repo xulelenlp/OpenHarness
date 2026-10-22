@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   build: {
-    outDir: "../../docs/autopilot",
-    emptyOutDir: false,
+    outDir: "dist",
+    emptyOutDir: true,
   },
 });

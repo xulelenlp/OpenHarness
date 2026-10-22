@@ -25,15 +25,12 @@
 | 脚本 | 验证内容 | 额外依赖 |
 | --- | --- | --- |
 | `e2e_smoke.py` | 运行时主链路（模型、工具、MCP、权限、会话） | 真实模型 |
-| `local_system_scenarios.py` | MCP / 插件 / bridge / slash commands | 真实模型 |
-| `test_cli_flags.py` | CLI 参数与启动行为 | 真实模型 |
-| `test_harness_features.py` | 重试、skills、并行工具、路径权限 | 真实模型 |
-| `test_headless_rendering.py` | headless REPL 渲染 | 真实模型 |
-| `test_real_skills_plugins.py` | 真实 skills / plugins / hooks | 真实模型、外部仓库 |
 | `react_tui_e2e.py` | React TUI 启动与交互 | `uv`、可交互终端 |
-| `test_react_tui_redesign.py` | React TUI 布局/欢迎页 | `uv`、可交互终端 |
-| `test_tui_interactions.py` | 命令选择器/权限流/快捷键 | `uv`、可交互终端 |
 | `test_docker_sandbox_e2e.py` | Docker 沙箱生命周期 | Docker daemon |
+
+被删除的旧脚本（`local_system_scenarios.py`、`test_cli_flags.py`、`test_harness_features.py`、
+`test_headless_rendering.py`、`test_real_skills_plugins.py`、`test_react_tui_redesign.py`、
+`test_tui_interactions.py`）对应场景已由 `tests/` 与 `tests/e2e/` 覆盖。
 
 ## 约定
 

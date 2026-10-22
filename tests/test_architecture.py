@@ -12,6 +12,7 @@ _ALLOWED_CORE_TO_OHMO = {
     ("src/openharness/services/cron_scheduler.py", "ohmo.gateway.config"),
     ("src/openharness/services/cron_scheduler.py", "ohmo.gateway.notify"),
     ("src/openharness/channels/impl/feishu.py", "ohmo.group_registry"),
+    ("src/openharness/channels/impl/feishu_content.py", "ohmo.group_registry"),
 }
 
 
@@ -82,3 +83,36 @@ def test_core_to_ohmo_imports_are_lazy_and_allowlisted():
             if (rel, module) not in _ALLOWED_CORE_TO_OHMO:
                 offenders.append(f"{rel}: unexpected import of {module}")
     assert not offenders, "core/ohmo crossing is too tight: " + "; ".join(offenders)
+
+
+def _line_count(path: Path) -> int:
+    return len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+
+
+def test_python_source_files_stay_below_size_budget():
+    """Keep production modules small enough to stay reviewable."""
+    offenders: list[str] = []
+    for root_name in ("src/openharness", "ohmo", "qaapp"):
+        for path in (REPO_ROOT / root_name).rglob("*.py"):
+            if "__pycache__" in path.parts:
+                continue
+            lines = _line_count(path)
+            if lines > 800:
+                offenders.append(f"{path.relative_to(REPO_ROOT)}: {lines}")
+    assert not offenders, "production Python files over 800 lines:\n" + "\n".join(offenders)
+
+
+def test_frontend_source_files_stay_below_size_budget():
+    offenders: list[str] = []
+    for frontend in ("terminal", "webapp", "autopilot-dashboard"):
+        root = REPO_ROOT / "frontend" / frontend / "src"
+        if not root.is_dir():
+            continue
+        for pattern in ("*.ts", "*.tsx", "*.css"):
+            for path in root.rglob(pattern):
+                lines = _line_count(path)
+                if lines > 800:
+                    offenders.append(
+                        f"{path.relative_to(REPO_ROOT)}: {lines}"
+                    )
+    assert not offenders, "frontend source files over 800 lines:\n" + "\n".join(offenders)

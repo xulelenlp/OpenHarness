@@ -31,13 +31,26 @@ def get_config_dir() -> Path:
     return config_dir
 
 
+def _project_config_candidates(base: Path) -> tuple[Path, ...]:
+    """Candidate project-level settings files, in priority order.
+
+    ``config/backend/base/settings.json`` is the canonical centralized
+    location. ``config/backend/settings.json`` supports single-file deployments,
+    and ``.openharness/settings.json`` remains for older checkouts.
+    """
+    return (
+        base / "config" / "backend" / "base" / _CONFIG_FILE_NAME,
+        base / "config" / "backend" / _CONFIG_FILE_NAME,
+        base / _DEFAULT_BASE_DIR / _CONFIG_FILE_NAME,
+    )
+
+
 def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
-    """Return the nearest project ``.openharness/settings.json`` above cwd, if any.
+    """Return the nearest project-level settings file above ``cwd``, if any.
 
     Walks from ``cwd`` up to the git root (or the home directory when no git
-    repository is detected) and returns the first existing
-    ``.openharness/settings.json``. Returns ``None`` when no project config
-    file is found.
+    repository is detected). At each level the canonical centralized location
+    is checked first, then the legacy ``.openharness/settings.json``.
     """
     start = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
     if start.is_file():
@@ -49,9 +62,9 @@ def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
     home = Path.home().resolve()
     current = start
     while True:
-        candidate = current / _DEFAULT_BASE_DIR / _CONFIG_FILE_NAME
-        if candidate.is_file():
-            return candidate
+        for candidate in _project_config_candidates(current):
+            if candidate.is_file():
+                return candidate
         if git_root is not None and current == git_root:
             break
         if git_root is None and current == home:
@@ -68,9 +81,10 @@ def get_config_file_path(cwd: str | Path | None = None) -> Path:
 
     Resolution order (highest first):
     1. ``OPENHARNESS_CONFIG_DIR`` environment variable (explicit override)
-    2. Project-local ``.openharness/settings.json`` (nearest ancestor of cwd,
-       up to the git root) — enables per-repo, portable configuration
-    3. ``~/.openharness/settings.json`` (user config)
+    2. Project-local ``config/backend/base/settings.json`` (nearest ancestor
+       of cwd, up to the git root) — the centralized project configuration
+    3. Legacy project ``.openharness/settings.json``
+    4. ``~/.openharness/settings.json`` (user config)
     """
     env_dir = os.environ.get("OPENHARNESS_CONFIG_DIR")
     if env_dir:

@@ -25,7 +25,7 @@
 # 可选环境变量：
 #   PYTHON           指定 Python（默认优先 .venv/bin/python）
 #   OHMO_WORKSPACE   指定后端 workspace（默认 ~/.ohmo）
-#   FRONTEND_PORT    覆盖前端端口（默认 5174）
+#   FRONTEND_PORT    覆盖前端端口（默认读取 config/frontend 的 VITE_DEV_PORT，即 5173）
 #   START_TIMEOUT    启动健康检查超时秒数（默认 40）
 #
 # 后端端口不在本脚本里配置：它取自 webapp.json 的 port（默认 8787），
@@ -35,13 +35,25 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend/webapp"
+FRONTEND_CONFIG_DIR="$ROOT_DIR/config/frontend"
 RUN_DIR="$ROOT_DIR/.openharness/run"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
 FRONTEND_LOG="$RUN_DIR/frontend.log"
 
+env_value() {
+    local key="$1" file value last=""
+    for file in "$FRONTEND_CONFIG_DIR/.env" "$FRONTEND_CONFIG_DIR/.env.development" "$FRONTEND_CONFIG_DIR/.env.local"; do
+        [[ -f "$file" ]] || continue
+        value="$(grep -E "^${key}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+        [[ -n "$value" ]] && last="$value"
+    done
+    printf '%s' "$last"
+}
+
 BACKEND_HOST="127.0.0.1"
 BACKEND_PORT=""
-FRONTEND_PORT="${FRONTEND_PORT:-5174}"
+FRONTEND_PORT="${FRONTEND_PORT:-$(env_value VITE_DEV_PORT)}"
+FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 START_TIMEOUT="${START_TIMEOUT:-40}"
 
 cd "$ROOT_DIR"

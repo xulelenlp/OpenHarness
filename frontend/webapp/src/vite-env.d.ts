@@ -1,11 +1,12 @@
 /// <reference types="vite/client" />
 
 /**
- * 前端可配置项（Vite 环境变量，配置方式见 frontend/webapp/.env.example）。
+ * 前端可配置项（Vite 环境变量，配置集中在 config/frontend/）。
  *
  * - 开发 / 预览：改 Vite 代理的后端地址 → `VITE_API_TARGET`
  * - 生产跨域部署：改浏览器直连后端的基址 → `VITE_API_BASE_URL`
  * - 严格 Bearer 部署（关闭 browser_auth）：构建时注入 `VITE_API_TOKEN`
+ * - 品牌与开发端口：`VITE_APP_*` / `VITE_DEV_PORT`
  */
 interface ImportMetaEnv {
   /** Vite dev / preview 服务器代理 `/api`、`/healthz` 的目标（后端地址）。 */
@@ -19,6 +20,11 @@ interface ImportMetaEnv {
    * 仅当服务端 `browser_auth.enabled=false`（公网 / SSO 场景）时才使用。
    */
   readonly VITE_API_TOKEN?: string;
+  readonly VITE_APP_NAME?: string;
+  readonly VITE_APP_SUBTITLE?: string;
+  readonly VITE_PRODUCT_NAME?: string;
+  readonly VITE_APP_DESCRIPTION?: string;
+  readonly VITE_DEV_PORT?: string;
 }
 
 interface ImportMeta {

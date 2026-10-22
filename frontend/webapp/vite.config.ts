@@ -1,23 +1,25 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 /**
- * 后端地址通过环境变量配置，便于「前端 / 后端分机部署」：
+ * 前端配置集中在仓库根 `config/frontend/`：
  *
- * ```bash
- * # 方式一：命令行临时指定
- * VITE_API_TARGET=http://192.168.139.144:8787 npm run dev
+ * - `.env`              公共品牌 / 端口
+ * - `.env.development`  开发代理后端地址 VITE_API_TARGET
+ * - `.env.production`   生产直连地址 VITE_API_BASE_URL
+ * - `.env.local`        本机覆盖（gitignore）
  *
- * # 方式二：写进 .env.local（推荐，长期生效且不进版本库）
- * echo 'VITE_API_TARGET=http://192.168.139.144:8787' >> .env.local
- * ```
- *
- * 说明：`VITE_API_TARGET` 是 **Vite 服务器所在机器**访问后端的地址（服务端代理，
- * 浏览器不产生跨域）。若只想让浏览器直连后端，则改用 `VITE_API_BASE_URL`。
+ * VITE_API_TARGET 是 Vite dev server 所在机器访问后端的地址（服务端代理，
+ * 浏览器不产生跨域）；VITE_API_BASE_URL 用于浏览器直连后端的部署方式。
  */
+const envDir = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../config/frontend");
+
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "");
+  const env = loadEnv(mode, envDir, "");
   const apiTarget = (env.VITE_API_TARGET || "http://127.0.0.1:8787").replace(/\/+$/, "");
+  const devPort = Number(env.VITE_DEV_PORT || 5173);
 
   const proxy = {
     "/api": { target: apiTarget, changeOrigin: true },
@@ -26,10 +28,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    envDir,
     server: {
       // 监听所有网卡：局域网内的手机 / 其他设备可直接访问前端页面。
       host: "0.0.0.0",
-      port: 5173,
+      port: devPort,
       proxy,
     },
     // 预览生产构建产物（npm run preview）时同样对外监听并代理 API。

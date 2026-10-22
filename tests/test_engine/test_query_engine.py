@@ -1102,8 +1102,9 @@ async def test_execute_tool_call_returns_actionable_reason_when_user_denies_conf
 
 @pytest.mark.asyncio
 async def test_query_engine_executes_ask_user_tool(tmp_path: Path):
-    async def _answer(question: str) -> str:
+    async def _answer(question: str, options: list[dict]) -> str:
         assert question == "Which color?"
+        assert options == []
         return "green"
 
     engine = QueryEngine(
@@ -1146,6 +1147,71 @@ async def test_query_engine_executes_ask_user_tool(tmp_path: Path):
     assert tool_results[0].output == "green"
     assert isinstance(events[-1], AssistantTurnComplete)
     assert events[-1].message.text == "Picked green."
+
+
+@pytest.mark.asyncio
+async def test_query_engine_passes_question_options(tmp_path: Path):
+    """选项式提问的完整引擎链路：工具 → 宿主选择 → 工具结果 → 模型继续。"""
+
+    async def _answer(question: str, options: list[dict]) -> str:
+        assert question == "报告按什么口径生成？"
+        assert [option["label"] for option in options] == ["按供电单位", "按行业分类"]
+        assert options[1]["description"] == "适合结构分析"
+        return options[1]["label"]
+
+    engine = QueryEngine(
+        api_client=FakeApiClient(
+            [
+                _FakeResponse(
+                    message=ConversationMessage(
+                        role="assistant",
+                        content=[
+                            ToolUseBlock(
+                                id="toolu_ask_options",
+                                name="ask_user_question",
+                                input={
+                                    "question": "报告按什么口径生成？",
+                                    "options": [
+                                        {
+                                            "label": "按供电单位",
+                                            "description": "适合管理汇报",
+                                            "recommended": True,
+                                        },
+                                        {
+                                            "label": "按行业分类",
+                                            "description": "适合结构分析",
+                                        },
+                                    ],
+                                },
+                            ),
+                        ],
+                    ),
+                    usage=UsageSnapshot(input_tokens=1, output_tokens=1),
+                ),
+                _FakeResponse(
+                    message=ConversationMessage(
+                        role="assistant",
+                        content=[TextBlock(text="将按行业分类生成报告。")],
+                    ),
+                    usage=UsageSnapshot(input_tokens=1, output_tokens=1),
+                ),
+            ]
+        ),
+        tool_registry=create_default_tool_registry(),
+        permission_checker=PermissionChecker(PermissionSettings()),
+        cwd=tmp_path,
+        model="claude-test",
+        system_prompt="system",
+        ask_user_prompt=_answer,
+    )
+
+    events = [event async for event in engine.submit_message("生成报告")]
+
+    tool_results = [event for event in events if isinstance(event, ToolExecutionCompleted)]
+    assert tool_results
+    assert tool_results[0].output == "按行业分类"
+    assert isinstance(events[-1], AssistantTurnComplete)
+    assert events[-1].message.text == "将按行业分类生成报告。"
 
 
 @pytest.mark.asyncio

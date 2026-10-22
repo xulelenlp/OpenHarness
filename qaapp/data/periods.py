@@ -2,30 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
-from typing import Any
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 from qaapp.data.catalog import Indicator
+from qaapp.data.dates import as_date as _as_date  # noqa: F401 - re-exported
+from qaapp.data.dates import today as _today
 
 _PERIOD_ORDER = ("月", "年", "季", "周", "日")
-
-
-def _as_date(value: Any) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y/%m/%d", "%Y/%m"):
-        try:
-            parsed = datetime.strptime(text, fmt)  # noqa: DTZ007 - 业务日期无时区
-            return parsed.date()
-        except ValueError:
-            continue
-    return None
 
 
 def _month_end(value: date) -> date:
@@ -36,11 +19,6 @@ def _month_end(value: date) -> date:
 
 def _month_start(value: date) -> date:
     return date(value.year, value.month, 1)
-
-
-def _today() -> date:
-    """统一用业务时区（Asia/Shanghai）的“今天”。"""
-    return datetime.now(ZoneInfo("Asia/Shanghai")).date()
 
 
 def _previous_month_end(today: date | None = None) -> date:

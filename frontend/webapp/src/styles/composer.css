@@ -1,0 +1,207 @@
+/* ---------- 输入区 ---------- */
+
+.composer-dock {
+  position: relative;
+  z-index: 15;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  padding: 8px 24px 18px;
+  background: linear-gradient(180deg, rgb(245 247 246 / 0%), var(--canvas) 30%);
+}
+
+.composer-card {
+  position: relative;
+  width: 100%;
+  max-width: 860px;
+  padding: 10px 12px 8px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 4px 18px rgb(20 32 29 / 6%), 0 1px 3px rgb(20 32 29 / 4%);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.composer-card:focus-within {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px rgb(0 102 86 / 8%), 0 6px 22px rgb(20 32 29 / 7%);
+}
+
+.composer-card textarea {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  max-height: 168px;
+  padding: 2px 2px 6px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink);
+  resize: none;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.composer-card textarea::placeholder {
+  color: #93a19c;
+}
+
+.composer-card textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.composer-left,
+.composer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.composer-hint {
+  overflow: hidden;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-note {
+  font-size: 11px;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.attach-btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  border-radius: 7px;
+}
+
+.attach-btn:hover:not(:disabled) {
+  color: var(--brand-700);
+  background: var(--brand-50);
+  border-color: var(--brand-100);
+}
+
+.send-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #fff;
+  background: var(--brand-600);
+  border: 1px solid var(--brand-600);
+  border-radius: 10px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: var(--brand-700);
+  border-color: var(--brand-700);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.send-btn:disabled {
+  color: #98a6a1;
+  cursor: not-allowed;
+  background: #dde5e2;
+  border-color: #dde5e2;
+}
+
+.send-btn.stop {
+  color: var(--danger);
+  background: var(--surface);
+  border-color: #f1c7c3;
+}
+
+.send-btn.stop:hover {
+  background: var(--danger-soft);
+}
+
+/* ---------- 拖拽上传 ---------- */
+
+.messages.drag-active {
+  background: rgb(0 102 86 / 3%);
+}
+
+.messages.drag-active::after {
+  position: absolute;
+  inset: 14px;
+  pointer-events: none;
+  content: "";
+  border: 2px dashed var(--brand-500);
+  border-radius: 14px;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 18px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--brand-700);
+  pointer-events: none;
+  background: rgb(255 255 255 / 86%);
+  border: 2px dashed var(--brand-500);
+  border-radius: 14px;
+}
+
+.drop-overlay strong {
+  font-size: 13px;
+}
+
+.drop-overlay span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ---------- 载入骨架 ---------- */
+
+.message-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.message-skeleton span {
+  height: 14px;
+  background: linear-gradient(90deg, #edf1ef 25%, #f7f9f8 37%, #edf1ef 63%);
+  background-size: 400% 100%;
+  border-radius: 6px;
+  animation: shimmer 1.4s ease infinite;
+}
+
+.message-skeleton span:nth-child(1) {
+  width: 38%;
+}
+
+.message-skeleton span:nth-child(2) {
+  width: 86%;
+}
+
+.message-skeleton span:nth-child(3) {
+  width: 64%;
+}

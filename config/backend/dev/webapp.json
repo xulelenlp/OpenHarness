@@ -1,0 +1,7 @@
+{
+  "_comment": "开发环境覆盖：仅本机访问，不托管静态前端（前端由 Vite dev server 提供）。",
+  "host": "127.0.0.1",
+  "port": 8787,
+  "cors_origins": ["*"],
+  "static_dir": ""
+}

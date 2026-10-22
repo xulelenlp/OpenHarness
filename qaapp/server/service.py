@@ -18,6 +18,7 @@ from ohmo.session_storage import OhmoSessionBackend
 from ohmo.workspace import get_workspace_root
 from openharness.ui.runtime import close_runtime
 from qaapp.config import (
+    apply_env_layers,
     get_agents_config_path,
     get_dangerous_config_path,
     get_datasources_config_path,
@@ -51,6 +52,7 @@ class QaWebService(RuntimeMixin):
     ) -> None:
         self._workspace = workspace
         self.cwd = str(Path(cwd or Path.cwd()).resolve())
+        apply_env_layers(workspace, cwd=self.cwd, config_dir=config_dir)
         # 让 openharness 的运行时数据（记忆、日志等）也落在 workspace 下，
         # 便于整体迁移、隔离与多实例部署（若不显式设置则沿用全局默认）。
         root = get_workspace_root(workspace)

@@ -32,6 +32,7 @@ from typing import Any
 from ohmo.session_storage import get_session_key_latest_path
 from ohmo.workspace import get_sessions_dir, get_workspace_root
 from qaapp.config import WebappConfig
+from qaapp.utils.formatting import format_bytes
 from qaapp.workspace.files import (
     CONVERSATION_ID_PATTERN,
     META_FILENAME,
@@ -406,14 +407,6 @@ def apply_cleanup_plan(plan: CleanupPlan) -> CleanupResult:
 # ---------------------------------------------------------------------------
 
 
-def _format_bytes(size: int) -> str:
-    if size < 1024:
-        return f"{size}B"
-    if size < 1024 * 1024:
-        return f"{size / 1024:.1f}KB"
-    return f"{size / (1024 * 1024):.2f}MB"
-
-
 def format_cleanup_plan(plan: CleanupPlan, *, limit: int = REPORT_LIMIT) -> str:
     lines = [
         f"工作区：{plan.workspace}",
@@ -423,7 +416,7 @@ def format_cleanup_plan(plan: CleanupPlan, *, limit: int = REPORT_LIMIT) -> str:
             f"{plan.older_than_seconds:g} 秒"
             f"（{plan.older_than_seconds / 86400:.1f} 天）的会话"
         ),
-        f"待清理：{len(plan.items)} 项，预计释放 {_format_bytes(plan.total_bytes)}",
+        f"待清理：{len(plan.items)} 项，预计释放 {format_bytes(plan.total_bytes)}",
     ]
     if not plan.items:
         lines.append("没有需要清理的内容。")
@@ -432,7 +425,7 @@ def format_cleanup_plan(plan: CleanupPlan, *, limit: int = REPORT_LIMIT) -> str:
             cid = f" [{item.conversation_id}]" if item.conversation_id else ""
             lines.append(
                 f"- {item.kind}{cid} {item.path} "
-                f"（{_format_bytes(item.size)}；{item.reason}）"
+                f"（{format_bytes(item.size)}；{item.reason}）"
             )
         if len(plan.items) > limit:
             lines.append(f"... 还有 {len(plan.items) - limit} 项未列出")
@@ -444,7 +437,7 @@ def format_cleanup_plan(plan: CleanupPlan, *, limit: int = REPORT_LIMIT) -> str:
 
 def format_cleanup_result(result: CleanupResult) -> str:
     lines = [
-        f"已清理：{len(result.removed)} 项，释放 {_format_bytes(result.freed_bytes)}"
+        f"已清理：{len(result.removed)} 项，释放 {format_bytes(result.freed_bytes)}"
     ]
     if result.failed:
         lines.append(f"失败：{len(result.failed)} 项")

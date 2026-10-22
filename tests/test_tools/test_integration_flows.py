@@ -195,8 +195,9 @@ async def test_agent_send_message_flow_restarts_completed_agent(tmp_path: Path, 
 async def test_ask_user_question_flow_across_registry(tmp_path: Path):
     registry = create_default_tool_registry()
 
-    async def _answer(question: str) -> str:
+    async def _answer(question: str, options: list[dict]) -> str:
         assert "favorite color" in question
+        assert options == []
         return "green"
 
     context = ToolExecutionContext(

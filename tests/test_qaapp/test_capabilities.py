@@ -60,6 +60,25 @@ def test_catalog_is_generated_from_registry():
     assert "决策顺序" in catalog
 
 
+def test_catalog_includes_option_clarification_when_tool_available():
+    with_tool = build_capability_catalog(
+        _registry(),
+        current_agent_id="general",
+        available_tools={"ask_user_question", "run_script"},
+    )
+    assert "选项式澄清" in with_tool
+    assert "2–4 个互斥" in with_tool
+    assert "其他" in with_tool
+
+    without_tool = build_capability_catalog(
+        _registry(),
+        current_agent_id="general",
+        available_tools={"run_script"},
+    )
+    assert "选项式澄清" not in without_tool
+    assert "选项式澄清（ask_user_question）" not in without_tool
+
+
 def test_catalog_respects_tool_boundary():
     only_external = build_capability_catalog(
         _registry(),
@@ -127,7 +146,7 @@ def test_actual_general_config_keeps_tools_and_analysis_optional():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
-    data = json.loads((root / "config" / "agents.json").read_text(encoding="utf-8"))
+    data = json.loads((root / "config" / "backend" / "base" / "agents.json").read_text(encoding="utf-8"))
     general = next(agent for agent in data["agents"] if agent["id"] == "general")
     assert general["tools"] == ["*"]
     assert "能直接回答就直接回答" in general["system_prompt"]
