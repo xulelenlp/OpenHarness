@@ -59,6 +59,27 @@ from openharness.permissions.modes import PermissionMode
 from openharness.utils.file_lock import exclusive_file_lock
 from openharness.utils.fs import atomic_write_text
 
+_API_KEY_PREFIXES = ("sk-", "sk_", "Bearer ", "ghp_", "xoxb-")
+
+
+def _looks_like_api_key(value: str) -> bool:
+    """Best-effort detection of an API key mistakenly used as an auth source."""
+    text = (value or "").strip()
+    if not text:
+        return False
+    if text.startswith(_API_KEY_PREFIXES):
+        return True
+    # 认证来源名形如 ``openai_api_key``；超长且不含下划线的大概率是密钥。
+    return "_" not in text and len(text) >= 32
+
+
+def _redact_auth_source(value: str) -> str:
+    """Mask key-like values so secrets never end up in logs / tracebacks."""
+    text = (value or "").strip()
+    if _looks_like_api_key(text) and len(text) > 10:
+        return f"{text[:6]}…{text[-4:]}"
+    return text
+
 # ANSI escape sequence pattern
 _ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -439,10 +460,20 @@ class Settings(BaseModel):
                 state="configured",
             )
 
-        raise ValueError(
-            f"No credentials found for auth source '{auth_source}'. "
+        message = (
+            f"No credentials found for auth source '{_redact_auth_source(auth_source)}'. "
             "Configure the matching provider or environment variable first."
         )
+        if _looks_like_api_key(auth_source):
+            # 最常见的误配：把密钥本身写进了 profile.auth_source。
+            # 这里显式提示正确字段，并提示密钥该放哪里。
+            message += (
+                " Note: 'auth_source' must be a credential source name such as "
+                "'openai_api_key' or 'dashscope_api_key', not the API key itself. "
+                "Put the key in OPENHARNESS_OPENAI_API_KEY (or the profile's api_key "
+                "field) and keep it out of settings.json."
+            )
+        raise ValueError(message)
 
     def merge_cli_overrides(self, **overrides: Any) -> Settings:
         """Return a new Settings with CLI overrides applied (non-None values only)."""

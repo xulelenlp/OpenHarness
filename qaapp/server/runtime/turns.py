@@ -69,6 +69,18 @@ class TurnsMixin:
         except asyncio.CancelledError:
             self._emit(session, "status", {"text": "已中断当前回答"})
             raise
+        except SystemExit as exc:
+            # 模型鉴权等底层组件在 CLI 语义下用 SystemExit 退出；Web 服务里必须
+            # 把它降级成一次失败的回答，否则单个请求会终止整个 uvicorn 进程。
+            cause = exc.__context__ or exc
+            detail = str(cause).strip() or "运行环境提前退出（SystemExit）"
+            logger.exception("turn aborted by SystemExit conversation=%s", session.conversation_id)
+            session.last_error = detail
+            self._emit(
+                session,
+                "error",
+                {"text": f"处理失败：{detail}", "code": "runtime_exit"},
+            )
         except Exception as exc:
             logger.exception("turn failed conversation=%s", session.conversation_id)
             session.last_error = str(exc)

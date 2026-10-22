@@ -912,3 +912,33 @@ class TestModelScopeProvider:
         assert materialized.model == "deepseek-ai/DeepSeek-V4-Flash"
         assert materialized.provider == "modelscope"
         assert materialized.api_format == "openai"
+
+
+class TestAuthSourceMisconfiguration:
+    def test_key_in_auth_source_is_redacted_and_explained(self, monkeypatch):
+        for name in ("OPENHARNESS_OPENAI_API_KEY", "OPENAI_API_KEY"):
+            monkeypatch.delenv(name, raising=False)
+        secret = "sk-" + "a" * 40
+        settings = Settings(
+            active_profile="bad",
+            profiles={
+                "bad": ProviderProfile(
+                    label="bad",
+                    provider="openai",
+                    api_format="openai",
+                    auth_source=secret,
+                    default_model="m",
+                    base_url="http://example.invalid/v1",
+                )
+            },
+        )
+
+        with pytest.raises(ValueError) as excinfo:
+            settings.resolve_auth()
+
+        message = str(excinfo.value)
+        # 提示正确写法，且不在报错/日志里回显完整密钥。
+        assert "auth_source" in message
+        assert "openai_api_key" in message
+        assert secret not in message
+        assert "sk-aaa" in message
