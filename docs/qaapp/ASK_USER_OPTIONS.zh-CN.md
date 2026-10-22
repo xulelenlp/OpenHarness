@@ -6,7 +6,7 @@
 ## 1. 前置条件
 
 ```bash
-# 后端与前端（默认后端 :8787，前端 :5173）
+# 后端与前端（默认后端 0.0.0.0:8787，前端 0.0.0.0:5174）
 ./scripts/dev_services.sh restart
 
 # 如果 ~/.ohmo 不在可写目录，可指定仓库内测试工作区：
@@ -15,7 +15,7 @@
 
 - `config/backend/settings.json` 里已配置可用模型；`config/backend/agents.json` 的通用助手
   `tools` 为 `["*"]`（包含 `ask_user_question`）。
-- 浏览器打开 `http://localhost:5173`。
+- 浏览器打开 `http://0.0.0.0:5174`（或脚本输出的局域网地址）。
 
 ## 2. 自动化回归
 

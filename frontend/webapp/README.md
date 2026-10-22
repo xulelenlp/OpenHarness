@@ -133,14 +133,14 @@ npm run check:questions   # 选项规范化 / 已确认回放 / 超时 / 权限�
 ```bash
 cd frontend/webapp
 npm install
-npm run dev      # http://localhost:5173，/api 与 /healthz 代理到 127.0.0.1:8787
+npm run dev      # 监听 0.0.0.0:5174，/api 与 /healthz 代理到 127.0.0.1:8787
 ```
 
 启动后端：
 
 ```bash
 abcqa init          # 首次写入示例配置
-abcqa webapp run    # 127.0.0.1:8787
+abcqa webapp run    # 0.0.0.0:8787
 ```
 
 ## 生产

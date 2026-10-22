@@ -18,7 +18,7 @@ const envDir = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../conf
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, envDir, "");
   const apiTarget = (env.VITE_API_TARGET || "http://127.0.0.1:8787").replace(/\/+$/, "");
-  const devPort = Number(env.VITE_DEV_PORT || 5173);
+  const devPort = Number(env.VITE_DEV_PORT || 5174);
 
   const proxy = {
     "/api": { target: apiTarget, changeOrigin: true },
@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     envDir,
     server: {
-      // 监听所有网卡：局域网内的手机 / 其他设备可直接访问前端页面。
+      // 监听所有网卡（不写死任何本机 IP）：局域网内的手机 / 其他设备可直接访问。
       host: "0.0.0.0",
       port: devPort,
       proxy,

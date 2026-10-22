@@ -46,10 +46,10 @@ Vite 的 `envDir` 指向本目录，只读取 `.env`。常用变量：
 
 | 变量 | 说明 |
 | --- | --- |
-| `VITE_API_TARGET` | 开发代理的后端地址 |
+| `VITE_API_TARGET` | 开发代理的后端地址（同机用 `http://127.0.0.1:8787`，不要写死本机局域网 IP） |
 | `VITE_API_BASE_URL` | 生产浏览器直连后端基址；留空 = 同源 |
 | `VITE_API_TOKEN` | 仅关闭 browser_auth 时使用 |
-| `VITE_DEV_PORT` | Vite 开发端口（默认 5173） |
+| `VITE_DEV_PORT` | Vite 开发端口（默认 5174） |
 | `VITE_APP_*` / `VITE_PRODUCT_NAME` | 品牌文案 |
 
 ## 密钥

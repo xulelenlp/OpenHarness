@@ -395,7 +395,7 @@ settings 的 `allowed_tools` → 基础权限模式。
 ```bash
 cd frontend/webapp
 npm install
-npm run dev      # 开发：监听 0.0.0.0:5173，/api 与 /healthz 代理到 VITE_API_TARGET（默认 127.0.0.1:8787）
+npm run dev      # 开发：监听 0.0.0.0:5174，/api 与 /healthz 代理到 VITE_API_TARGET（默认 127.0.0.1:8787）
 npm run build    # 生产构建，产物在 dist/
 npm run preview  # 预览构建产物：监听 0.0.0.0:4173
 ```
@@ -464,8 +464,8 @@ npm run dev
 | 场景 | `VITE_API_TARGET` |
 | --- | --- |
 | 前端与后端**同一台机器** | `http://127.0.0.1:8787`（默认值，可不配） |
-| 前端在本机、后端在 `192.168.139.144` | `http://192.168.139.144:8787` |
-| 前端就跑在 `192.168.139.144`、别人访问 `:5173` | `http://127.0.0.1:8787`（dev server 与后端同机，走回环即可） |
+| 前端在本机、后端在另一台机器 | `http://<后端IP>:8787` |
+| 前端就跑在后端同一台机器、别人访问 `:5174` | `http://127.0.0.1:8787`（dev server 与后端同机，走回环即可） |
 
 > ⚠️ `VITE_API_TARGET` 是**运行 `npm run dev` 那台机器**去连后端的地址，**不是浏览器的地址**。
 > 因此只有「前端与后端不在同一台机器」时才需要改成服务器 IP。
@@ -473,7 +473,7 @@ npm run dev
 生产构建且前后端分离部署时：
 
 ```bash
-VITE_API_BASE_URL=http://192.168.139.144:8787 npm run build
+VITE_API_BASE_URL=https://api.example.com npm run build
 ```
 
 ### 8.2 改动生效规则（很容易踩）
@@ -553,7 +553,7 @@ Authorization: Bearer <api_tokens 里的任意一个>
   可直接访问。仅需本机时改成 `127.0.0.1`，或用 CLI 临时覆盖：
   `abcqa webapp run --host 127.0.0.1`。
 - 前端 `npm run dev` / `npm run preview` 同样监听 `0.0.0.0`（见 `vite.config.ts`）：
-  - 前端页面：`http://<本机IP>:5173`（dev）或 `http://<本机IP>:4173`（preview）
+  - 前端页面：`http://<本机IP>:5174`（dev）或 `http://<本机IP>:4173`（preview）
   - 后端 API：`http://<本机IP>:8787`
   - dev 模式下前端的 `/api` 由 Vite 代理转发到 `VITE_API_TARGET`（默认 `127.0.0.1:8787`），
     因此**浏览器无需跨域**；后端在别的机器时按 §8.1 改这个变量即可。

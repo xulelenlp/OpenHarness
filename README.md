@@ -50,7 +50,7 @@ and the web client in the background, with logs under `~/.ohmo/logs/` and
 `.openharness/run/`:
 
 ```bash
-./scripts/dev_services.sh start     # background: backend :8787 + frontend :5173
+./scripts/dev_services.sh start     # background: backend 0.0.0.0:8787 + frontend 0.0.0.0:5174
 ./scripts/dev_services.sh status    # pid / port / health check
 ./scripts/dev_services.sh restart   # stop then start
 ./scripts/dev_services.sh stop      # stop both

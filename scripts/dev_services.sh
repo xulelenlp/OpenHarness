@@ -25,11 +25,13 @@
 # 可选环境变量：
 #   PYTHON           指定 Python（默认优先 .venv/bin/python）
 #   OHMO_WORKSPACE   指定后端 workspace（默认 ~/.ohmo）
-#   FRONTEND_PORT    覆盖前端端口（默认读取 config/frontend/.env 的 VITE_DEV_PORT，即 5173）
+#   FRONTEND_HOST    覆盖前端监听地址（默认 0.0.0.0，即所有网卡）
+#   FRONTEND_PORT    覆盖前端端口（默认读取 config/frontend/.env 的 VITE_DEV_PORT，即 5174）
 #   START_TIMEOUT    启动健康检查超时秒数（默认 40）
 #
-# 后端端口不在本脚本里配置：它取自 webapp.json 的 port（默认 8787），
-# 与 abcqa webapp run 实际监听的端口保持一致。
+# 监听地址不写死在本脚本里：后端 host/port 取自 webapp.json 与 config/backend/.env
+# 的 QAAPP_HOST/QAAPP_PORT（默认 0.0.0.0:8787），前端默认监听所有网卡。
+# 健康检查走回环地址，展示的地址始终是服务实际监听的地址。
 
 set -euo pipefail
 
@@ -47,10 +49,11 @@ env_value() {
     printf '%s' "$value"
 }
 
-BACKEND_HOST="127.0.0.1"
+BACKEND_HOST=""
 BACKEND_PORT=""
+FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${FRONTEND_PORT:-$(env_value VITE_DEV_PORT)}"
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+FRONTEND_PORT="${FRONTEND_PORT:-5174}"
 START_TIMEOUT="${START_TIMEOUT:-40}"
 
 cd "$ROOT_DIR"
@@ -64,8 +67,68 @@ warn() { printf '[services] 警告：%s\n' "$*" >&2; }
 err()  { printf '[services] 错误：%s\n' "$*" >&2; }
 
 usage() {
-    sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed -n 's/^# \{0,1\}//p'
     exit 1
+}
+
+# 健康检查地址：服务监听所有网卡时用回环地址探测，不依赖写死的本机 IP
+probe_host() {
+    case "$1" in
+        0.0.0.0|::|"") printf '127.0.0.1' ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# 端口是否已按期望地址监听（0.0.0.0 / :: 必须是通配监听）
+port_listens_on() {
+    local port="$1" host="$2" addr
+    addr="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -F n 2>/dev/null | sed -n 's/^n//p' | head -1)"
+    [[ -n "$addr" ]] || return 1
+    case "$host" in
+        0.0.0.0|::|"")
+            [[ "$addr" == "*:"* || "$addr" == "[::]:"* ]] || return 1
+            ;;
+        *)
+            [[ "$addr" == "$host:"* || "$addr" == "*:"* || "$addr" == "[::]:"* ]] || return 1
+            ;;
+    esac
+    return 0
+}
+
+# 动态探测本机一个可用的局域网 IPv4（取不到返回空），避免在脚本/文档里写死 IP
+lan_ip() {
+    local ip="" iface
+    case "$(uname -s)" in
+        Darwin)
+            for iface in $(route -n get default 2>/dev/null | awk '/interface:/{print $2}') en0 en1 en2; do
+                ip="$(ipconfig getifaddr "$iface" 2>/dev/null || true)"
+                [[ -n "$ip" ]] && break
+            done
+            ;;
+        *)
+            ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+            ;;
+    esac
+    if [[ -z "$ip" ]]; then
+        ip="$(ifconfig 2>/dev/null | awk '$1 == "inet" {print $2}' \
+            | grep -vE '^(127\.|169\.254\.)' | head -1 || true)"
+    fi
+    if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        printf '%s' "$ip"
+    fi
+    return 0
+}
+
+# 监听所有网卡时，额外给出可直接在浏览器打开的局域网地址
+print_lan_hint() {
+    local host="$1" port="$2" lan
+    case "$host" in
+        0.0.0.0|::|"") ;;
+        *) return 0 ;;
+    esac
+    lan="$(lan_ip)"
+    [[ -n "$lan" ]] && info "  局域网访问：http://$lan:$port"
+    return 0
 }
 
 pid_alive() {
@@ -162,13 +225,23 @@ backend_log() {
     printf '%s' "$(backend_workspace)/logs/webapp.log"
 }
 
-# 后端端口：优先环境变量，其次读 webapp 配置（与 qaapp 的解析逻辑保持一致）
-resolve_backend_port() {
-    local port
-    port="$("$PYTHON" -m qaapp webapp status \
-        ${WORKSPACE_ARGS[@]+"${WORKSPACE_ARGS[@]}"} --cwd "$ROOT_DIR" 2>/dev/null \
-        | "$PYTHON" -c 'import json,sys; print(json.load(sys.stdin)["port"])' 2>/dev/null || true)"
-    printf '%s' "${port:-8787}"
+# 后端监听地址：从 qaapp 解析后的配置读取（webapp.json + config/backend/.env），
+# 不写死 host/port，保证展示的地址与 uvicorn 实际监听的一致。
+# 只在 start/stop/status 时按需加载，help/logs 不额外等 Python 启动。
+load_backend_addr() {
+    [[ -n "$BACKEND_PORT" ]] && return 0
+    local json="" host="" port=""
+    json="$("$PYTHON" -m qaapp webapp status \
+        ${WORKSPACE_ARGS[@]+"${WORKSPACE_ARGS[@]}"} --cwd "$ROOT_DIR" 2>/dev/null || true)"
+    if [[ -n "$json" ]]; then
+        IFS=$'\t' read -r host port < <(
+            printf '%s' "$json" | "$PYTHON" -c \
+                'import json,sys; d=json.load(sys.stdin); print("%s\t%s" % (d.get("host") or "", d.get("port") or ""))' \
+                2>/dev/null || true
+        ) || true
+    fi
+    BACKEND_HOST="${host:-0.0.0.0}"
+    BACKEND_PORT="${port:-8787}"
 }
 
 # ---------------------------------------------------------------------------
@@ -191,8 +264,12 @@ start_backend() {
     local port="$1" pid
 
     if backend_running; then
-        info "后端已在运行（pid=$(backend_pid)，端口 $port），跳过启动"
-        return 0
+        if port_listens_on "$port" "$BACKEND_HOST"; then
+            info "后端已在运行（pid=$(backend_pid)，监听 $BACKEND_HOST:$port），跳过启动"
+            return 0
+        fi
+        warn "后端进程在运行，但监听地址与配置不符（期望 $BACKEND_HOST:$port），先重启后端"
+        stop_backend "$port" || true
     fi
 
     # pid 文件残留但进程已死：清掉，避免 qaapp start 误判
@@ -207,12 +284,13 @@ start_backend() {
         fi
     fi
 
-    info "启动后端：$PYTHON -m qaapp webapp start（端口 $port）"
+    info "启动后端：$PYTHON -m qaapp webapp start（监听 $BACKEND_HOST:$port）"
     "$PYTHON" -m qaapp webapp start \
         ${WORKSPACE_ARGS[@]+"${WORKSPACE_ARGS[@]}"} --cwd "$ROOT_DIR" >/dev/null
 
-    if wait_http_ok "http://$BACKEND_HOST:$port/healthz" "$START_TIMEOUT"; then
+    if wait_http_ok "http://$(probe_host "$BACKEND_HOST"):$port/healthz" "$START_TIMEOUT"; then
         info "后端已就绪：http://$BACKEND_HOST:$port（日志：$(backend_log)）"
+        print_lan_hint "$BACKEND_HOST" "$port"
     else
         err "后端启动超时，请查看日志：$(backend_log)"
         return 1
@@ -260,14 +338,14 @@ backend_status() {
         state="未运行"
     fi
 
-    if curl -fsS -o /dev/null --max-time 2 "http://$BACKEND_HOST:$port/healthz" 2>/dev/null; then
+    if curl -fsS -o /dev/null --max-time 2 "http://$(probe_host "$BACKEND_HOST"):$port/healthz" 2>/dev/null; then
         state="$state，健康检查通过"
     elif pid_alive "$pid"; then
         state="$state，健康检查失败"
     fi
 
     printf '  后端：%s\n' "$state"
-    printf '        地址：http://%s:%s\n' "$BACKEND_HOST" "$port"
+    printf '        监听：http://%s:%s\n' "$BACKEND_HOST" "$port"
     printf '        日志：%s\n' "$(backend_log)"
 }
 
@@ -289,8 +367,12 @@ start_frontend() {
     local port="$1" pid
 
     if frontend_running; then
-        info "前端已在运行（pid=$(frontend_pid)，端口 $port），跳过启动"
-        return 0
+        if port_listens_on "$port" "$FRONTEND_HOST"; then
+            info "前端已在运行（pid=$(frontend_pid)，监听 $FRONTEND_HOST:$port），跳过启动"
+            return 0
+        fi
+        warn "前端进程在运行，但监听地址与配置不符（期望 $FRONTEND_HOST:$port），先重启前端"
+        stop_frontend "$port" || true
     fi
 
     rm -f "$FRONTEND_PID_FILE"
@@ -311,18 +393,20 @@ start_frontend() {
 
     mkdir -p "$RUN_DIR"
     {
-        printf '\n=== %s 启动前端（端口 %s）===\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$port"
+        printf '\n=== %s 启动前端（监听 %s:%s）===\n' "$(date '+%Y-%m-%d %H:%M:%S')" \
+            "$FRONTEND_HOST" "$port"
     } >>"$FRONTEND_LOG"
 
-    info "启动前端：npm run dev -- --port $port（日志：$FRONTEND_LOG）"
+    info "启动前端：npm run dev -- --host $FRONTEND_HOST --port $port --strictPort（日志：$FRONTEND_LOG）"
     (
         cd "$FRONTEND_DIR"
-        nohup npm run dev -- --host 0.0.0.0 --port "$port" >>"$FRONTEND_LOG" 2>&1 &
+        nohup npm run dev -- --host "$FRONTEND_HOST" --port "$port" --strictPort >>"$FRONTEND_LOG" 2>&1 &
         echo $! >"$FRONTEND_PID_FILE"
     )
 
-    if wait_http_ok "http://127.0.0.1:$port/" "$START_TIMEOUT"; then
-        info "前端已就绪：http://localhost:$port"
+    if wait_http_ok "http://$(probe_host "$FRONTEND_HOST"):$port/" "$START_TIMEOUT"; then
+        info "前端已就绪：http://$FRONTEND_HOST:$port（日志：$FRONTEND_LOG）"
+        print_lan_hint "$FRONTEND_HOST" "$port"
     else
         err "前端启动超时，请查看日志：$FRONTEND_LOG"
         return 1
@@ -369,14 +453,14 @@ frontend_status() {
         state="未运行"
     fi
 
-    if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$port/" 2>/dev/null; then
+    if curl -fsS -o /dev/null --max-time 2 "http://$(probe_host "$FRONTEND_HOST"):$port/" 2>/dev/null; then
         state="$state，健康检查通过"
     elif pid_alive "$pid"; then
         state="$state，健康检查失败"
     fi
 
     printf '  前端：%s\n' "$state"
-    printf '        地址：http://localhost:%s\n' "$port"
+    printf '        监听：http://%s:%s\n' "$FRONTEND_HOST" "$port"
     printf '        日志：%s\n' "$FRONTEND_LOG"
 }
 
@@ -386,14 +470,13 @@ frontend_status() {
 
 start_services() {
     local target="${1:-all}"
-    local backend_port
-    backend_port="$(resolve_backend_port)"
+    load_backend_addr
 
     case "$target" in
-        backend)  start_backend "$backend_port" ;;
+        backend)  start_backend "$BACKEND_PORT" ;;
         frontend) start_frontend "$FRONTEND_PORT" ;;
         all|"")
-            start_backend "$backend_port"
+            start_backend "$BACKEND_PORT"
             start_frontend "$FRONTEND_PORT"
             ;;
         *) err "未知目标：$target（可选 all / backend / frontend）"; return 1 ;;
@@ -402,15 +485,14 @@ start_services() {
 
 stop_services() {
     local target="${1:-all}"
-    local backend_port
-    backend_port="$(resolve_backend_port)"
+    load_backend_addr
 
     case "$target" in
-        backend)  stop_backend "$backend_port" ;;
+        backend)  stop_backend "$BACKEND_PORT" ;;
         frontend) stop_frontend "$FRONTEND_PORT" ;;
         all|"")
             # 两端都尝试停止，任一失败也不阻断另一端
-            stop_backend "$backend_port" || true
+            stop_backend "$BACKEND_PORT" || true
             stop_frontend "$FRONTEND_PORT" || true
             ;;
         *) err "未知目标：$target（可选 all / backend / frontend）"; return 1 ;;
@@ -418,12 +500,11 @@ stop_services() {
 }
 
 status_services() {
-    local backend_port
-    backend_port="$(resolve_backend_port)"
+    load_backend_addr
     printf '工作目录：%s\n' "$ROOT_DIR"
-    printf '后端端口：%s\n' "$backend_port"
-    printf '前端端口：%s\n' "$FRONTEND_PORT"
-    backend_status "$backend_port"
+    printf '后端监听：%s:%s\n' "$BACKEND_HOST" "$BACKEND_PORT"
+    printf '前端监听：%s:%s\n' "$FRONTEND_HOST" "$FRONTEND_PORT"
+    backend_status "$BACKEND_PORT"
     frontend_status "$FRONTEND_PORT"
 }
 
