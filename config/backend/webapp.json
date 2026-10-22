@@ -1,5 +1,5 @@
 {
-  "_comment": "qaapp Web 服务默认配置。实际生效值按 config/backend/base → dev/prod → local 分层合并；用 QAAPP_ENV 选择环境。",
+  "_comment": "qaapp Web 服务默认配置。环境差异（host/port/token/cors/static_dir/browser_auth）由 config/backend/.env 的 QAAPP_* 覆盖。",
   "host": "0.0.0.0",
   "port": 8787,
   "provider_profile": "",

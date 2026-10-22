@@ -11,13 +11,13 @@
 ### 1.1 配置载体（优先级从高到低）
 
 1. **环境变量**
-2. **项目内 `config/backend/base/settings.json`**（Git 仓库根目录下，随仓库迁移）
-3. **`~/config/backend/base/settings.json`**（`OPENHARNESS_CONFIG_DIR` 可覆盖根目录）
+2. **项目内 `config/backend/settings.json`**（Git 仓库根目录下，随仓库迁移）
+3. **`~/config/backend/settings.json`**（`OPENHARNESS_CONFIG_DIR` 可覆盖根目录）
 4. **默认值**
 
 ### 1.2 配置文件
 
-编辑项目内的 `config/backend/base/settings.json`（若不存在则编辑 `~/config/backend/base/settings.json`），参考 [`docs/settings.example.json`](./settings.example.json)：
+编辑项目内的 `config/backend/settings.json`（若不存在则编辑 `~/config/backend/settings.json`），参考 [`docs/settings.example.json`](./settings.example.json)：
 
 ```json
 {

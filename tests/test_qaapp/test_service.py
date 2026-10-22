@@ -103,7 +103,7 @@ def service(tmp_path: Path, mock_agent_server: str, monkeypatch):
     # 指向仓库自带的 .openharness 配置（含可用的 qwen profile + api key），
     # 使 build_runtime 能成功解析 API client（测试中不会真正发起模型调用）。
     repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend" / "base"))
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend"))
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
@@ -745,7 +745,7 @@ def _write_inline_agents(workspace: Path, endpoint: str, *, conversation_id: str
 @pytest.fixture()
 def inline_service(tmp_path: Path, mock_agent_server: str, monkeypatch):
     repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend" / "base"))
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend"))
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
@@ -782,7 +782,7 @@ def test_inline_external_agent_can_pin_conversation_id(tmp_path, mock_agent_serv
     _MockAgentHandler.received.clear()
     _MockAgentHandler.paths.clear()
     repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend" / "base"))
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend"))
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))

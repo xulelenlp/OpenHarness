@@ -85,7 +85,13 @@ exclude = [
 "frontend/terminal/tsconfig.json" = "openharness/_frontend/tsconfig.json"
 "frontend/terminal/src" = "openharness/_frontend/src"
 # Canonical config templates used by `abcqa init` when installed from a wheel.
-"config/backend/base" = "qaapp/_config/backend/base"
+"config/backend/agents.json" = "qaapp/_config/backend/agents.json"
+"config/backend/dangerous-actions.json" = "qaapp/_config/backend/dangerous-actions.json"
+"config/backend/datasources.json" = "qaapp/_config/backend/datasources.json"
+"config/backend/settings.json" = "qaapp/_config/backend/settings.json"
+"config/backend/webapp.json" = "qaapp/_config/backend/webapp.json"
+"config/backend/.env_dev" = "qaapp/_config/backend/.env_dev"
+"config/backend/.env_prod" = "qaapp/_config/backend/.env_prod"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -61,8 +61,8 @@ _CONFIG_DIR_HELP = (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_REPO_TEMPLATES_DIR = _REPO_ROOT / "config" / "backend" / "base"
-_PACKAGED_TEMPLATES_DIR = Path(__file__).resolve().parent / "_config" / "backend" / "base"
+_REPO_TEMPLATES_DIR = _REPO_ROOT / "config" / "backend"
+_PACKAGED_TEMPLATES_DIR = Path(__file__).resolve().parent / "_config" / "backend"
 
 
 def _templates_dir() -> Path:
@@ -189,22 +189,23 @@ def init_cmd(
     cwd: str = typer.Option(str(Path.cwd()), "--cwd", help="项目工作目录（决定 <cwd>/config）"),
     force: bool = typer.Option(False, "--force", help="覆盖已存在的配置文件"),
 ) -> None:
-    """将示例配置安装到项目 ``config/backend/base``（默认）或指定目录。"""
+    """将示例配置安装到项目 ``config/backend``（默认）或指定目录。"""
     root = initialize_workspace(workspace)
     if config_dir:
         explicit = Path(config_dir).expanduser().resolve()
-        backend = explicit / "backend" if explicit.name == "config" else explicit
-        target_dir = backend / "base"
+        target_dir = explicit / "backend" if explicit.name == "config" else explicit
     elif workspace is not None:
         # Explicit workspace keeps the legacy flat layout for old deployments.
         target_dir = root
     else:
-        target_dir = Path(cwd).expanduser().resolve() / "config" / "backend" / "base"
+        target_dir = Path(cwd).expanduser().resolve() / "config" / "backend"
     target_dir.mkdir(parents=True, exist_ok=True)
 
     templates = _templates_dir()
     targets = {
         "settings.json": target_dir / "settings.json",
+        ".env_dev": target_dir / ".env_dev",
+        ".env_prod": target_dir / ".env_prod",
         "webapp.json": target_dir / "webapp.json",
         "agents.json": target_dir / "agents.json",
         "dangerous-actions.json": target_dir / "dangerous-actions.json",
@@ -222,8 +223,8 @@ def init_cmd(
         print(f"写入 {target}")
     print(f"\n配置已就绪，workspace={root}，config_dir={target_dir}")
     print("提示：所有 Agent（含外部 Agent 的 endpoint / 请求体 / 响应解析）统一在 agents.json 里维护。")
-    print("      配置分层：config/backend/base → dev/prod → local；用 QAAPP_ENV 选择环境。")
-    print("      数据源（MySQL/Redis）只在 datasources.json 维护；用 ${DB_HOST} 等占位符 + config/backend/.env.local。")
+    print("      开发/生产切换：cp config/backend/.env_dev config/backend/.env（或 .env_prod）。")
+    print("      数据源（MySQL/Redis）在 datasources.json 维护；用 ${DB_HOST} 等占位符 + .env。")
     print("      检查：abcqa config；连通性：abcqa datasource check")
 
 

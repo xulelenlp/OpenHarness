@@ -1,4 +1,4 @@
-"""qaapp 配置加载、校验与状态汇总（分层实现）。"""
+"""qaapp 配置加载、校验与状态汇总（单文件，不做分层合并）。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from ohmo.workspace import get_workspace_root
-from openharness.config.layers import ConfigLayerError, deep_merge, expand_env, load_json_file
+from openharness.config.layers import ConfigLayerError, expand_env, load_json_file
 from qaapp.config.env import merged_env
 from qaapp.config.models import AgentRegistry, DangerousActions, WebappConfig
 from qaapp.config.paths import (
@@ -20,27 +20,24 @@ from qaapp.config.paths import (
     KIND_EXTERNAL,
     KIND_SUBAGENT,
     WEBAPP_FILENAME,
-    ConfigLayer,
     get_backend_config_dir,
     get_project_config_dir,
-    get_qaapp_env,
-    resolve_config_layers,
+    resolve_config_path,
 )
 
 # ---------------------------------------------------------------------------
-# 分层读取
+# 单文件读取
 # ---------------------------------------------------------------------------
 
 
-def config_layers(
+def config_path(
     filename: str,
     workspace: str | Path | None = None,
     *,
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
-) -> list[ConfigLayer]:
-    """Return the candidate layers for ``filename`` (lowest priority first)."""
-    return resolve_config_layers(filename, workspace, cwd=cwd, config_dir=config_dir)
+) -> Path:
+    return resolve_config_path(filename, workspace, cwd=cwd, config_dir=config_dir)
 
 
 def load_config_dict(
@@ -49,37 +46,18 @@ def load_config_dict(
     *,
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
-) -> tuple[dict[str, Any], list[str], list[ConfigLayer]]:
-    """Merge existing layers and expand ``${VAR}`` placeholders.
-
-    Invalid layers are skipped and reported, so one broken override does not
-    discard a valid base configuration.
-    """
-    layers = config_layers(filename, workspace, cwd=cwd, config_dir=config_dir)
-    merged: dict[str, Any] = {}
+) -> tuple[dict[str, Any], list[str], Path]:
+    """Read one JSON file and expand ``${VAR}`` placeholders."""
+    path = config_path(filename, workspace, cwd=cwd, config_dir=config_dir)
     errors: list[str] = []
-    for layer in layers:
-        if not layer.exists:
-            continue
+    raw: dict[str, Any] = {}
+    if path.is_file():
         try:
-            raw = load_json_file(layer.path)
+            raw = load_json_file(path)
         except ConfigLayerError as exc:
             errors.append(str(exc))
-            continue
-        merged = deep_merge(merged, raw)
     env = merged_env(workspace, cwd=cwd, config_dir=config_dir)
-    return expand_env(merged, env), errors, layers
-
-
-def _effective_path(layers: list[ConfigLayer]) -> Path:
-    existing = [layer.path for layer in layers if layer.exists]
-    if existing:
-        return existing[-1]
-    return layers[-1].path if layers else Path("")
-
-
-def _validation_error(path: Path, exc: Exception) -> str:
-    return f"配置非法 {path}: {exc}"
+    return expand_env(raw, env), errors, path
 
 
 def _load_json_model(
@@ -90,7 +68,7 @@ def _load_json_model(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> tuple[BaseModel, list[str]]:
-    raw, errors, layers = load_config_dict(
+    raw, errors, path = load_config_dict(
         filename, workspace, cwd=cwd, config_dir=config_dir
     )
     if errors:
@@ -100,7 +78,7 @@ def _load_json_model(
     try:
         return model.model_validate(raw), []
     except ValueError as exc:
-        return model(), [_validation_error(_effective_path(layers), exc)]
+        return model(), [f"配置非法 {path}: {exc}"]
 
 
 # ---------------------------------------------------------------------------
@@ -115,13 +93,46 @@ def load_webapp_config(
     config_dir: str | Path | None = None,
 ) -> WebappConfig:
     model, _ = _load_json_model(
-        WEBAPP_FILENAME,
-        WebappConfig,
-        workspace,
-        cwd=cwd,
-        config_dir=config_dir,
+        WEBAPP_FILENAME, WebappConfig, workspace, cwd=cwd, config_dir=config_dir
     )
-    return model  # type: ignore[return-value]
+    config = model  # type: WebappConfig
+    env = merged_env(workspace, cwd=cwd, config_dir=config_dir)
+    updates: dict[str, Any] = {}
+    if env.get("QAAPP_HOST"):
+        updates["host"] = env["QAAPP_HOST"]
+    if env.get("QAAPP_PORT"):
+        try:
+            updates["port"] = int(env["QAAPP_PORT"])
+        except ValueError:
+            pass
+    if env.get("QAAPP_PROVIDER_PROFILE"):
+        updates["provider_profile"] = env["QAAPP_PROVIDER_PROFILE"]
+    if env.get("QAAPP_STATIC_DIR"):
+        updates["static_dir"] = env["QAAPP_STATIC_DIR"]
+    if env.get("QAAPP_CORS_ORIGINS"):
+        updates["cors_origins"] = [
+            item.strip() for item in env["QAAPP_CORS_ORIGINS"].split(",") if item.strip()
+        ]
+    if env.get("QAAPP_API_TOKENS") is not None:
+        updates["api_tokens"] = [
+            item.strip() for item in env.get("QAAPP_API_TOKENS", "").split(",") if item.strip()
+        ]
+    if env.get("QAAPP_APPROVAL_TIMEOUT_SECONDS"):
+        try:
+            updates["approval_timeout_seconds"] = int(
+                env["QAAPP_APPROVAL_TIMEOUT_SECONDS"]
+            )
+        except ValueError:
+            pass
+    if env.get("QAAPP_BROWSER_AUTH_ENABLED") is not None:
+        browser = config.browser_auth.model_copy(
+            update={
+                "enabled": env["QAAPP_BROWSER_AUTH_ENABLED"].strip().lower()
+                in {"1", "true", "yes", "on"}
+            }
+        )
+        updates["browser_auth"] = browser
+    return config.model_copy(update=updates) if updates else config
 
 
 def load_agent_registry(
@@ -131,11 +142,7 @@ def load_agent_registry(
     config_dir: str | Path | None = None,
 ) -> AgentRegistry:
     model, _ = _load_json_model(
-        AGENTS_FILENAME,
-        AgentRegistry,
-        workspace,
-        cwd=cwd,
-        config_dir=config_dir,
+        AGENTS_FILENAME, AgentRegistry, workspace, cwd=cwd, config_dir=config_dir
     )
     return model  # type: ignore[return-value]
 
@@ -147,11 +154,7 @@ def load_dangerous_actions(
     config_dir: str | Path | None = None,
 ) -> DangerousActions:
     model, _ = _load_json_model(
-        DANGEROUS_FILENAME,
-        DangerousActions,
-        workspace,
-        cwd=cwd,
-        config_dir=config_dir,
+        DANGEROUS_FILENAME, DangerousActions, workspace, cwd=cwd, config_dir=config_dir
     )
     return model  # type: ignore[return-value]
 
@@ -169,7 +172,7 @@ def _validate_model(
     cwd: str | Path | None,
     config_dir: str | Path | None,
 ) -> tuple[BaseModel | None, list[str]]:
-    raw, errors, layers = load_config_dict(
+    raw, errors, path = load_config_dict(
         filename, workspace, cwd=cwd, config_dir=config_dir
     )
     if errors:
@@ -179,7 +182,7 @@ def _validate_model(
     try:
         return model.model_validate(raw), []
     except ValueError as exc:
-        return None, [_validation_error(_effective_path(layers), exc)]
+        return None, [f"配置非法 {path}: {exc}"]
 
 
 def validate_webapp_config(
@@ -188,7 +191,6 @@ def validate_webapp_config(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> list[str]:
-    """返回 webapp.json 的校验错误列表（空 = 合法）。"""
     _, errors = _validate_model(
         WEBAPP_FILENAME, WebappConfig, workspace, cwd=cwd, config_dir=config_dir
     )
@@ -201,16 +203,13 @@ def validate_agent_registry(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> list[str]:
-    """返回 agents.json 的校验错误列表（空 = 合法）。"""
     registry, errors = _validate_model(
         AGENTS_FILENAME, AgentRegistry, workspace, cwd=cwd, config_dir=config_dir
     )
     if errors or registry is None:
         return errors
     typed = registry  # type: AgentRegistry
-    path = _effective_path(
-        config_layers(AGENTS_FILENAME, workspace, cwd=cwd, config_dir=config_dir)
-    )
+    path = config_path(AGENTS_FILENAME, workspace, cwd=cwd, config_dir=config_dir)
     ids: set[str] = set()
     for agent in typed.agents:
         if not agent.id:
@@ -226,7 +225,6 @@ def validate_agent_registry(
             )
         if agent.kind == KIND_SUBAGENT and not agent.subagent_type:
             errors.append(f"{path}: agent '{agent.id}' 为 subagent 但缺少 subagent_type")
-
     known_ids = {agent.id for agent in typed.agents}
     if typed.default_agent and typed.default_agent not in known_ids:
         errors.append(f"{path}: default_agent '{typed.default_agent}' 未在 agents 中定义")
@@ -242,15 +240,28 @@ def validate_dangerous_actions(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> list[str]:
-    """返回 dangerous-actions.json 的校验错误列表（空 = 合法）。"""
     _, errors = _validate_model(
-        DANGEROUS_FILENAME,
-        DangerousActions,
-        workspace,
-        cwd=cwd,
-        config_dir=config_dir,
+        DANGEROUS_FILENAME, DangerousActions, workspace, cwd=cwd, config_dir=config_dir
     )
     return errors
+
+
+def _source(
+    path: Path,
+    workspace: str | Path | None,
+    *,
+    cwd: str | Path | None,
+    config_dir: str | Path | None,
+) -> str:
+    backend = get_backend_config_dir(cwd, config_dir)
+    if backend is not None and path.parent == backend:
+        return "project"
+    project = get_project_config_dir(cwd, config_dir)
+    if project is not None and path.parent == project:
+        return "project"
+    if config_dir or os.environ.get(ENV_CONFIG_DIR):
+        return "explicit"
+    return "workspace"
 
 
 def config_status(
@@ -259,7 +270,6 @@ def config_status(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """返回配置文件的实际解析路径、层级、存在性与校验结果摘要。"""
     names = {
         "webapp": WEBAPP_FILENAME,
         "agents": AGENTS_FILENAME,
@@ -275,33 +285,18 @@ def config_status(
     project_dir = get_project_config_dir(cwd, config_dir)
     backend_dir = get_backend_config_dir(cwd, config_dir)
     result: dict[str, Any] = {
-        "env": get_qaapp_env(),
         "workspace": str(get_workspace_root(workspace)),
         "project_config_dir": str(project_dir) if project_dir else "",
         "backend_config_dir": str(backend_dir) if backend_dir else "",
     }
     for name, filename in names.items():
-        layers = config_layers(filename, workspace, cwd=cwd, config_dir=config_dir)
-        effective = _effective_path(layers)
-        layer_payload = [
-            {"layer": layer.name, "path": str(layer.path), "exists": layer.exists}
-            for layer in layers
-        ]
-        if backend_dir is not None:
-            source = "+".join(
-                layer.name for layer in layers if layer.exists and layer.name != "workspace"
-            ) or "defaults"
-        elif any(layer.name == "workspace" for layer in layers):
-            source = "workspace"
-        elif config_dir or os.environ.get(ENV_CONFIG_DIR):
-            source = "explicit"
-        else:
-            source = "project"
+        path = config_path(filename, workspace, cwd=cwd, config_dir=config_dir)
         result[name] = {
-            "path": str(effective),
-            "exists": any(layer.exists for layer in layers),
-            "source": source,
-            "layers": layer_payload,
+            "path": str(path),
+            "exists": path.is_file(),
+            "source": _source(
+                path, workspace, cwd=cwd, config_dir=config_dir
+            ),
             "errors": validators[name](workspace, cwd=cwd, config_dir=config_dir),
         }
     return result
@@ -313,7 +308,6 @@ def _validate_datasources(
     cwd: str | Path | None = None,
     config_dir: str | Path | None = None,
 ) -> list[str]:
-    """延迟导入，避免 qaapp.config 与 qaapp.data.datasources 循环依赖。"""
     from qaapp.data.datasources import validate_datasources_config
 
     return validate_datasources_config(workspace, cwd=cwd, config_dir=config_dir)

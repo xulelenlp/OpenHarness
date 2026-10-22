@@ -79,20 +79,20 @@ python -c "import qaapp; print(qaapp.__file__)"  # 应指向本仓库 qaapp/__in
 
 ## 配置体系（三层配置）
 
-qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
+qaapp 的配置集中在 `config/backend/`，环境差异只由一个 `.env` 控制：
 
-| 层级 | 文件 | 位置 | 内容 |
+| 类型 | 文件 | 位置 | 内容 |
 | --- | --- | --- | --- |
-| ① OpenHarness 主配置 | `settings.json` | `~/.openharness/` 等（见 配置体系） | 模型 / API Key / 权限 / 沙箱 / MCP |
-| ② qaapp 四份配置 | `webapp.json`、`agents.json`、`dangerous-actions.json`、`datasources.json` | ohmo workspace（`~/.ohmo/`） | 服务、Agent 注册、高危策略、数据源 |
-| ③ 外部 Agent 配置 | **内联在 `agents.json`** | 见 §5.3 | `kind=external` 的 Agent 端点（唯一维护文件） |
+| 环境配置 | `.env_dev` / `.env_prod` → `.env` | `config/backend/` | 模型密钥、DB/Redis、Web 端口、外部 Agent 端点 |
+| OpenHarness 主配置 | `settings.json` | `config/backend/` | 模型 profile / 权限 / 沙箱 / MCP |
+| qaapp 配置 | `webapp.json`、`agents.json`、`dangerous-actions.json`、`datasources.json` | `config/backend/` | 服务、Agent 注册、高危策略、数据源（单份，不分层） |
 
-### 5.1 ① settings.json（OpenHarness 主配置）
+### 5.1 settings.json（OpenHarness 主配置）
 
 查找顺序（**`build_runtime` 每次会话懒构建时读取**）：
 
 1. `OPENHARNESS_CONFIG_DIR` 环境变量指向的 `settings.json`
-2. 项目级 `config/backend/base/settings.json`（从服务启动的 `--cwd` 向上逐级找，到 git 根或 home 为止）
+2. 项目级 `config/backend/settings.json`（从服务启动的 `--cwd` 向上逐级找，到 git 根或 home 为止）
 3. `~/.openharness/settings.json`（legacy 用户配置）
 
 **必配项**（否则首次真正调用模型会报「未配置认证」并退出）：
@@ -122,51 +122,58 @@ qaapp 的配置分三层，**分别放在不同位置**，请务必分清：
   为空时**继承**它，非空时**覆盖**它（该 profile 必须在 `profiles` 中定义）。
 - `permission`、`sandbox`、`mcp_servers` 详见 §9。
 
-> 仓库 `config/backend/base/settings.json` 只保留 profile 模板，**不含任何明文 key**。
-> 真实凭据放 `config/backend/.env.local`（已 gitignore）或进程环境变量；详见
+> 仓库 `config/backend/settings.json` 只保留 profile 模板，**不含任何明文 key**。
+> 真实凭据放 `config/backend/.env`（已 gitignore）或进程环境变量；详见
 > [`config/README.md`](../../config/README.md)。
 
-### 5.2 ② qaapp 四份配置（**可见路径优先，随 git 走**）
+### 5.2 ② qaapp 配置（单目录、单 `.env`）
 
-四份文件按下面的顺序解析，**命中即用**（都不存在则回退内置默认值）：
+配置只放在 `config/backend/`，不再有 base/dev/prod/local 分层合并：
 
-| 顺序 | 位置 | 用途 |
-| --- | --- | --- |
-| 1 | `--config-dir` / `QAAPP_CONFIG_DIR` | 显式指定 backend 目录（容器/多环境部署） |
-| 2 | `config/backend/base/<name>.json` | 项目默认值，提交 git |
-| 3 | `config/backend/<QAAPP_ENV>/<name>.json` | dev/prod 覆盖层 |
-| 4 | `config/backend/local/<name>.json` | 本机覆盖（gitignore） |
-| 5 | `<ohmo workspace>/<name>.json` | 旧部署兼容（仅无项目层时） |
+```text
+config/backend/
+├── .env_dev / .env_prod   # 环境模板
+├── .env                   # 当前环境（本机 cp 生成，gitignore）
+├── settings.json
+├── webapp.json
+├── agents.json
+├── dangerous-actions.json
+└── datasources.json
+```
 
-对象递归合并、数组整体替换；`${VAR}` 占位符由 `config/backend/.env*` / 进程环境变量展开。
-
-| 文件 | 建议放哪 | 说明 |
-| --- | --- | --- |
-| `agents.json` | `config/backend/base/agents.json` | 所有 Agent 的唯一维护文件；端点用 `${...}`，环境值放 `.env.local` |
-| `dangerous-actions.json` | `config/backend/base/` | 团队策略随 git；本机特例放 `local/` |
-| `datasources.json` | `config/backend/base/` | 只放 `${DB_*}` / `${REDIS_*}` 占位符；真实凭据放 `.env.local` |
-| `webapp.json` | `config/backend/{base,dev,prod}/` | 端口/鉴权/静态目录按层覆盖；token 用 `${QAAPP_API_TOKEN}` |
-
-启动日志会打印**实际生效的文件**，`abcqa config` 会给出环境、每层路径、来源与校验结果：
+切换环境只复制 `.env`：
 
 ```bash
-QAAPP_ENV=dev  abcqa config
-QAAPP_ENV=prod abcqa config
-abcqa agents list    # 第一行就是当前生效的 agents.json 路径
+# 开发
+cp config/backend/.env_dev  config/backend/.env
+# 生产
+cp config/backend/.env_prod config/backend/.env
+```
+
+`webapp.json` 提供结构化默认值；`host` / `port` / `api_tokens` / `cors_origins` /
+`static_dir` / `browser_auth.enabled` 等环境差异由 `.env` 中的 `QAAPP_*` 覆盖。
+`datasources.json` 与 `agents.json` 只保留 `${DB_*}` / `${...}` 占位符，实际值来自 `.env`。
+
+查看实际生效文件：
+
+```bash
+abcqa config
+abcqa agents list
 ```
 
 **服务器部署（推荐流程）**：
 
 ```bash
 git pull
-QAAPP_ENV=prod abcqa config          # 确认 base+prod+local 的层级
+cp config/backend/.env_prod config/backend/.env
+# 编辑 .env 填写密钥
 abcqa webapp stop && abcqa webapp start
 ```
 
-> 旧部署仍可读取 `~/.ohmo/<name>.json` 与早期 `<cwd>/config/<name>.json`；新部署请使用
-> `config/backend/{base,dev,prod,local}`，详见 [`config/README.md`](../../config/README.md)。
+> 旧部署仍可读取 `~/.ohmo/<name>.json` 与早期 `<cwd>/config/<name>.json`；
+> 新部署请使用 `config/backend/`，详见 [`config/README.md`](../../config/README.md)。
 
-四份文件缺失或非法时**回退到内置默认值**（不阻塞启动，仅在日志告警），所以
+配置文件缺失或非法时**回退到内置默认值**（不阻塞启动，仅在日志告警），所以
 「文件在但内容非法」要主动用 `abcqa config` 检查。
 
 > 启动时还会做一次外部 Agent 自检：`kind=external` 若只写了 `external_ref` 而对应配置
@@ -296,7 +303,7 @@ settings 的 `allowed_tools` → 基础权限模式。
 ### 5.3 ③ 外部 Agent：内联在 agents.json（唯一维护文件）
 
 **所有 Agent 只在一个文件里维护：`agents.json`**，仓库内推荐路径
-**`config/backend/base/agents.json`（可见、提交 git、`git pull` 即生效）**；解析顺序见 配置体系
+**`config/backend/agents.json`（可见、提交 git、`git pull` 即生效）**；解析顺序见 配置体系
 （`--config-dir` → `<cwd>/config/` → `~/.ohmo/`）。
 `kind=external` 的 Agent 直接内联它的访问配置，qaapp 在会话启动时把它注入
 `external_agent` 工具（内存注入，不再生成第二份配置文件）：
@@ -446,9 +453,9 @@ cd frontend/webapp
 # 方式一：命令行临时指定
 VITE_API_TARGET=http://your-backend:8787 npm run dev
 
-# 方式二：写进集中配置 config/frontend/.env.local（已 gitignore）
-cp config/frontend/.env.local.example config/frontend/.env.local
-# 编辑 config/frontend/.env.local，例如：VITE_API_TARGET=http://your-backend:8787
+# 方式二：复制集中配置模板（.env 已 gitignore）
+cp config/frontend/.env_dev config/frontend/.env
+# 按需编辑 config/frontend/.env，例如：VITE_API_TARGET=http://your-backend:8787
 npm run dev
 ```
 
@@ -476,7 +483,7 @@ VITE_API_BASE_URL=http://192.168.139.144:8787 npm run build
 | `qaapp/` 或 `src/openharness/` 的 **Python 代码** | **重启服务**（前台 Ctrl+C 重跑，或 `abcqa webapp stop && abcqa webapp start`） | 后端没有热重载，进程内跑的是启动时加载的代码 |
 | `frontend/webapp/src/` 的**前端代码** | `npm run build` 后**刷新浏览器**（同源托管）；`npm run dev` 模式则自动热更新 | 同源托管加载的是 `dist/` 构建产物，不重新构建就仍是旧代码 |
 | 仅改 `~/.ohmo/*.json` 的**配置** | 重启服务 | agent 注册表 / 危险操作策略在服务启动时加载 |
-| 改 `config/backend/base/agents.json`（提交 git 的那份） | `git pull` + **重启服务** | 配置只在启动时读取；`abcqa config` 可确认实际生效路径（配置体系） |
+| 改 `config/backend/agents.json`（提交 git 的那份） | `git pull` + **重启服务** | 配置只在启动时读取；`abcqa config` 可确认实际生效路径（配置体系） |
 
 > 排查「改了没生效」时，先确认这两条：**后端重启了吗？前端重新构建并刷新了吗？**
 
@@ -609,8 +616,8 @@ qaapp 额外注入：
 
 ### 9.9 密钥安全（重要）
 
-- 密钥只放 `config/backend/.env.local`（已 gitignore）或部署平台的进程环境变量。
-- `config/backend/base/settings.json` 只保留 profile 模板；`config/backend/local/*.json`
+- 密钥只放 `config/backend/.env`（已 gitignore）或部署平台的进程环境变量。
+- `config/backend/settings.json` 只保留 profile 模板；`config/backend/local/*.json`
   用于本机覆盖，同样不提交。
 - 历史提交中如出现过明文 key，请视为已泄露并立即轮换。
 

@@ -25,7 +25,7 @@
 # 可选环境变量：
 #   PYTHON           指定 Python（默认优先 .venv/bin/python）
 #   OHMO_WORKSPACE   指定后端 workspace（默认 ~/.ohmo）
-#   FRONTEND_PORT    覆盖前端端口（默认读取 config/frontend 的 VITE_DEV_PORT，即 5173）
+#   FRONTEND_PORT    覆盖前端端口（默认读取 config/frontend/.env 的 VITE_DEV_PORT，即 5173）
 #   START_TIMEOUT    启动健康检查超时秒数（默认 40）
 #
 # 后端端口不在本脚本里配置：它取自 webapp.json 的 port（默认 8787），
@@ -41,13 +41,10 @@ FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
 FRONTEND_LOG="$RUN_DIR/frontend.log"
 
 env_value() {
-    local key="$1" file value last=""
-    for file in "$FRONTEND_CONFIG_DIR/.env" "$FRONTEND_CONFIG_DIR/.env.development" "$FRONTEND_CONFIG_DIR/.env.local"; do
-        [[ -f "$file" ]] || continue
-        value="$(grep -E "^${key}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
-        [[ -n "$value" ]] && last="$value"
-    done
-    printf '%s' "$last"
+    local key="$1" file="$FRONTEND_CONFIG_DIR/.env" value=""
+    [[ -f "$file" ]] || return 0
+    value="$(grep -E "^${key}=" "$file" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+    printf '%s' "$value"
 }
 
 BACKEND_HOST="127.0.0.1"

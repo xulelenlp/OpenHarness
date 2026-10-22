@@ -22,7 +22,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from qaapp.config import (
     DATASOURCES_FILENAME,
-    config_layers,
     get_datasources_config_path,
     load_config_dict,
     load_dotenv,
@@ -204,25 +203,11 @@ def datasources_status(
     except DataSourceConfigError:
         config = DataSourcesConfig()
 
-    project_dir = path
-    layers = config_layers(
-        DATASOURCES_FILENAME, workspace, cwd=cwd, config_dir=config_dir
-    )
-    existing_layers = [layer.name for layer in layers if layer.exists]
-    if existing_layers:
-        source = "+".join(existing_layers)
-    elif any(layer.name == "workspace" for layer in layers):
-        source = "workspace"
-    else:
-        source = "defaults"
+    source = "project" if path.is_file() else "defaults"
     return {
-        "path": str(project_dir),
-        "exists": any(layer.exists for layer in layers),
+        "path": str(path),
+        "exists": path.is_file(),
         "source": source,
-        "layers": [
-            {"layer": layer.name, "path": str(layer.path), "exists": layer.exists}
-            for layer in layers
-        ],
         "errors": errors,
         "mysql": {
             "enabled": config.mysql.enabled,

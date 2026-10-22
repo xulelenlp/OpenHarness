@@ -9,15 +9,15 @@
       "label": "DeepSeek (通用 OpenAI 兼容)",
       "provider": "openai",
       "api_format": "openai",
-      "auth_source": "openai_api_key",
-      "default_model": "deepseek-chat",
+      "auth_source": "sk-96Uy23xRBP09simq6L1QgRVdWskjxwpwHUzzKfV2cFVoemYn",
+      "default_model": "deepseek-flash",
       "base_url": "https://api.deepseek.com/v1"
     },
     "dev": {
       "label": "Dev (OpenAI-Compatible)",
       "provider": "mine",
       "api_format": "openai",
-      "auth_source": "dashscope_api_key",
+      "auth_source": "sk-96Uy23xRBP09simq6L1QgRVdWskjxwpwHUzzKfV2cFVoemYn",
       "default_model": "deepseek-flash",
       "base_url": "http://ai.ac-energytech.com/v1"
     },
@@ -26,7 +26,7 @@
       "provider": "openai",
       "api_format": "openai",
       "auth_source": "openai_api_key",
-      "default_model": "deepseek-chat",
+      "default_model": "deepseek-flash",
       "base_url": "https://api.example.com/v1"
     }
   },

@@ -2,13 +2,18 @@
 
 本文档列出一份完整的配置文件地图，方便你全局统一维护项目配置。
 
+> 环境切换：开发 `cp config/backend/.env_dev config/backend/.env`，生产
+> `cp config/backend/.env_prod config/backend/.env`。`.env` 是唯一环境文件，
+> 不再做 base/dev/prod/local 分层合并。前端同理：`config/frontend/.env_dev` /
+> `.env_prod` → `.env`。
+
 ---
 
 ## 1. 配置文件地图（总览）
 
 | 配置文件 | 默认位置 | 作用 | 维护方式 |
 |---|---|---|---|
-| **主配置** | 项目内 `config/backend/base/settings.json`（**优先**）；否则 `~/.openharness/settings.json` | 模型 / Provider profiles / 品牌化 / 权限 / Hooks / 记忆 / 沙箱 / Web / MCP / UI 等**全部设置** | 手工编辑 + `abc setup` 校验 |
+| **主配置** | 项目内 `config/backend/settings.json`（**优先**）；否则 `~/.openharness/settings.json` | 模型 / Provider profiles / 品牌化 / 权限 / Hooks / 记忆 / 沙箱 / Web / MCP / UI 等**全部设置** | 手工编辑 + `abc setup` 校验 |
 | **凭证（可选）** | `~/.openharness/credentials.json` | 命令管理的 API key（权限 `600`）；也可不写此文件，把 key 放 settings.json | `abc auth login` 管理 |
 | **ohmo gateway** | `~/.ohmo/gateway.json` | personal agent 的 Provider / 渠道 / 会话路由 / 权限 | 手工编辑 + `abcag config` 校验 |
 | **ohmo 人格** | `~/.ohmo/soul.md` / `identity.md` / `user.md` / `BOOTSTRAP.md` | agent 的人设、身份、用户偏好、引导词 | 手工编辑 |
@@ -16,11 +21,11 @@
 | **用户级扩展** | `~/.openharness/skills/`、`~/.openharness/plugins/` | 用户级技能 / 插件 | 手工放置目录 |
 | **运行时数据** | `~/.openharness/data/`、`logs/` | sessions、tasks、cron_jobs.json、日志 | **自动生成，无需维护** |
 
-> 目录可整体迁移：设置 `OPENHARNESS_CONFIG_DIR` / `OPENHARNESS_DATA_DIR` / `OPENHARNESS_LOGS_DIR`、`OHMO_WORKSPACE` 指向任意位置（例如团队共享目录或 Git 仓库）。也可直接把 `config/backend/base/settings.json` 随仓库提交，克隆到新机器即可复用同一份配置。
+> 目录可整体迁移：设置 `OPENHARNESS_CONFIG_DIR` / `OPENHARNESS_DATA_DIR` / `OPENHARNESS_LOGS_DIR`、`OHMO_WORKSPACE` 指向任意位置（例如团队共享目录或 Git 仓库）。也可直接把 `config/backend/settings.json` 随仓库提交，克隆到新机器即可复用同一份配置。
 
 ---
 
-## 2. 主配置文件（项目内 `config/backend/base/settings.json` 优先，否则 `~/.openharness/settings.json`）
+## 2. 主配置文件（项目内 `config/backend/settings.json` 优先，否则 `~/.openharness/settings.json`）
 
 这是**唯一的核心配置文件**，承载绝大多数全局设置。放在项目（Git 仓库）里时随代码一起迁移，实现“集中管理、快速部署”。完整可复制模板见 [`docs/settings.example.json`](./settings.example.json)。
 
@@ -87,7 +92,7 @@ API key 按以下优先级读取（从高到低）：
 }
 ```
 
-> 安全提示：不要把 API key 写入 `settings.json`。使用 `config/backend/.env.local`（已 gitignore）或 `abc auth login` 管理凭据；团队共享时只共享不含密钥的 profile 模板。
+> 安全提示：不要把 API key 写入 `settings.json`。使用 `config/backend/.env`（已 gitignore）或 `abc auth login` 管理凭据；团队共享时只共享不含密钥的 profile 模板。
 
 ---
 
@@ -134,7 +139,7 @@ abcag config --profile <name>      # 非交互切换 provider profile
 ## 6. 配置优先级
 
 ```
-CLI 参数  >  环境变量  >  项目 settings.json (config/backend/base/settings.json)  >  用户 settings.json (~/.openharness/settings.json)  >  默认值
+CLI 参数  >  环境变量  >  项目 settings.json (config/backend/settings.json)  >  用户 settings.json (~/.openharness/settings.json)  >  默认值
 ```
 
 启动命令本身也有别名优先级（模块入口保留用于内部派生）：

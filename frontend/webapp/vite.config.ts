@@ -6,10 +6,9 @@ import { resolve } from "node:path";
 /**
  * 前端配置集中在仓库根 `config/frontend/`：
  *
- * - `.env`              公共品牌 / 端口
- * - `.env.development`  开发代理后端地址 VITE_API_TARGET
- * - `.env.production`   生产直连地址 VITE_API_BASE_URL
- * - `.env.local`        本机覆盖（gitignore）
+ * - `.env`        当前环境（由 `.env_dev` / `.env_prod` 复制，gitignore）
+ * - `.env_dev`    开发模板
+ * - `.env_prod`   生产模板
  *
  * VITE_API_TARGET 是 Vite dev server 所在机器访问后端的地址（服务端代理，
  * 浏览器不产生跨域）；VITE_API_BASE_URL 用于浏览器直连后端的部署方式。

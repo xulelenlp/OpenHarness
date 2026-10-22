@@ -4,7 +4,7 @@
 Settings are resolved with the following precedence (highest first):
 1. CLI arguments
 2. Environment variables (ANTHROPIC_API_KEY, OPENHARNESS_MODEL, etc.)
-3. Project config file (config/backend/base/settings.json, when running inside a repo;
+3. Project config file (config/backend/settings.json, when running inside a repo;
    legacy .openharness/settings.json is still accepted)
 4. User config file (~/.openharness/settings.json)
 5. Defaults

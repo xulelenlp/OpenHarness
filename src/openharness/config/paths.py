@@ -34,12 +34,10 @@ def get_config_dir() -> Path:
 def _project_config_candidates(base: Path) -> tuple[Path, ...]:
     """Candidate project-level settings files, in priority order.
 
-    ``config/backend/base/settings.json`` is the canonical centralized
-    location. ``config/backend/settings.json`` supports single-file deployments,
-    and ``.openharness/settings.json`` remains for older checkouts.
+    ``config/backend/settings.json`` is the canonical single-file location, and
+    ``.openharness/settings.json`` remains for older checkouts.
     """
     return (
-        base / "config" / "backend" / "base" / _CONFIG_FILE_NAME,
         base / "config" / "backend" / _CONFIG_FILE_NAME,
         base / _DEFAULT_BASE_DIR / _CONFIG_FILE_NAME,
     )
@@ -81,8 +79,8 @@ def get_config_file_path(cwd: str | Path | None = None) -> Path:
 
     Resolution order (highest first):
     1. ``OPENHARNESS_CONFIG_DIR`` environment variable (explicit override)
-    2. Project-local ``config/backend/base/settings.json`` (nearest ancestor
-       of cwd, up to the git root) — the centralized project configuration
+    2. Project-local ``config/backend/settings.json`` (nearest ancestor of cwd,
+       up to the git root) — the centralized project configuration
     3. Legacy project ``.openharness/settings.json``
     4. ``~/.openharness/settings.json`` (user config)
     """

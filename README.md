@@ -26,15 +26,21 @@ abcag --help
 abcqa --help
 ```
 
-The first real model call needs a provider profile and credentials in
-`~/.openharness/settings.json` (legacy) or the centralized `config/backend/base/settings.json`.
-See [`docs/CONFIGURATION.zh-CN.md`](docs/CONFIGURATION.zh-CN.md) for the full
-schema.
+Copy the environment template before the first run:
+
+```bash
+cp config/backend/.env_dev  config/backend/.env
+cp config/frontend/.env_dev config/frontend/.env
+```
+
+Production uses `.env_prod` instead. The backend `.env` holds model/DB/Redis/
+webapp/Agent endpoint values; the frontend `.env` holds `VITE_*` values.
+See [`config/README.md`](config/README.md) for the full map.
 
 ### Q&A service
 
 ```bash
-python -m qaapp init          # seed config templates into config/backend/base
+python -m qaapp init          # seed config templates into config/backend
 python -m qaapp config        # show the config files actually in effect
 python -m qaapp webapp run    # 0.0.0.0:8787
 ```
@@ -52,7 +58,7 @@ and the web client in the background, with logs under `~/.ohmo/logs/` and
 
 The reference web client lives in [`frontend/webapp/`](frontend/webapp/).
 Agent definitions, external-agent endpoints, and routing hints all live in
-[`config/backend/base/agents.json`](config/backend/base/agents.json); the UI no longer asks users to
+[`config/backend/agents.json`](config/backend/agents.json); the UI no longer asks users to
 type a Bearer token (the server reads `webapp.json:api_tokens` and issues a
 browser session cookie).
 
@@ -68,7 +74,7 @@ frontend/terminal/   React terminal UI
 frontend/webapp/     React web client for qaapp
 frontend/autopilot-dashboard/
                      React/Vite dashboard for GitHub Pages
-config/              centralized frontend/backend config (base/dev/prod/local)
+config/              centralized frontend/backend config (.env + single JSON files)
 tests/               automated tests (pytest; this is the CI surface)
 tests/e2e/           opt-in real-model scenarios (excluded from default pytest)
 scripts/             operational scripts; manual E2E suites live in scripts/e2e/

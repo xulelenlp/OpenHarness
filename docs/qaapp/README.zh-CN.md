@@ -22,7 +22,7 @@ qaapp/
 ├── workspace/             # 会话目录、附件、文档解析、轮次快照、轨迹、清理
 ├── tools/                 # db_query / report / script / consult / policy
 ├── server/                # QaWebService、会话运行时、HTTP API
-└── config/                # 仓库根 config/backend/base 是 abcqa init 的模板来源
+└── config/                # 仓库根 config/backend 是 abcqa init 的模板来源
 ```
 
 > 公开契约是 CLI、HTTP API、配置文件名/解析顺序与磁盘布局；内部 Python 模块路径

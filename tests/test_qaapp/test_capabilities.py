@@ -146,7 +146,7 @@ def test_actual_general_config_keeps_tools_and_analysis_optional():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
-    data = json.loads((root / "config" / "backend" / "base" / "agents.json").read_text(encoding="utf-8"))
+    data = json.loads((root / "config" / "backend" / "agents.json").read_text(encoding="utf-8"))
     general = next(agent for agent in data["agents"] if agent["id"] == "general")
     assert general["tools"] == ["*"]
     assert "能直接回答就直接回答" in general["system_prompt"]
