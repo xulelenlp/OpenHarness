@@ -1381,7 +1381,7 @@ export default function App() {
 
         <div className="sidebar-foot">
           <span className="status-dot" />
-          OpenHarness · qaapp
+          ABCHarness
         </div>
       </aside>
 
