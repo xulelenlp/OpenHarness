@@ -44,6 +44,7 @@ from openharness.hooks import HookEvent, HookExecutor
 from openharness.permissions.checker import PermissionChecker
 from openharness.services.errors import is_prompt_too_long_error
 from openharness.services.tool_outputs import tool_output_inline_chars, tool_output_preview_chars
+from openharness.tools.ask_user_question_tool import AskUserPrompt
 from openharness.tools.base import ToolExecutionContext, ToolRegistry
 
 AUTO_COMPACT_STATUS_MESSAGE = "Auto-compacting conversation memory to keep things fast and focused."
@@ -54,7 +55,6 @@ log = logging.getLogger(__name__)
 
 
 PermissionPrompt = Callable[[str, str], Awaitable[bool]]
-AskUserPrompt = Callable[[str], Awaitable[str]]
 
 MAX_TRACKED_READ_FILES = 6
 MAX_TRACKED_SKILLS = 8

@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Added
 
+- **qaapp 前端视觉重构（国网绿 + Codex 风格）**：`frontend/webapp` 重做设计 token 与布局——国网绿 `#006656` 主色、浅色中性画布、272px 侧边栏、860px 居中对话列、细边框卡片、浮动输入区、移动端侧边栏/文件抽屉、会话搜索、自动增高输入、流式自动跟随、错误 toast、加载骨架、代码块复制、编辑审批 diff 预览、权限审批参数展开；新增 `icons.tsx` / `EmptyState.tsx` / `clipboard.ts`，主要 chrome 不再使用 emoji。自检 `npm run typecheck` / `check:render` / `check:attachments` / `check:turn-files` / `check:questions` / `build` 全部通过。
+- **执行中选项式澄清**：`ask_user_question` 新增 `options`（2–6 个 `label` / `description` / `recommended`，兼容字符串和缺失 label 的弱模型调用）；qaapp 审批载荷下发 `options` / `allow_other`，前端渲染原生 radio +「其他」自由输入 +「确认并继续」，用户确认后工具返回选项 label 或自定义文本，模型继续执行。不新增计划模式或计划页面，复用现有 `ask_user_question` + 审批通道。新增 `approval_resolved` SSE 事件并写入轨迹，刷新后已回答的问题显示为「已确认」；新增 `npm run check:questions`、`tests/test_tools/test_ask_user_question.py` 与验收文档 `docs/qaapp/ASK_USER_OPTIONS.zh-CN.md`。
 - **qaapp 交互优化：过程文件 / 结果文件卡片**：新增 `qaapp/workspace/turns.py`（会话目录轮次前后快照与 diff、结果文件筛选）与 SSE 事件 `turn_files`（`changed` + `results`，自动写轨迹）；每轮正文下方展示「已编辑 N 个文件 +X -Y」的过程文件卡片与 `outputs/` 结果文件卡片，结果文件点击卡片或「下载」即可直接下载（Markdown 可预览）。**分区规则**：结果区只收 Word / PDF / PPT / Excel / Markdown 等成果性文档，csv / py / txt / json / 图片只作为过程文件展示；过程区会剔除结果文件，避免同一文件出现两次。**展示时机**：两组卡片在 `turn_complete`（任务全部结束）后一次性出现，进行中不展示，中断/断流时在流结束时补一次。旧轨迹缺少事件时，前端 `src/turnFiles.ts` 从 `write_file` / `edit_file` / `run_script` / `write_report_docx` 输出推导，保证历史会话同样可见；新增 `npm run check:turn-files` 自检与 `tests/test_qaapp/test_turn_files.py`。右侧「会话文件」抽屉同步：写文件类工具完成时静默刷新（600ms 防抖），任务结束/中断时再刷新一次，新文件无需手动关闭重开抽屉。
 - **业务库直连（qaapp）**：新增 `db_query` 工具与 `qaapp/data/mysql.py` / `data_catalog.py` / `data_query.py` / `data_quality.py`，按 `docs/qaapp/database/` 的 A1/A2/B1/B2/T/四率逻辑查询客户 MySQL；以 `ai_data_struct` 实际可用性优先、层级表/`_ssx` 回退，处理月末日期、周期/机构/维度回退、无数据诊断、恒定序列/陈旧/异常/空值/单位等质量问题。新增 `docs/qaapp/database/IMPLEMENTATION.zh-CN.md` 记录实测库结构与文档差异。
 - **数据源配置集中管理**：新增唯一 `datasources.json`（`${DB_HOST}` 等占位符 + 环境变量/就近 `.env`）与唯一加载器 `qaapp/data/datasources.py`；MySQL/Redis 连接信息不再散落在 `webapp.json` 或代码里。新增 `abcqa datasource show/check`，MySQL 只读/连接池/超时/行数上限，Redis 只读 db0 + 前缀白名单。
@@ -50,6 +52,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Fixed
 
+- **qaapp 审批/问题刷新回放**：新增 `approval_resolved` 事件后，已回答的问题与已处理的权限/编辑审批在刷新页面后显示为「已确认 / 已允许」等完成态，不再重新出现操作按钮；超时也会发 `decision: "timeout"` 的解决事件，等待卡不会一直悬挂。前端 `reduceEvent` 兼容孤立 `approval_resolved` 事件。
 - 修掉 `web_search failed: ` / `web_fetch failed: ` **错误报文为空**的问题：`httpcore` 把 `TimeoutError` 包成 `ConnectTimeout(TimeoutError())`、`httpx` 再用 `str(exc)` 转发，导致 `str(exc)` 为空串。新增 `utils/error_report.py`，从异常类型、原因链、目标 host:port、耗时、代理状态重建可读报文（`ConnectTimeout｜原始错误信息为空｜目标 …:443｜耗时 20.3s｜代理 未配置｜原因 ConnectTimeout <- TimeoutError()`），并附可执行提示；`web_fetch` 同步接入。
 - 新增 `utils/netlog.py`：每次出网向 `<logs>/web.log` 追加一行（`event`、`endpoint`、`q`、`elapsed`、`status`、`type`、`message`、`args`、`cause`、`dns`、`detail`），失败为 WARNING，服务器上可直接下载定位；`dns=` 字段可辅助识别 DNS 污染。
 - `web_search` 在解析不到结果时不再标记为错误，改为返回 `No search results found …`（HTTP 状态与端点一并给出）。

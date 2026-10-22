@@ -404,7 +404,14 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
 
 - **免手工 token**：页面启动时调用 `/api/v1/bootstrap` 建立 HttpOnly 会话，不再显示
   Bearer Token 输入框；token 由服务端从 `webapp.json` 读取，不进入 localStorage / JS。
-- **附件上传**：输入框左侧「📎 附件」按钮 + 拖拽到消息区/输入框；最多 2 个，选中即上传并
+- **国网绿 Codex 风格界面**：浅色中性画布 + 国网绿主色，侧边栏会话列表、居中对话列、
+  紧凑执行轨迹、浮动输入区；支持 390 / 768 / 1440 三档响应式、移动端侧边栏/文件抽屉、
+  自动增高输入框、流式自动跟随、错误 toast、代码块复制与编辑审批 diff 预览。
+- **选项式澄清**：模型遇到口径、时间范围、统计维度、输出格式等不明确点时，通过
+  `ask_user_question` 给出 2–6 个具体选项（可标推荐项），前端渲染为单选卡 +「其他」
+  自由输入；用户点「确认并继续」后工具拿到答案、模型继续执行。刷新页面后已回答的
+  问题由 `approval_resolved` 轨迹事件还原为完成态，不会重新弹出。
+- **附件上传**：输入框工具条的「附件」按钮 + 拖拽到消息区/输入框；最多 2 个，选中即上传并
   显示解析状态；发送时把 `attachment_id` 随消息带给后端；刷新页面后靠 `attachments_ready`
   轨迹事件还原附件芯片。
 - **右侧「会话文件」抽屉**：按 uploads/extracted/scripts/tmp/outputs 分组列出会话目录文件，
@@ -418,7 +425,8 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
   文件卡片，避免列表随工具调用反复增减。旧轨迹没有 `turn_files` 事件时，前端从工具
   输出推导，保证历史会话同样可见（只对已完成的轮次）。
 - 前端自检：`npm run check:render`（Markdown 渲染）+ `npm run check:attachments`（附件纯函数）
-  + `npm run check:turn-files`（过程/结果文件纯函数）。
+  + `npm run check:turn-files`（过程/结果文件纯函数）+ `npm run check:questions`
+  （选项规范化 / 审批回放）。
 
 ### 8.1 配置后端地址（前后端分机部署必读）
 
@@ -711,7 +719,7 @@ qaapp 额外注入：
 | 上传附件 415 | 后缀不在 `attachments.allowed_suffixes` 里；旧版 `.doc` 请另存为 `.docx`（部署与运维注意事项1） |
 | 上传附件 413 | 单文件超过 `max_file_mb`、单次超过 `max_files_per_message`，或会话累计超过 `max_files_per_conversation` |
 | 附件 `parse_status: failed` | 文件加密/损坏：原始文件仍在 `uploads/`，解析原因见 `parse_error`；可让模型用工具自行处理 |
-| 助手说「找不到上传的文件」 | 确认已把 `attachment_id` 随消息发出（前端由「📎 附件」上传后自动带上）；会话目录见 `GET .../workspace` |
+| 助手说「找不到上传的文件」 | 确认已把 `attachment_id` 随消息发出（前端由「附件」按钮上传后自动带上）；会话目录见 `GET .../workspace` |
 | 脚本没生成在会话目录 | 让模型用 `run_script` 工具（会自动落到 `scripts/`）；若用 `bash` 手写，需要显式给会话目录绝对路径（部署与运维注意事项1） |
 | 生成脚本时反复弹审批 | 会话目录内的写文件本就免确认；执行类工具（`bash`/`run_script`）默认仍需确认，可配 `{"tool":"run_script","action":"allow"}` 放开 |
 | 后台启动后端口没起来 | 看 `<workspace>/logs/webapp.log`；`abcqa webapp status` 看 pid |

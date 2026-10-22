@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from rich.panel import Panel
 from textual import on
@@ -86,18 +87,37 @@ class PermissionScreen(ModalScreen[bool]):
 
 
 class QuestionScreen(ModalScreen[str]):
-    """Prompt the user for a short answer during tool execution."""
+    """Prompt the user for an answer, optionally with concrete choices."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("enter", "submit", "Submit"),
     ]
 
-    def __init__(self, question: str) -> None:
+    def __init__(self, question: str, options: list[dict[str, Any]] | None = None) -> None:
         super().__init__()
         self._question = question
+        self._options = [
+            option
+            for option in (options or [])
+            if isinstance(option, dict) and str(option.get("label", "")).strip()
+        ]
 
     def compose(self) -> ComposeResult:
+        choices: list[Button] = []
+        for index, option in enumerate(self._options):
+            label = str(option.get("label", "")).strip()
+            description = str(option.get("description", "")).strip()
+            text = f"{index + 1}. {label}"
+            if description:
+                text += f" — {description}"
+            choices.append(
+                Button(
+                    text,
+                    id=f"option-{index}",
+                    variant="primary" if option.get("recommended") else "default",
+                )
+            )
         yield Container(
             Static(
                 Panel.fit(
@@ -105,7 +125,8 @@ class QuestionScreen(ModalScreen[str]):
                     title="Question",
                 )
             ),
-            Input(placeholder="Type your answer", id="question-input"),
+            Vertical(*choices, classes="question-options") if choices else Static(""),
+            Input(placeholder="Choose above, or type your own answer", id="question-input"),
             Horizontal(
                 Button("Submit", id="submit", variant="primary"),
                 Button("Cancel", id="cancel", variant="default"),
@@ -119,7 +140,16 @@ class QuestionScreen(ModalScreen[str]):
 
     @on(Button.Pressed)
     def handle_button_press(self, event: Button.Pressed) -> None:
-        if event.button.id == "submit":
+        button_id = event.button.id or ""
+        if button_id.startswith("option-"):
+            try:
+                index = int(button_id.removeprefix("option-"))
+            except ValueError:
+                return
+            if 0 <= index < len(self._options):
+                self.dismiss(str(self._options[index].get("label", "")).strip())
+            return
+        if button_id == "submit":
             self.dismiss(self.query_one("#question-input", Input).value.strip())
             return
         self.dismiss("")
@@ -270,8 +300,8 @@ class OpenHarnessTerminalApp(App[None]):
     async def _ask_permission(self, tool_name: str, reason: str) -> bool:
         return bool(await self._open_modal(PermissionScreen(tool_name, reason)))
 
-    async def _ask_question(self, question: str) -> str:
-        return str(await self._open_modal(QuestionScreen(question)) or "")
+    async def _ask_question(self, question: str, options: list[dict[str, Any]]) -> str:
+        return str(await self._open_modal(QuestionScreen(question, options)) or "")
 
     async def _open_modal(self, screen: ModalScreen) -> object:
         loop = asyncio.get_running_loop()

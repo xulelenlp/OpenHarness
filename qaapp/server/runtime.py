@@ -153,8 +153,14 @@ class RuntimeMixin:
             value = await self._request_approval(session, "permission", payload)
             return bool(value)
 
-        async def _ask_user_prompt(question: str) -> str:
-            value = await self._request_approval(session, "question", {"question": question})
+        async def _ask_user_prompt(question: str, options: list[dict]) -> str:
+            payload = {
+                "question": question,
+                "options": options,
+                # 前端始终允许「其他」自由输入；字段显式下发，方便外部客户端实现。
+                "allow_other": True,
+            }
+            value = await self._request_approval(session, "question", payload)
             return str(value or "")
 
         async def _edit_approval_prompt(path: str, diff: str, added: int, removed: int) -> str:
@@ -287,10 +293,22 @@ class RuntimeMixin:
             return await asyncio.wait_for(asyncio.shield(request.future), timeout=timeout)
         except TimeoutError:
             session.pending.pop(request_id, None)
+            timeout_text = (
+                f"提问超时（{timeout}s），已跳过本次确认"
+                if kind == "question"
+                else f"审批超时（{timeout}s），已按拒绝处理"
+            )
+            self._emit(session, "status", {"text": timeout_text})
+            # 让前端关闭等待卡；历史回放也能看到这次审批的最终状态。
             self._emit(
                 session,
-                "status",
-                {"text": f"审批超时（{timeout}s），已按拒绝处理"},
+                "approval_resolved",
+                {
+                    "request_id": request_id,
+                    "kind": kind,
+                    "decision": "timeout",
+                    "reply": "",
+                },
             )
             return "" if kind == "question" else ("reject" if kind == "edit" else False)
 
@@ -324,6 +342,18 @@ class RuntimeMixin:
                 request.future.set_result("always" if decision == "always" else "once")
         else:  # question
             request.future.set_result(reply or "")
+
+        # 结果事件写入轨迹：刷新页面后已回答的审批/问题不再显示为待处理。
+        self._emit(
+            session,
+            "approval_resolved",
+            {
+                "request_id": request_id,
+                "kind": request.kind,
+                "decision": decision,
+                "reply": reply or "",
+            },
+        )
 
     # ------------------------------------------------------------------
     # 轮次处理

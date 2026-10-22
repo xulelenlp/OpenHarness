@@ -13,9 +13,26 @@ export interface AgentListResponse {
 
 export interface ConversationSummary {
   conversation_id: string;
+  /** 会话摘要（服务端 snapshot 里的 summary）。 */
+  summary?: string;
+  message_count?: number;
+  model?: string;
+  /** epoch 秒。 */
+  created_at?: number;
+  /** 兼容旧后端 / 旧前端字段。 */
   updated_at?: string;
   turn_count?: number;
   preview?: string;
+}
+
+/** 模型给出的一个可选答案。 */
+export interface QuestionOption {
+  /** 选项文案，也是回传给工具的答案。 */
+  label: string;
+  /** 可选的一句话说明。 */
+  description?: string;
+  /** 是否被模型标记为推荐项（只做视觉提示，不默认选中）。 */
+  recommended?: boolean;
 }
 
 /** 执行轨迹中的单个操作步骤（对应一次工具调用 / 审批 / 状态 / 思考 / 错误）。 */
@@ -40,6 +57,8 @@ export interface Step {
   requestId?: string;
   approvalKind?: "permission" | "edit" | "question";
   payload?: Record<string, unknown>;
+  /** 已回答问题的最终答案（历史回放也保留）。 */
+  answer?: string;
   // status / error
   text?: string;
 }

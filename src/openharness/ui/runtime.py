@@ -42,9 +42,9 @@ from openharness.prompts import build_runtime_system_prompt
 from openharness.services.session_backend import DEFAULT_SESSION_BACKEND, SessionBackend
 from openharness.state import AppState, AppStateStore
 from openharness.tools import ToolRegistry, create_default_tool_registry
+from openharness.tools.ask_user_question_tool import AskUserPrompt
 
 PermissionPrompt = Callable[[str, str], Awaitable[bool]]
-AskUserPrompt = Callable[[str], Awaitable[str]]
 EditApprovalPrompt = Callable[[str, str, int, int], Awaitable[str]]
 SystemPrinter = Callable[[str], Awaitable[None]]
 StreamRenderer = Callable[[StreamEvent], Awaitable[None]]

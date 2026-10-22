@@ -10,6 +10,13 @@
 
 import { useState } from "react";
 import { formatBytes, isPreviewableText } from "./attachments";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  EyeIcon,
+  FileIcon,
+} from "./icons";
 import { kindLabel, kindTag, summarizeLines } from "./turnFiles";
 import type { ChangedFile, FileKind, ResultFile } from "./types";
 
@@ -72,7 +79,9 @@ export function TurnFilesCard({
         title={open ? "收起文件列表" : "展开文件列表"}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="tf-icon">📄</span>
+        <span className="tf-icon">
+          <FileIcon size={16} />
+        </span>
         <span className="tf-title">已编辑 {files.length} 个文件</span>
         {stats.known && (
           <span className="tf-stat">
@@ -80,7 +89,9 @@ export function TurnFilesCard({
             <span className="del">-{stats.removed.toLocaleString()}</span>
           </span>
         )}
-        <span className="tf-caret">{open ? "▾" : "▸"}</span>
+        <span className="tf-caret">
+          {open ? <ChevronDownIcon size={15} /> : <ChevronRightIcon size={15} />}
+        </span>
       </button>
 
       {open && (
@@ -109,7 +120,7 @@ export function TurnFilesCard({
                       title="预览文本内容"
                       onClick={() => onPreview(file.path)}
                     >
-                      预览
+                      <EyeIcon size={13} /> 预览
                     </button>
                   )}
                   <button
@@ -119,6 +130,7 @@ export function TurnFilesCard({
                     disabled={downloading === file.path}
                     onClick={() => onDownload(file.path)}
                   >
+                    <DownloadIcon size={13} />
                     {downloading === file.path ? "下载中…" : "下载"}
                   </button>
                 </span>
@@ -128,7 +140,8 @@ export function TurnFilesCard({
 
           {files.length > 5 && (
             <button type="button" className="tf-more" onClick={() => setShowAll((value) => !value)}>
-              {showAll ? "收起文件列表 ▴" : `全部 ${files.length} 个文件 ▾`}
+              {showAll ? "收起文件列表" : `全部 ${files.length} 个文件`}
+              {showAll ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
             </button>
           )}
           {truncated && <div className="tf-note muted">本轮文件过多，仅展示前 100 个。</div>}
@@ -192,7 +205,7 @@ export function ResultFilesCard({
                     onPreview(file.path);
                   }}
                 >
-                  预览
+                  <EyeIcon size={13} /> 预览
                 </button>
               )}
               <button
@@ -204,6 +217,7 @@ export function ResultFilesCard({
                   onDownload(file.path);
                 }}
               >
+                <DownloadIcon size={14} />
                 {downloading === file.path ? "下载中…" : "下载"}
               </button>
             </div>

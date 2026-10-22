@@ -69,7 +69,8 @@ GET  /api/v1/conversations/{id}/files/scripts/analyze.py   # 下载（带 Bearer
 
 **SSE 事件类型**：`attachments_ready`（本轮附件，历史回放靠它还原芯片）/ `agent_routed` /
 `status` / `tool_started` / `tool_completed` / `tool_progress` / `assistant_delta` /
-`assistant_complete` / `approval_required` / `turn_files` / `error` / `turn_complete`。
+`assistant_complete` / `approval_required` / `approval_resolved` / `turn_files` / `error` /
+`turn_complete`。
 
 `turn_files` 在 `turn_complete` 之前发出，是「中间过程文件 / 结果文件」卡片的权威来源：
 
@@ -101,12 +102,43 @@ GET  /api/v1/conversations/{id}/files/scripts/analyze.py   # 下载（带 Bearer
 - 事件写入轨迹，刷新页面后的历史回放同样依赖它；旧轨迹没有该事件时，参考前端会从
   工具输出推导（近似结果）。
 
-**审批**：收到 `approval_required`（带 `request_id`）后：
+**审批 / 选项式确认**：收到 `approval_required`（带 `request_id`）后：
 
 ```jsonc
 POST /api/v1/conversations/{id}/approvals/{request_id}
-{ "decision": "approve" }   // approve | deny | always；always = 本对话内该工具不再询问
+{ "decision": "approve", "reply": "按供电单位" }
+// decision: approve | deny | always；always = 本对话内该工具不再询问
+// reply: 问题（kind=question）的选项 label 或自定义回答；权限/编辑审批可省略
 ```
+
+`kind=question` 的载荷可以带具体选项（2–6 个），模型在口径、范围、输出格式等不明确时使用：
+
+```jsonc
+{
+  "type": "approval_required",
+  "kind": "question",
+  "request_id": "abc123",
+  "payload": {
+    "question": "报告按什么口径生成？",
+    "options": [
+      { "label": "按供电单位", "description": "适合管理汇报", "recommended": true },
+      { "label": "按行业分类", "description": "适合结构分析" }
+    ],
+    "allow_other": true
+  }
+}
+```
+
+- `options[].label` 是回传值；`description` 只用于展示；`recommended` 只做视觉提示，不默认选中。
+- 前端始终提供「其他」自由输入，用户也可以回传不在 `options` 里的文本。
+- 审批/问题进入终态后追加 `approval_resolved`（写入轨迹，刷新后不会重新显示为待处理）：
+
+```jsonc
+{ "type": "approval_resolved", "request_id": "abc123", "kind": "question",
+  "decision": "approve", "reply": "按供电单位" }
+```
+
+超时为 `decision: "timeout"`、`reply: ""`；问题会返回 `(no response)` 给模型。
 
 ---
 

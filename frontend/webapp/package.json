@@ -10,6 +10,7 @@
     "check:render": "node scripts/render-check.mjs",
     "check:attachments": "node scripts/check-attachments.mjs",
     "check:turn-files": "node scripts/check-turn-files.mjs",
+    "check:questions": "node scripts/check-questions.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

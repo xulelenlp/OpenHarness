@@ -47,7 +47,7 @@ class ApprovalRequest(BaseModel):
     """审批响应体。"""
 
     decision: Literal["approve", "deny", "always"]
-    reply: str | None = None  # question / edit 审批时的补充回答
+    reply: str | None = None  # question 的选项 label / 自定义回答，或 edit 的补充说明
 
 
 class AgentInfo(BaseModel):

@@ -120,9 +120,10 @@
 6. **模型循环**：模型直接回答，或调用 `external_agent` / `run_script` / 其他工具；
    工具执行前经过权限检查，需要确认时通过 SSE 推 `approval_required`。
 7. **事件**：`agent_routed` / `reasoning_delta` / `assistant_delta` / `tool_started` /
-   `tool_completed` / `approval_required` / `turn_files` / `turn_complete`。
+   `tool_completed` / `approval_required` / `approval_resolved` / `turn_files` /
+   `turn_complete`。
 8. **持久化**：会话快照 + 轨迹 JSONL；刷新页面后按轨迹还原附件、步骤、审批结果与
-   过程/结果文件卡片。
+   过程/结果文件卡片（`approval_resolved` 保证已回答的问题不再显示为待处理）。
 
 ---
 
@@ -139,6 +140,7 @@
 | LLM 分类路由 | ⚠️ 预留 | `routing.mode=llm` | 路由函数支持注入 classifier，但 qaapp 目前未注入；生产推荐 harness 总控 |
 | 自主编排 | ✅ | `general` + `external_agent` | 模型按能力清单自行选智能体 |
 | 动态能力清单 | ✅ | 运行时生成 | 新增 Agent 无需改提示词 |
+| 选项式澄清 | ✅ | `ask_user_question` | 执行中遇不明确点给 2–6 个选项 + 「其他」，确认后再继续；不新增计划模式 |
 | 工具白名单 | ✅ | `tools` / `disallowed_tools` | 支持 `*` 与 fnmatch |
 | 本机 Python 执行 | ✅ | `run_script` | 会话目录 `scripts/`，共享 conda 环境 |
 | 上传解析 | ✅ | `attachments` | docx/xlsx/xls/txt/csv/json/... |

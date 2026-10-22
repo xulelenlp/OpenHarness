@@ -28,6 +28,37 @@ import type { TurnAccumulator } from "./turn";
 import { MarkdownView, useThrottledText } from "./markdown";
 import { ResultFilesCard, TurnFilesCard } from "./FileCards";
 import { deriveTurnFilesFromSteps, excludeResultFiles, keepResultFiles } from "./turnFiles";
+import { copyText } from "./clipboard";
+import { EmptyState } from "./EmptyState";
+import { QuestionCard } from "./QuestionCard";
+import {
+  approvalResultLabel,
+  approvalStepTitle,
+  isPendingQuestion,
+  questionText,
+} from "./questions";
+import {
+  AlertIcon,
+  ArrowUpIcon,
+  BrandMark,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  CopyIcon,
+  DownloadIcon,
+  EyeIcon,
+  FileIcon,
+  FolderIcon,
+  InfoIcon,
+  MenuIcon,
+  PaperclipIcon,
+  PlusIcon,
+  SearchIcon,
+  SparkIcon,
+  StopIcon,
+  ToolIcon,
+} from "./icons";
 import type {
   AgentInfo,
   AttachmentInfo,
@@ -72,36 +103,25 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-/**
- * 复制文本。
- *
- * 注意：`navigator.clipboard` 只在**安全上下文**（https / localhost）可用，而本页
- * 常见部署方式是局域网 `http://<ip>:8787`，此时它不存在，必须回退到
- * `document.execCommand("copy")`，否则「复制」按钮会静默失效。
- */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // 落到下面的兜底实现
+/** 侧边栏的轻量时间：今天显示 HH:mm，其余显示 MM-DD。 */
+function conversationTime(epochSeconds?: number): string {
+  if (!epochSeconds) return "";
+  const date = new Date(epochSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) {
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
   }
-  try {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.style.position = "fixed";
-    area.style.top = "-1000px";
-    area.style.opacity = "0";
-    document.body.appendChild(area);
-    area.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(area);
-    return ok;
-  } catch {
-    return false;
-  }
+  return date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+function truncateText(text: string, limit: number): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
 }
 
 interface AssistantBubbleProps {
@@ -125,7 +145,22 @@ function AssistantBubble({ content, streaming, markdown, error }: AssistantBubbl
   const asMarkdown = markdown && !error;
   const cls = `bubble${asMarkdown && text ? " md" : ""}${error ? " error" : ""}`;
 
-  if (!text) return <div className={cls}>{streaming ? "思考中…" : ""}</div>;
+  if (!text) {
+    return (
+      <div className={cls}>
+        {streaming ? (
+          <span className="thinking" role="status" aria-label="正在思考">
+            <span className="thinking-dot" />
+            <span className="thinking-dot" />
+            <span className="thinking-dot" />
+            <span className="thinking-label">正在思考</span>
+          </span>
+        ) : (
+          ""
+        )}
+      </div>
+    );
+  }
   if (!asMarkdown) return <div className={cls}>{text}</div>;
   return (
     <div className={cls}>
@@ -134,12 +169,9 @@ function AssistantBubble({ content, streaming, markdown, error }: AssistantBubbl
   );
 }
 
-/** 附件类型小图标：只为一眼区分 Word / Excel / 文本，不追求覆盖所有 kind。 */
-function kindIcon(kind: string): string {
-  if (kind === "word") return "📘";
-  if (kind === "excel") return "📗";
-  if (kind === "text" || kind === "markdown" || kind === "csv" || kind === "log") return "📄";
-  return "📎";
+/** 附件类型图标：统一文件轮廓，用颜色区分 Word / Excel / 文本。 */
+function AttachmentIcon({ kind }: { kind: string }) {
+  return <FileIcon size={14} className={`att-kind ${kind}`} />;
 }
 
 /**
@@ -166,7 +198,9 @@ function AttachmentChips({
           className={`att-chip ${a.parse_status}`}
           title={`${a.stored_path}\n${parseStatusLabel(a)}`}
         >
-          <span className="att-icon">{kindIcon(a.kind)}</span>
+          <span className="att-icon">
+            <AttachmentIcon kind={a.kind} />
+          </span>
           <span className="att-name">{a.name}</span>
           <span className="att-size">{formatBytes(a.size)}</span>
           <span className="att-status">{parseStatusLabel(a)}</span>
@@ -179,7 +213,7 @@ function AttachmentChips({
               disabled={disabled}
               onClick={() => onRemove(a.attachment_id)}
             >
-              ×
+              <CloseIcon size={12} />
             </button>
           )}
         </span>
@@ -208,7 +242,7 @@ function extractText(content: unknown): string {
 function approvalDesc(step: Step): string {
   const p = step.payload ?? {};
   if (step.approvalKind === "permission") return `工具「${String(p.tool ?? "")}」请求执行`;
-  if (step.approvalKind === "question") return String(p.question ?? "请补充信息");
+  if (step.approvalKind === "question") return questionText(step);
   return `修改文件：${String(p.path ?? "")}`;
 }
 
@@ -226,6 +260,34 @@ function DetailBlock({ label, data, text }: { label: string; data?: unknown; tex
   );
 }
 
+function DiffBlock({ diff, truncated }: { diff: string; truncated?: boolean }) {
+  const lines = diff.split(/\r?\n/);
+  return (
+    <div className="diff-wrap">
+      <pre className="diff-block" aria-label="文件修改内容">
+        {lines.map((line, index) => {
+          const kind = line.startsWith("@@")
+            ? "hunk"
+            : line.startsWith("+") && !line.startsWith("+++")
+              ? "add"
+              : line.startsWith("-") && !line.startsWith("---")
+                ? "del"
+                : "ctx";
+          return (
+            <span key={index} className={`diff-line ${kind}`}>
+              {line || " "}
+              {"\n"}
+            </span>
+          );
+        })}
+      </pre>
+      {truncated ? (
+        <div className="diff-note muted">内容较长，仅显示前 12000 个字符</div>
+      ) : null}
+    </div>
+  );
+}
+
 function StepCard({
   step,
   collapsed,
@@ -237,33 +299,48 @@ function StepCard({
   onToggle: () => void;
   onApproval?: ApprovalAction;
 }) {
-  const [reply, setReply] = useState("");
   const icon =
-    step.kind === "tool"
-      ? "🔧"
-      : step.kind === "approval"
-        ? "⚠️"
-        : step.kind === "error"
-          ? "❌"
-          : step.kind === "reasoning"
-            ? "💭"
-            : "ℹ️";
+    step.kind === "tool" ? (
+      <ToolIcon size={15} />
+    ) : step.kind === "approval" ? (
+      <AlertIcon size={15} />
+    ) : step.kind === "error" ? (
+      <AlertIcon size={15} />
+    ) : step.kind === "reasoning" ? (
+      <SparkIcon size={15} />
+    ) : (
+      <InfoIcon size={15} />
+    );
   const badge =
-    step.kind === "reasoning" && step.status === "running"
-      ? "思考中"
-      : step.status === "running"
-        ? "运行中"
-        : step.status === "error"
-          ? "失败"
-          : "完成";
+    step.kind === "tool" && step.toolName === "ask_user_question" && step.status === "running"
+      ? "等待回答"
+      : step.kind === "approval" && step.status === "running"
+        ? "等待确认"
+        : step.kind === "reasoning" && step.status === "running"
+          ? "思考中"
+          : step.status === "running"
+            ? "运行中"
+            : step.status === "error"
+              ? "失败"
+              : "完成";
+  const isQuestion = step.approvalKind === "question";
+  const diff = typeof step.payload?.diff === "string" ? step.payload.diff : "";
+  const visibleDiff = diff.length > 12000 ? diff.slice(0, 12000) : diff;
 
   return (
-    <div className={`step-card ${step.kind} ${step.status}`}>
-      <button className="step-head" onClick={onToggle}>
+    <div className={`step-card ${step.kind} ${step.status}${isQuestion ? " question" : ""}`}>
+      <button
+        type="button"
+        className="step-head"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+      >
         <span className="step-icon">{icon}</span>
         <span className="step-title">{step.title}</span>
         <span className={`step-badge ${step.status}`}>{badge}</span>
-        <span className="step-caret">{collapsed ? "▸" : "▾"}</span>
+        <span className="step-caret">
+          {collapsed ? <ChevronRightIcon size={14} /> : <ChevronDownIcon size={14} />}
+        </span>
       </button>
 
       {!collapsed && (
@@ -276,59 +353,65 @@ function StepCard({
             </>
           )}
 
-          {step.kind === "approval" && (
-            <div className="approval-step">
-              <div className="approval-desc">{approvalDesc(step)}</div>
-              {step.payload?.reason ? <div className="muted">原因：{String(step.payload.reason)}</div> : null}
+          {step.kind === "approval" &&
+            (isQuestion ? (
+              <QuestionCard
+                step={step}
+                onAnswer={(requestId, answer) =>
+                  onApproval?.(requestId, "approve", answer)
+                }
+              />
+            ) : (
+              <div className="approval-step">
+                <div className="approval-desc">{approvalDesc(step)}</div>
+                {step.payload?.reason ? (
+                  <div className="muted">原因：{String(step.payload.reason)}</div>
+                ) : null}
 
-              {step.status === "running" && step.requestId && onApproval ? (
-                step.approvalKind === "question" ? (
-                  <div className="approval-question">
-                    <input
-                      value={reply}
-                      placeholder="输入补充信息…"
-                      autoFocus
-                      onChange={(e) => setReply(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && reply.trim()) {
-                          e.preventDefault();
-                          onApproval(step.requestId!, "approve", reply.trim());
-                        }
-                      }}
-                    />
-                    <button
-                      className="btn primary"
-                      disabled={!reply.trim()}
-                      onClick={() => onApproval(step.requestId!, "approve", reply.trim())}
-                    >
-                      提交
-                    </button>
-                  </div>
-                ) : (
+                {step.approvalKind === "permission" && step.payload?.input !== undefined ? (
+                  <DetailBlock label="工具参数" data={step.payload.input} />
+                ) : null}
+                {step.approvalKind === "edit" && visibleDiff ? (
+                  <DiffBlock diff={visibleDiff} truncated={diff.length > 12000} />
+                ) : null}
+
+                {step.status === "running" && step.requestId && onApproval ? (
                   <>
                     <div className="approval-actions">
-                      <button className="btn primary" onClick={() => onApproval(step.requestId!, "approve")}>
-                        允许
+                      <button
+                        type="button"
+                        className="btn primary"
+                        onClick={() => onApproval(step.requestId!, "approve")}
+                      >
+                        <CheckIcon size={14} /> 允许
                       </button>
-                      <button className="btn" onClick={() => onApproval(step.requestId!, "always")}>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => onApproval(step.requestId!, "always")}
+                      >
                         总是允许
                       </button>
-                      <button className="btn danger" onClick={() => onApproval(step.requestId!, "deny")}>
-                        拒绝
+                      <button
+                        type="button"
+                        className="btn danger"
+                        onClick={() => onApproval(step.requestId!, "deny")}
+                      >
+                        <CloseIcon size={14} /> 拒绝
                       </button>
                     </div>
                     <div className="muted approval-hint">
                       本轮内同一工具只确认一次；点「总是允许」则本会话后续都不再询问。
                     </div>
                   </>
-                )
-              ) : (
-                step.text ? <div className="step-text">{step.text}</div> : null
-              )}
-            </div>
-          )}
+                ) : step.text ? (
+                  <div className="step-text">{step.text}</div>
+                ) : null}
+              </div>
+            ))}
 
-          {(step.kind === "status" || step.kind === "error" || step.kind === "reasoning") && step.text ? (
+          {(step.kind === "status" || step.kind === "error" || step.kind === "reasoning") &&
+          step.text ? (
             <div className="step-text">{step.text}</div>
           ) : null}
         </div>
@@ -378,8 +461,19 @@ export default function App() {
   /** 正在下载的文件（相对路径）：按钮显示「下载中…」并禁用，避免重复点击。 */
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
 
+  // ---- 布局与加载状态 ----
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [conversationFilter, setConversationFilter] = useState("");
+  const [loadingConversation, setLoadingConversation] = useState(false);
+
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  /** 用户是否停在底部；只有停在底部时才随流式输出自动跟随。 */
+  const stickToBottomRef = useRef(true);
+  /** 上一个待确认请求 id：新请求出现时强制滚到可见位置，即使之前向上翻了。 */
+  const pendingApprovalRef = useRef<string | null>(null);
   const assistantIndexRef = useRef<number>(-1);
   /** 最新 activeId：任务结束时的异步刷新用它判断用户是否已经切走。 */
   const activeIdRef = useRef<string | null>(null);
@@ -403,6 +497,91 @@ export default function App() {
   useEffect(() => {
     drawerOpenRef.current = drawerOpen;
   }, [drawerOpen]);
+
+  // 输入框随内容自动增高（最多 6 行左右），发送后由 handleSend 复位。
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 168)}px`;
+  }, [input]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const element = messagesRef.current;
+    if (!element) return;
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    const element = messagesRef.current;
+    if (!element) return;
+    stickToBottomRef.current =
+      element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+  }, []);
+
+  const activeSummary = useMemo(
+    () => conversations.find((conversation) => conversation.conversation_id === activeId),
+    [activeId, conversations],
+  );
+
+  const pendingQuestion = useMemo(() => {
+    for (const message of messages) {
+      for (const step of message.steps) {
+        if (isPendingQuestion(step)) return step;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const pendingApproval = useMemo(() => {
+    for (const message of messages) {
+      for (const step of message.steps) {
+        if (step.kind === "approval" && step.status === "running") return step;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const sessionTitle = useMemo(() => {
+    const summary = activeSummary?.summary?.trim();
+    if (summary) return truncateText(summary, 48);
+    const firstUser = messages.find((message) => message.role === "user" && message.content.trim());
+    return firstUser ? truncateText(firstUser.content, 48) : "新对话";
+  }, [activeSummary?.summary, messages]);
+
+  const filteredConversations = useMemo(() => {
+    const query = conversationFilter.trim().toLowerCase();
+    if (!query) return conversations;
+    return conversations.filter((conversation) => {
+      const text = `${conversation.summary ?? conversation.preview ?? ""} ${conversation.conversation_id}`;
+      return text.toLowerCase().includes(query);
+    });
+  }, [conversationFilter, conversations]);
+
+  // 流式输出 / 新消息 / 待确认操作出现时，只要用户还在底部就跟随。
+  useEffect(() => {
+    if (stickToBottomRef.current) scrollToBottom("auto");
+  }, [messages, pendingApproval, scrollToBottom, streaming]);
+
+  // 新的待确认请求出现时，强制滚到底部，避免用户向上翻后错过必答卡片。
+  useEffect(() => {
+    const requestId = pendingApproval?.requestId ?? null;
+    if (requestId && requestId !== pendingApprovalRef.current) {
+      stickToBottomRef.current = true;
+      window.requestAnimationFrame(() => scrollToBottom("auto"));
+    }
+    pendingApprovalRef.current = requestId;
+  }, [pendingApproval?.requestId, scrollToBottom]);
+
+  // 预览弹窗支持 Esc 关闭。
+  useEffect(() => {
+    if (!preview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreview(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [preview]);
 
   useEffect(
     () => () => {
@@ -471,8 +650,11 @@ export default function App() {
   const openConversation = useCallback(async (id: string) => {
     activeIdRef.current = id;
     setActiveId(id);
+    setSidebarOpen(false);
     setMessages([]);
     setStepOpen({});
+    setLoadingConversation(true);
+    stickToBottomRef.current = true;
     // 附件挂在会话上，切会话必须清空，否则会把 A 会话的附件发进 B 会话。
     setAttachments([]);
     setWorkspace(null);
@@ -521,6 +703,8 @@ export default function App() {
       setMessages(rebuilt);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setLoadingConversation(false);
     }
   }, []);
 
@@ -530,9 +714,14 @@ export default function App() {
       await refreshConversations();
       activeIdRef.current = conversation_id;
       setActiveId(conversation_id);
+      setSidebarOpen(false);
+      setDrawerOpen(false);
+      setLoadingConversation(false);
       setMessages([]);
+      setInput("");
       setAttachments([]);
       setWorkspace(null);
+      stickToBottomRef.current = true;
     } catch (e) {
       setError((e as Error).message);
     }
@@ -789,6 +978,9 @@ export default function App() {
     setAttachments([]);
     setError("");
     setStreaming(true);
+    setSidebarOpen(false);
+    stickToBottomRef.current = true;
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     const userMsg: ChatMessage = {
       role: "user",
@@ -936,6 +1128,15 @@ export default function App() {
 
   const handleInterrupt = useCallback(async () => {
     if (!activeId) return;
+    // 如果正卡在审批/问题，先按拒绝收尾，避免中断后卡片仍停在「等待确认」。
+    const requestId = pendingApprovalRef.current;
+    if (requestId) {
+      try {
+        await resolveApproval(activeId, requestId, "deny");
+      } catch {
+        // 审批可能已经结束，忽略。
+      }
+    }
     abortRef.current?.abort();
     try {
       await interruptConversation(activeId);
@@ -950,36 +1151,29 @@ export default function App() {
       // 同步判重：即便按钮还没从界面上消失，也拦住连点造成的重复提交。
       if (submittingApprovalsRef.current.has(requestId)) return;
       submittingApprovalsRef.current.add(requestId);
+      // 用户刚做出确认，后续输出继续跟随到底部。
+      stickToBottomRef.current = true;
 
-      const label = reply
-        ? "已提交补充信息"
-        : decision === "approve"
-          ? "已允许"
-          : decision === "always"
-            ? "已总是允许"
-            : "已拒绝";
-      const titleOf = (s: Step): string => {
-        const target =
-          s.approvalKind === "permission"
-            ? `工具「${String(s.payload?.tool ?? "")}」`
-            : s.approvalKind === "edit"
-              ? `文件「${String(s.payload?.path ?? "").split("/").pop() ?? ""}」`
-              : "补充信息";
-        return `${label} · ${target}`;
-      };
+      const acc = accRef.current;
+      const targetStep = acc?.steps.find(
+        (s) => s.kind === "approval" && s.requestId === requestId,
+      );
+      const kind = targetStep?.approvalKind;
+      const label = approvalResultLabel(kind, decision, reply);
+      const answer = kind === "question" ? reply?.trim() || undefined : undefined;
 
       // 关键：同步改累加器里的这个步骤。
       // onEvent 每次都用 acc.steps 覆盖消息的 steps，只做 setMessages 乐观更新会被
       // 随后的流式事件覆盖，导致卡片"复活"、按钮重新可点。
-      const acc = accRef.current;
       if (acc) {
         const step = acc.steps.find(
-          (s) => s.kind === "approval" && s.requestId === requestId && s.status === "running",
+          (s) => s.kind === "approval" && s.requestId === requestId,
         );
         if (step) {
           step.status = "done";
-          step.title = titleOf(step);
+          step.title = approvalStepTitle(step.approvalKind, step.payload, label);
           step.text = label;
+          if (step.approvalKind === "question") step.answer = answer;
         }
         acc.resolvedApprovals.set(requestId, label);
       }
@@ -1000,7 +1194,17 @@ export default function App() {
                   ) {
                     return s;
                   }
-                  return { ...s, status: "done" as const, title: titleOf(s), text: label };
+                  const stepLabel = approvalResultLabel(s.approvalKind, decision, reply);
+                  return {
+                    ...s,
+                    status: "done" as const,
+                    title: approvalStepTitle(s.approvalKind, s.payload, stepLabel),
+                    text: stepLabel,
+                    answer:
+                      s.approvalKind === "question"
+                        ? (reply?.trim() || undefined)
+                        : s.answer,
+                  };
                 }),
               },
         ),
@@ -1010,34 +1214,68 @@ export default function App() {
       } catch (e) {
         const msg = (e as Error).message;
         setError(msg);
-        // 提交失败（例如审批已过期）：把卡片标成失败态，按钮不再出现，避免被反复点击。
-        const failed = `提交失败：${msg}`;
         const accNow = accRef.current;
-        if (accNow) {
-          accNow.resolvedApprovals.set(requestId, failed);
-          const step = accNow.steps.find(
+        if (kind === "question") {
+          // 问题提交失败时保留可操作态，让用户能重新选择/输入，而不是把卡永久标红。
+          accNow?.resolvedApprovals.delete(requestId);
+          const step = accNow?.steps.find(
             (s) => s.kind === "approval" && s.requestId === requestId,
           );
           if (step) {
-            step.status = "error";
-            step.title = failed;
-            step.text = msg;
+            step.status = "running";
+            step.title = approvalStepTitle(step.approvalKind, step.payload);
+            step.text = undefined;
+            step.answer = undefined;
           }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role !== "assistant"
+                ? m
+                : {
+                    ...m,
+                    steps: m.steps.map((s) =>
+                      s.kind === "approval" && s.requestId === requestId
+                        ? {
+                            ...s,
+                            status: "running" as const,
+                            title: approvalStepTitle(s.approvalKind, s.payload),
+                            text: undefined,
+                            answer: undefined,
+                          }
+                        : s,
+                    ),
+                  },
+            ),
+          );
+        } else {
+          // 权限/编辑审批：标成失败态，按钮不再出现，避免被反复点击。
+          const failed = `提交失败：${msg}`;
+          if (accNow) {
+            accNow.resolvedApprovals.set(requestId, failed);
+            const step = accNow.steps.find(
+              (s) => s.kind === "approval" && s.requestId === requestId,
+            );
+            if (step) {
+              step.status = "error";
+              step.title = failed;
+              step.text = msg;
+            }
+          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role !== "assistant"
+                ? m
+                : {
+                    ...m,
+                    steps: m.steps.map((s) =>
+                      s.kind === "approval" && s.requestId === requestId
+                        ? { ...s, status: "error" as const, title: failed, text: msg }
+                        : s,
+                    ),
+                  },
+            ),
+          );
         }
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.role !== "assistant"
-              ? m
-              : {
-                  ...m,
-                  steps: m.steps.map((s) =>
-                    s.kind === "approval" && s.requestId === requestId
-                      ? { ...s, status: "error" as const, title: failed, text: msg }
-                      : s,
-                  ),
-                },
-          ),
-        );
       } finally {
         submittingApprovalsRef.current.delete(requestId);
       }
@@ -1056,104 +1294,250 @@ export default function App() {
   const attachmentsLocked = streaming || uploading;
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h1>问答产品</h1>
-          <button className="btn primary" onClick={() => void handleNewConversation()}>
-            + 新建对话
+    <div className={`layout${sidebarOpen ? " sidebar-open" : ""}`}>
+      {sidebarOpen ? (
+        <div
+          className="sidebar-backdrop"
+          aria-hidden="true"
+          onClick={() => setSidebarOpen(false)}
+        />
+      ) : null}
+
+      <aside className="sidebar" aria-label="会话列表">
+        <div className="sidebar-brand">
+          <BrandMark size={34} />
+          <div className="sidebar-brand-text">
+            <strong>智能问答</strong>
+            <span>企业级 AI 助手</span>
+          </div>
+          <button
+            type="button"
+            className="icon-btn sidebar-close"
+            title="收起会话列表"
+            aria-label="收起会话列表"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <CloseIcon size={17} />
           </button>
         </div>
 
-        <div className="conversation-list">
-          {conversations.map((c) => (
+        <button
+          type="button"
+          className="new-chat"
+          onClick={() => void handleNewConversation()}
+        >
+          <PlusIcon size={16} />
+          新建对话
+        </button>
+
+        <div className="sidebar-search">
+          <SearchIcon size={15} />
+          <input
+            value={conversationFilter}
+            onChange={(event) => setConversationFilter(event.target.value)}
+            placeholder="搜索对话"
+            aria-label="搜索对话"
+          />
+          {conversationFilter ? (
             <button
-              key={c.conversation_id}
-              className={`conversation-item ${c.conversation_id === activeId ? "active" : ""}`}
-              onClick={() => void openConversation(c.conversation_id)}
+              type="button"
+              className="search-clear"
+              title="清空搜索"
+              aria-label="清空搜索"
+              onClick={() => setConversationFilter("")}
             >
-              <span className="conv-id">#{shortId(c.conversation_id)}</span>
-              <span className="conv-preview">{c.preview || "新对话"}</span>
+              <CloseIcon size={12} />
             </button>
-          ))}
-          {conversations.length === 0 && <p className="muted">暂无对话，点击「新建对话」开始</p>}
+          ) : null}
+        </div>
+
+        <div className="conversation-list">
+          {filteredConversations.map((c) => {
+            const title = truncateText(c.summary || c.preview || "新对话", 30) || "新对话";
+            const time = conversationTime(c.created_at);
+            return (
+              <button
+                type="button"
+                key={c.conversation_id}
+                className={`conversation-item ${c.conversation_id === activeId ? "active" : ""}`}
+                onClick={() => void openConversation(c.conversation_id)}
+                title={c.summary || c.preview || c.conversation_id}
+              >
+                <span className="conv-title">{title}</span>
+                <span className="conv-meta">
+                  <span>#{shortId(c.conversation_id)}</span>
+                  {c.message_count ? <span>{c.message_count} 条</span> : null}
+                  {time ? <span>{time}</span> : null}
+                </span>
+              </button>
+            );
+          })}
+          {filteredConversations.length === 0 && (
+            <p className="sidebar-empty">
+              {conversations.length === 0 ? "暂无对话，点击「新建对话」开始" : "没有匹配的对话"}
+            </p>
+          )}
+        </div>
+
+        <div className="sidebar-foot">
+          <span className="status-dot" />
+          OpenHarness · qaapp
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
-          <div className="agent-select">
-            <label htmlFor="agent">Agent</label>
-            <select
-              id="agent"
-              value={selectedAgent}
-              onChange={(e) => setSelectedAgent(e.target.value)}
-              disabled={streaming}
-            >
-              <option value="">自动编排（推荐）</option>
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name || a.id}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="md-toggle" title="助手回答按 Markdown 渲染（表格 / 代码块 / 列表）；关闭后显示原文">
-            <input
-              type="checkbox"
-              checked={markdownDefault}
-              onChange={(e) => {
-                setMarkdownDefault(e.target.checked);
-                setRenderOverride({});
-              }}
-              disabled={streaming}
-            />
-            Markdown 渲染
-          </label>
-          {streaming && (
-            <button className="btn warn" onClick={() => void handleInterrupt()}>
-              中断
-            </button>
-          )}
           <button
-            className={`btn drawer-toggle${drawerOpen ? " active" : ""}`}
-            title="列出本会话临时目录里的文件（含 Agent 生成的脚本），可下载 / 预览"
-            onClick={() => setDrawerOpen((v) => !v)}
+            type="button"
+            className="icon-btn mobile-menu"
+            title="打开会话列表"
+            aria-label="打开会话列表"
+            aria-expanded={sidebarOpen}
+            onClick={() => setSidebarOpen(true)}
           >
-            📁 会话文件
+            <MenuIcon size={18} />
           </button>
+
+          <div className="topbar-title">
+            <div className="topbar-title-row">
+              <h1 title={sessionTitle}>{sessionTitle}</h1>
+              {pendingApproval ? (
+                <span className="status-pill waiting">
+                  <span className="status-dot" />
+                  等待确认
+                </span>
+              ) : streaming ? (
+                <span className="status-pill running">
+                  <span className="status-dot" />
+                  执行中
+                </span>
+              ) : null}
+            </div>
+            <span className="topbar-sub">
+              {activeSummary?.message_count ? `${activeSummary.message_count} 条消息` : "新对话"}
+              {activeSummary?.model ? ` · ${activeSummary.model}` : ""}
+            </span>
+          </div>
+
+          <div className="topbar-actions">
+            <div className="agent-select">
+              <label htmlFor="agent">智能体</label>
+              <div className="select-wrap">
+                <select
+                  id="agent"
+                  value={selectedAgent}
+                  onChange={(e) => setSelectedAgent(e.target.value)}
+                  disabled={streaming}
+                >
+                  <option value="">自动编排（推荐）</option>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name || a.id}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon size={14} />
+              </div>
+            </div>
+
+            <label
+              className="switch-toggle"
+              title="助手回答按 Markdown 渲染（表格 / 代码块 / 列表）；关闭后显示原文"
+            >
+              <input
+                type="checkbox"
+                checked={markdownDefault}
+                onChange={(e) => {
+                  setMarkdownDefault(e.target.checked);
+                  setRenderOverride({});
+                }}
+                disabled={streaming}
+              />
+              <span className="switch-track" aria-hidden="true">
+                <span />
+              </span>
+              <span className="switch-label">Markdown</span>
+            </label>
+
+            <button
+              type="button"
+              className={`icon-btn${drawerOpen ? " active" : ""}`}
+              title="列出本会话临时目录里的文件（含 Agent 生成的脚本），可下载 / 预览"
+              aria-label="打开会话文件"
+              aria-expanded={drawerOpen}
+              onClick={() => setDrawerOpen((v) => !v)}
+            >
+              <FolderIcon size={17} />
+              <span className="icon-btn-label">文件</span>
+            </button>
+          </div>
         </header>
 
         <div
+          ref={messagesRef}
           className={`messages${dragging ? " drag-active" : ""}`}
+          onScroll={handleMessagesScroll}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {loadingConversation ? (
+            <div className="message-skeleton" aria-label="正在加载对话">
+              <span />
+              <span />
+              <span />
+            </div>
+          ) : null}
+
+          {!loadingConversation && messages.length === 0 ? (
+            <EmptyState
+              onPick={(prompt) => {
+                setInput(prompt);
+                window.requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
+            />
+          ) : null}
+
           {messages.map((m, i) => {
             const isAssistant = m.role === "assistant";
             const useMarkdown = renderOverride[i] ?? markdownDefault;
             // 结果文件只在结果区出现；过程区展示其余文件（脚本/数据/图片/md 等）。
             const processFiles = excludeResultFiles(m.changedFiles ?? [], m.resultFiles ?? []);
+            const hasPendingApproval = m.steps.some(
+              (step) => step.kind === "approval" && step.status === "running",
+            );
             return (
               <div key={i} className={`message ${m.role}`}>
                 <div className="message-head">
-                  <span className="role">{isAssistant ? m.agentName || "助手" : "我"}</span>
+                  <span className={`avatar ${isAssistant ? "assistant" : "user"}`}>
+                    {isAssistant ? <BrandMark size={24} /> : "我"}
+                  </span>
+                  {isAssistant ? <span className="role">助手</span> : null}
+                  {isAssistant && m.agentName ? (
+                    <span className="agent-badge">
+                      {agents.find((agent) => agent.id === m.agentName)?.name || m.agentName}
+                    </span>
+                  ) : null}
                   {m.turnId && <span className="turn-id">turn #{shortId(m.turnId)}</span>}
                   {isAssistant && m.content && (
                     <span className="msg-actions">
                       <button
+                        type="button"
                         className="mini-btn"
                         title={useMarkdown ? "查看 Markdown 原文" : "按 Markdown 渲染"}
-                        onClick={() => setRenderOverride((prev) => ({ ...prev, [i]: !useMarkdown }))}
+                        onClick={() =>
+                          setRenderOverride((prev) => ({ ...prev, [i]: !useMarkdown }))
+                        }
                       >
                         {useMarkdown ? "源码" : "预览"}
                       </button>
                       <button
+                        type="button"
                         className="mini-btn"
                         title="复制 Markdown 原文"
                         onClick={() => void handleCopyMessage(i, m.content)}
                       >
+                        <CopyIcon size={12} />
                         {copiedIndex === i ? "已复制" : "复制"}
                       </button>
                     </span>
@@ -1161,24 +1545,39 @@ export default function App() {
                 </div>
 
                 {isAssistant && m.steps.length > 0 && (
-                  <div className="steps">
-                    {m.steps.map((s) => {
-                      const openKey = `${i}:${s.key}`;
-                      // 待处理的审批必须展开（需用户操作）；思考默认展开便于看过程；
-                      // 其余（含已处理的审批）默认折叠，避免重复卡片刷屏。
-                      const needsAction = s.kind === "approval" && s.status === "running";
-                      const collapsed =
-                        needsAction || s.kind === "reasoning" ? false : !stepOpen[openKey];
-                      return (
-                        <StepCard
-                          key={s.key}
-                          step={s}
-                          collapsed={collapsed}
-                          onToggle={() => toggleStep(openKey)}
-                          onApproval={handleApproval}
-                        />
-                      );
-                    })}
+                  <div className="activity">
+                    <div className="activity-head">
+                      <span className="activity-title">执行过程</span>
+                      <span className="activity-count">{m.steps.length} 步</span>
+                    </div>
+                    <div className="steps">
+                      {m.steps.map((s) => {
+                        const openKey = `${i}:${s.key}`;
+                        // 待处理的审批必须展开（需用户操作）；正在运行的工具步骤展开；
+                        // 思考与历史步骤默认折叠，保持对话干净。
+                        const needsAction = s.kind === "approval" && s.status === "running";
+                        const collapsed = needsAction
+                          ? false
+                          : hasPendingApproval && s.kind === "tool" && s.status === "running"
+                            ? !stepOpen[openKey]
+                            : s.kind === "tool" && s.toolName === "ask_user_question"
+                              ? !stepOpen[openKey]
+                              : s.kind === "reasoning"
+                                ? !stepOpen[openKey]
+                                : s.status === "running"
+                                  ? false
+                                  : !stepOpen[openKey];
+                        return (
+                          <StepCard
+                            key={s.key}
+                            step={s}
+                            collapsed={collapsed}
+                            onToggle={() => toggleStep(openKey)}
+                            onApproval={handleApproval}
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -1186,7 +1585,7 @@ export default function App() {
                   <>
                     <AssistantBubble
                       content={m.content}
-                      streaming={Boolean(m.streaming)}
+                      streaming={Boolean(m.streaming) && !hasPendingApproval}
                       markdown={useMarkdown}
                       error={m.error}
                     />
@@ -1217,7 +1616,9 @@ export default function App() {
                 ) : (
                   <>
                     {/* 内容为空（只发附件）时不渲染空气泡，避免多出一块空白。 */}
-                    {m.content ? <div className={`bubble ${m.error ? "error" : ""}`}>{m.content}</div> : null}
+                    {m.content ? (
+                      <div className={`bubble ${m.error ? "error" : ""}`}>{m.content}</div>
+                    ) : null}
                     {/* 气泡下方渲染本轮附件芯片：实时发送用本地状态，历史回放来自 attachments_ready 事件。 */}
                     <AttachmentChips items={m.attachments ?? []} />
                   </>
@@ -1225,27 +1626,46 @@ export default function App() {
               </div>
             );
           })}
+
+          {dragging ? (
+            <div className="drop-overlay" aria-hidden="true">
+              <PaperclipIcon size={22} />
+              <strong>松开即可上传</strong>
+              <span>Word / Excel / 文本，最多 {MAX_FILES} 个</span>
+            </div>
+          ) : null}
         </div>
 
         {error && (
-          <div className="error-bar">
-            {error}
-            <button className="close" onClick={() => setError("")}>
-              ×
+          <div className="toast" role="alert">
+            <AlertIcon size={17} />
+            <span className="toast-text">{error}</span>
+            <button
+              type="button"
+              className="toast-close"
+              title="关闭提示"
+              aria-label="关闭提示"
+              onClick={() => setError("")}
+            >
+              <CloseIcon size={14} />
             </button>
           </div>
         )}
 
         <div
-          className={`composer-wrap${dragging ? " drag-active" : ""}`}
+          className={`composer-dock${dragging ? " drag-active" : ""}`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <AttachmentChips items={attachments} onRemove={removeAttachment} disabled={attachmentsLocked} />
+          <AttachmentChips
+            items={attachments}
+            onRemove={removeAttachment}
+            disabled={attachmentsLocked}
+          />
 
-          <div className="composer">
-            {/* 隐藏的原生选择框：样式受限且各浏览器不一，统一用左边的按钮触发。 */}
+          <div className="composer-card">
+            {/* 隐藏的原生选择框：样式受限且各浏览器不一，统一用工具条按钮触发。 */}
             <input
               ref={fileInputRef}
               type="file"
@@ -1254,19 +1674,22 @@ export default function App() {
               accept={SUPPORTED_SUFFIXES.join(",")}
               onChange={handleFileInputChange}
             />
-            <button
-              className="btn attach-btn"
-              title={`上传附件（最多 ${MAX_FILES} 个：Word / Excel / TXT 等），也可以直接把文件拖进页面`}
-              disabled={attachmentsLocked}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploading ? "解析中…" : "📎 附件"}
-            </button>
             <textarea
+              ref={textareaRef}
               value={input}
-              placeholder="输入问题，回车发送（Shift+回车换行）；可拖入文件作为附件"
+              rows={1}
+              placeholder={
+                streaming
+                  ? pendingQuestion
+                    ? "请先回答上方的问题…"
+                    : pendingApproval
+                      ? "请先确认上方操作…"
+                      : "正在执行，可点击右侧停止…"
+                  : "输入问题，Enter 发送，Shift+Enter 换行；可拖入文件"
+              }
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return;
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void handleSend();
@@ -1274,25 +1697,92 @@ export default function App() {
               }}
               disabled={streaming}
             />
-            <button className="btn primary send" onClick={() => void handleSend()} disabled={!canSend}>
-              发送
-            </button>
+            <div className="composer-toolbar">
+              <div className="composer-left">
+                <button
+                  type="button"
+                  className="icon-btn attach-btn"
+                  title={`上传附件（最多 ${MAX_FILES} 个：Word / Excel / TXT 等），也可以直接把文件拖进页面`}
+                  aria-label="上传附件"
+                  disabled={attachmentsLocked}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <PaperclipIcon size={16} />
+                  <span>{uploading ? "解析中…" : "附件"}</span>
+                </button>
+                <span className="composer-hint">
+                  {pendingQuestion
+                    ? "回答上方问题后继续"
+                    : pendingApproval
+                      ? "确认上方操作后继续"
+                      : "Enter 发送 · Shift+Enter 换行"}
+                </span>
+              </div>
+              <div className="composer-right">
+                {pendingApproval ? <span className="composer-note">等待确认</span> : null}
+                {streaming ? (
+                  <button
+                    type="button"
+                    className="send-btn stop"
+                    title="停止当前任务"
+                    aria-label="停止当前任务"
+                    onClick={() => void handleInterrupt()}
+                  >
+                    <StopIcon size={16} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="send-btn"
+                    title="发送"
+                    aria-label="发送"
+                    disabled={!canSend}
+                    onClick={() => void handleSend()}
+                  >
+                    <ArrowUpIcon size={18} />
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </main>
 
+      {drawerOpen ? (
+        <div
+          className="drawer-backdrop"
+          aria-hidden="true"
+          onClick={() => setDrawerOpen(false)}
+        />
+      ) : null}
+
       {drawerOpen && (
-        <aside className="file-drawer">
+        <aside className="file-drawer" aria-label="会话文件">
           <div className="drawer-head">
-            <strong>会话文件</strong>
-            <button className="mini-btn" title="关闭面板" onClick={() => setDrawerOpen(false)}>
-              关闭
+            <div className="drawer-title">
+              <FolderIcon size={17} />
+              <strong>会话文件</strong>
+            </div>
+            <button
+              type="button"
+              className="icon-btn"
+              title="关闭面板"
+              aria-label="关闭面板"
+              onClick={() => setDrawerOpen(false)}
+            >
+              <CloseIcon size={16} />
             </button>
           </div>
 
           <div className="drawer-dir">
             <code title={workspace?.dir || ""}>{workspace?.dir || "（未加载）"}</code>
-            <button className="mini-btn" disabled={!workspace?.dir} onClick={() => void handleCopyDir()}>
+            <button
+              type="button"
+              className="mini-btn"
+              disabled={!workspace?.dir}
+              onClick={() => void handleCopyDir()}
+            >
+              {copiedDir ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
               {copiedDir ? "已复制" : "复制路径"}
             </button>
           </div>
@@ -1308,11 +1798,16 @@ export default function App() {
             {fileGroups.map(([dir, files]) => (
               <div className="ws-group" key={dir}>
                 <div className="ws-group-title">
-                  {dir}（{files.length}）
+                  <span>{dir}</span>
+                  <span>{files.length}</span>
                 </div>
                 {files.map((f) => (
                   <div className="ws-file" key={f.path}>
+                    <span className="ws-file-icon">
+                      <FileIcon size={14} />
+                    </span>
                     <button
+                      type="button"
                       className="ws-file-name"
                       title={isPreviewableText(f.path) ? `${f.path}（点击预览）` : f.path}
                       disabled={!isPreviewableText(f.path)}
@@ -1320,15 +1815,30 @@ export default function App() {
                     >
                       {f.path.split("/").pop()}
                     </button>
-                    <button
-                      className="mini-btn"
-                      title="下载该文件"
-                      disabled={downloadingPath === f.path}
-                      onClick={() => void downloadPath(f.path)}
-                    >
-                      {downloadingPath === f.path ? "下载中…" : "下载"}
-                    </button>
                     <div className="ws-file-meta">{workspaceLabel(f)}</div>
+                    <div className="ws-file-actions">
+                      {isPreviewableText(f.path) ? (
+                        <button
+                          type="button"
+                          className="mini-btn"
+                          title="预览"
+                          aria-label={`预览 ${f.path}`}
+                          onClick={() => void previewPath(f.path)}
+                        >
+                          <EyeIcon size={13} />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="mini-btn"
+                        title="下载"
+                        aria-label={`下载 ${f.path}`}
+                        disabled={downloadingPath === f.path}
+                        onClick={() => void downloadPath(f.path)}
+                      >
+                        <DownloadIcon size={13} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1346,15 +1856,33 @@ export default function App() {
       {preview && (
         <div className="preview-mask" onClick={() => setPreview(null)}>
           {/* 点面板内部不该关掉弹窗，所以拦住冒泡 */}
-          <div className="preview-panel" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="preview-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="文件预览"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="preview-head">
-              <strong title={preview.name}>{preview.name}</strong>
-              <button className="mini-btn" onClick={() => setPreview(null)}>
-                关闭
+              <div className="preview-title">
+                <FileIcon size={16} />
+                <strong title={preview.name}>{preview.name}</strong>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                title="关闭预览"
+                aria-label="关闭预览"
+                autoFocus
+                onClick={() => setPreview(null)}
+              >
+                <CloseIcon size={16} />
               </button>
             </div>
             <pre>{preview.text}</pre>
-            {preview.truncated && <div className="muted">仅预览前 {PREVIEW_CHARS} 个字符</div>}
+            <div className="preview-foot muted">
+              {preview.truncated ? `仅预览前 ${PREVIEW_CHARS} 个字符` : "已显示全部内容"}
+            </div>
           </div>
         </div>
       )}

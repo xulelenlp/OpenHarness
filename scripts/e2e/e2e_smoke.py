@@ -725,7 +725,11 @@ async def _run_scenario(
             ask_user_prompt=(
                 None
                 if scenario.ask_user_answer is None
-                else (lambda _question: asyncio.sleep(0, result=scenario.ask_user_answer))
+                else (
+                    lambda _question, _options: asyncio.sleep(
+                        0, result=scenario.ask_user_answer
+                    )
+                )
             ),
         )
 

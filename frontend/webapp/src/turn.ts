@@ -4,6 +4,7 @@
  * 抽成独立模块（纯函数、不依赖 React）以便自动化验证与复用。
  */
 
+import { approvalResultLabel, approvalStepTitle } from "./questions";
 import type { AttachmentInfo, ChangedFile, ResultFile, Step } from "./types";
 
 export interface TurnAccumulator {
@@ -142,19 +143,55 @@ export function reduceEvent(acc: TurnAccumulator, evt: Record<string, unknown>):
 
     case "approval_required": {
       const requestId = evt.request_id as string | undefined;
+      const kind = evt.kind as Step["approvalKind"];
+      const payload = evt.payload as Record<string, unknown> | undefined;
       // 已处理过的审批（重放/重复事件）直接落成完成态，不再渲染按钮。
       const resolved = requestId ? acc.resolvedApprovals.get(requestId) : undefined;
       acc.steps.push({
         key: nextKey(),
         kind: "approval",
         status: resolved ? "done" : "running",
-        title: resolved ?? "需要审批",
+        title: approvalStepTitle(kind, payload, resolved),
         requestId,
-        approvalKind: evt.kind as Step["approvalKind"],
-        payload: evt.payload as Record<string, unknown> | undefined,
+        approvalKind: kind,
+        payload,
         text: resolved,
         ts: evt.ts as number | undefined,
       });
+      break;
+    }
+
+    // 审批/问题已有终态：实时流与历史回放都靠它把等待卡收起来。
+    case "approval_resolved": {
+      const requestId = evt.request_id as string | undefined;
+      const kind = evt.kind as Step["approvalKind"] | undefined;
+      const decision = String(evt.decision ?? "approve");
+      const reply = typeof evt.reply === "string" ? evt.reply : "";
+      const label = approvalResultLabel(kind, decision, reply);
+      if (requestId) acc.resolvedApprovals.set(requestId, label);
+
+      const step = requestId
+        ? acc.steps.find((item) => item.kind === "approval" && item.requestId === requestId)
+        : undefined;
+      if (step) {
+        step.status = "done";
+        step.title = approvalStepTitle(step.approvalKind ?? kind, step.payload, label);
+        step.text = label;
+        if ((step.approvalKind ?? kind) === "question" && reply) step.answer = reply;
+      } else if (requestId) {
+        // 异常轨迹里若缺少 approval_required，也要留下可读的完成态。
+        acc.steps.push({
+          key: nextKey(),
+          kind: "approval",
+          status: "done",
+          title: approvalStepTitle(kind, undefined, label),
+          requestId,
+          approvalKind: kind,
+          text: label,
+          answer: kind === "question" && reply ? reply : undefined,
+          ts: evt.ts as number | undefined,
+        });
+      }
       break;
     }
 

@@ -2052,7 +2052,7 @@ class RepoAutopilotStore:
         async def _allow(_tool_name: str, _reason: str) -> bool:
             return True
 
-        async def _ask(_question: str) -> str:
+        async def _ask(_question: str, _options: list[dict]) -> str:
             return ""
 
         bundle = await build_runtime(

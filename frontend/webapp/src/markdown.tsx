@@ -18,6 +18,8 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { copyText } from "./clipboard";
+import { CheckIcon, CopyIcon, FileIcon } from "./icons";
 
 /** 只放行这些协议，挡掉 `javascript:` / `data:` 之类的链接。 */
 const SAFE_HREF = /^(https?:\/\/|mailto:|tel:|#|\/|\.\/|\.\.\/)/i;
@@ -81,6 +83,41 @@ type MarkdownProps = {
   unwrapDocument?: boolean;
 };
 
+/**
+ * 代码块：右上角提供复制按钮。
+ *
+ * 用 ref 读取渲染后的纯文本，避免为了取代码内容去递归解析 React 节点。
+ */
+function CodeBlock({ children }: { children?: ReactNode }) {
+  const preRef = useRef<HTMLPreElement | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const text = preRef.current?.innerText ?? "";
+    if (!text) return;
+    if (await copyText(text)) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  return (
+    <div className="code-block">
+      <button
+        type="button"
+        className="code-copy"
+        title="复制代码"
+        aria-label="复制代码"
+        onClick={() => void handleCopy()}
+      >
+        {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+        <span>{copied ? "已复制" : "复制"}</span>
+      </button>
+      <pre ref={preRef}>{children}</pre>
+    </div>
+  );
+}
+
 const components: Components = {
   // 宽表格不撑破气泡：套一层可横向滚动的容器。
   // 注意：这里只取需要的属性——react-markdown 会额外传入 `node`，透传到 DOM 上会
@@ -90,6 +127,7 @@ const components: Components = {
       <table>{children}</table>
     </div>
   ),
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   a: ({ href, children, title }) => {
     const safe = safeHref(href);
     if (!safe) return <span>{children}</span>;
@@ -103,10 +141,16 @@ const components: Components = {
   img: ({ src, alt }) => {
     const safe = safeHref(src);
     const label = alt?.trim() || "图片";
-    if (!safe) return <span className="md-image-link">🖼 {label}</span>;
+    if (!safe) {
+      return (
+        <span className="md-image-link">
+          <FileIcon size={14} /> {label}
+        </span>
+      );
+    }
     return (
       <a className="md-image-link" href={safe} target="_blank" rel="noopener noreferrer">
-        🖼 {label}
+        <FileIcon size={14} /> {label}
       </a>
     );
   },

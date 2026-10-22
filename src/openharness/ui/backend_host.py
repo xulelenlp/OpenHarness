@@ -837,7 +837,7 @@ class ReactBackendHost:
                 self._edit_always_approved = True
             return reply
 
-    async def _ask_question(self, question: str) -> str:
+    async def _ask_question(self, question: str, options: list[dict[str, Any]]) -> str:
         request_id = uuid4().hex
         future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
         self._question_requests[request_id] = future
@@ -848,6 +848,7 @@ class ReactBackendHost:
                     "kind": "question",
                     "request_id": request_id,
                     "question": question,
+                    "options": options,
                 },
             )
         )

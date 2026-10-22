@@ -8,6 +8,7 @@ qaapp 是面向客户 APP/Web 端的问答产品服务，基于 OpenHarness 与 
 | [部署与运维](DEPLOYMENT.zh-CN.md) | 环境、配置、前端部署、安全、排障 |
 | [HTTP API](API.zh-CN.md) | REST / SSE / WebSocket 契约 |
 | [架构与扩展](ARCHITECTURE.zh-CN.md) | 分层、生命周期、扩展契约、Checklist |
+| [选项式澄清验收](ASK_USER_OPTIONS.zh-CN.md) | 执行中给选项让用户确认的案例、排障与自检 |
 | [业务库参考](DATABASE.zh-CN.md) | 数据源、表路由、口径、实测结构 |
 
 ## 代码结构
