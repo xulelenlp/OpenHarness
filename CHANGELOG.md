@@ -52,6 +52,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Fixed
 
+- **Markdown 答案行距过大**：`.bubble` 的 `white-space: pre-wrap` 在 Markdown 模式下没有关闭，浏览器把渲染 HTML 里的换行/缩进当成可见文本，导致列表项之间出现大段空白。新增 `.bubble.md { white-space: normal; }`，并把 Markdown 正文收紧为 14px / 1.7 行高、段落 0.5em、列表项 0.14em、标题 0.85em，贴近 Codex 的紧凑排版；历史会话页面复测列表行距从约 57px 降到约 25px。
 - **qaapp 审批/问题刷新回放**：新增 `approval_resolved` 事件后，已回答的问题与已处理的权限/编辑审批在刷新页面后显示为「已确认 / 已允许」等完成态，不再重新出现操作按钮；超时也会发 `decision: "timeout"` 的解决事件，等待卡不会一直悬挂。前端 `reduceEvent` 兼容孤立 `approval_resolved` 事件。
 - 修掉 `web_search failed: ` / `web_fetch failed: ` **错误报文为空**的问题：`httpcore` 把 `TimeoutError` 包成 `ConnectTimeout(TimeoutError())`、`httpx` 再用 `str(exc)` 转发，导致 `str(exc)` 为空串。新增 `utils/error_report.py`，从异常类型、原因链、目标 host:port、耗时、代理状态重建可读报文（`ConnectTimeout｜原始错误信息为空｜目标 …:443｜耗时 20.3s｜代理 未配置｜原因 ConnectTimeout <- TimeoutError()`），并附可执行提示；`web_fetch` 同步接入。
 - 新增 `utils/netlog.py`：每次出网向 `<logs>/web.log` 追加一行（`event`、`endpoint`、`q`、`elapsed`、`status`、`type`、`message`、`args`、`cause`、`dns`、`detail`），失败为 WARNING，服务器上可直接下载定位；`dns=` 字段可辅助识别 DNS 污染。

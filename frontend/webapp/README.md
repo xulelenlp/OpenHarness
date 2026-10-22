@@ -110,6 +110,7 @@ npm run check:turn-files
 | 行为 | 原因 |
 | --- | --- |
 | 启用 `remark-gfm` + `remark-breaks` | 表格等 GFM 语法可用；源码里的单换行也换行，符合聊天场景（否则相邻两行会被 CommonMark 合成一段） |
+| `.bubble.md` 必须 `white-space: normal` | `.bubble` 为纯文本保留换行使用 `pre-wrap`；Markdown 已由块级元素排版，若继续 `pre-wrap` 会把渲染 HTML 里的缩进/换行当文本，列表行距会被撑得很大 |
 | **不启用** `rehype-raw` | 模型与外部 Agent 的产出都属于不可信数据，原始 HTML 一律转义，杜绝注入 |
 | 只放行 http(s) / mailto / # 链接 | `javascript:`、`data:` 链接渲染成纯文本 |
 | 远程图片不自动加载 | `![](http://…)` 会在打开页面时向任意地址发请求（追踪像素 / 内网探测），改为可点击链接 |

@@ -703,9 +703,15 @@ button {
   white-space: pre-wrap;
 }
 
+/* Markdown 由块级元素负责排版：必须关掉 pre-wrap，否则 HTML 里的换行/缩进
+   会被当成可见文本，列表项之间会出现一大段空白（历史页面曾出现该问题）。 */
+.bubble.md {
+  white-space: normal;
+}
+
 .message.assistant .bubble {
   padding: 0 2px;
-  font-size: 14.5px;
+  font-size: 14px;
   color: var(--ink);
   background: transparent;
 }
@@ -1748,8 +1754,8 @@ button {
 /* ---------- Markdown ---------- */
 
 .md-body {
-  font-size: 14.5px;
-  line-height: 1.75;
+  font-size: 14px;
+  line-height: 1.7;
   color: var(--ink);
 }
 
@@ -1762,7 +1768,7 @@ button {
 }
 
 .md-body p {
-  margin: 0.6em 0;
+  margin: 0.5em 0;
 }
 
 .md-body h1,
@@ -1771,7 +1777,7 @@ button {
 .md-body h4,
 .md-body h5,
 .md-body h6 {
-  margin: 1em 0 0.45em;
+  margin: 0.85em 0 0.4em;
   font-weight: 650;
   line-height: 1.35;
   letter-spacing: -0.01em;
@@ -1791,16 +1797,16 @@ button {
 
 .md-body ul,
 .md-body ol {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
+  padding-left: 1.35em;
+  margin: 0.45em 0;
 }
 
 .md-body li {
-  margin: 0.2em 0;
+  margin: 0.14em 0;
 }
 
 .md-body li > p {
-  margin: 0.2em 0;
+  margin: 0.12em 0;
 }
 
 .md-body blockquote {
@@ -1813,7 +1819,7 @@ button {
 }
 
 .md-body hr {
-  margin: 1.2em 0;
+  margin: 1em 0;
   border: 0;
   border-top: 1px solid var(--line);
 }
