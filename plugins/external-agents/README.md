@@ -16,7 +16,7 @@
 |---|---|---|
 | 远程 HTTP/流式对话接口（如本数据分析 API） | 本插件 `type: "http"` | 否（纯配置） |
 | 本地命令行程序/脚本（JSON 进出） | 本插件 `type: "stdio"` | 否（纯配置） |
-| 符合 MCP 协议的工具/服务 | 框架原生 `mcp_servers`（settings.json） | 否（纯配置） |
+| 符合 MCP 协议的工具/服务 | 框架原生 `mcp_servers`（用户级 `~/.openharness/settings.json`，可选） | 否（纯配置） |
 | 本地子 Agent（有自己 prompt 的任务） | `~/.openharness/agents/*.md` 子代理定义 | 否（纯配置） |
 | 需要调用框架内多个工具的复杂智能体 | 插件贡献自定义 `BaseTool` | 少量代码 |
 

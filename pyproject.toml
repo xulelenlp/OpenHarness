@@ -88,7 +88,6 @@ exclude = [
 "config/backend/agents.json" = "qaapp/_config/backend/agents.json"
 "config/backend/dangerous-actions.json" = "qaapp/_config/backend/dangerous-actions.json"
 "config/backend/datasources.json" = "qaapp/_config/backend/datasources.json"
-"config/backend/settings.json" = "qaapp/_config/backend/settings.json"
 "config/backend/webapp.json" = "qaapp/_config/backend/webapp.json"
 "config/backend/.env_dev" = "qaapp/_config/backend/.env_dev"
 "config/backend/.env_prod" = "qaapp/_config/backend/.env_prod"

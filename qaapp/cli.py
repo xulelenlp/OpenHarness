@@ -203,7 +203,6 @@ def init_cmd(
 
     templates = _templates_dir()
     targets = {
-        "settings.json": target_dir / "settings.json",
         ".env_dev": target_dir / ".env_dev",
         ".env_prod": target_dir / ".env_prod",
         "webapp.json": target_dir / "webapp.json",

@@ -134,7 +134,7 @@ class WebappConfig(BaseModel):
     #: （详见 README §9.1 鉴权暴露面）。如需仅本机访问，改回 ``127.0.0.1``。
     host: str = "0.0.0.0"
     port: int = 8787
-    #: 为空 = 继承 settings.json 的 active_profile；否则显式指定 profile。
+    #: 为空 = 继承 .env 的 OPENHARNESS_PROFILE；否则以环境变量为准。
     provider_profile: str = ""
     api_tokens: list[str] = Field(default_factory=list)
     #: 浏览器端免手工 token：服务端用 api_tokens 签发 HttpOnly 会话 Cookie。

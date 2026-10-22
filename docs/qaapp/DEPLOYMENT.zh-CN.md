@@ -84,47 +84,52 @@ qaapp 的配置集中在 `config/backend/`，环境差异只由一个 `.env` 控
 | 类型 | 文件 | 位置 | 内容 |
 | --- | --- | --- | --- |
 | 环境配置 | `.env_dev` / `.env_prod` → `.env` | `config/backend/` | 模型密钥、DB/Redis、Web 端口、外部 Agent 端点 |
-| OpenHarness 主配置 | `settings.json` | `config/backend/` | 模型 profile / 权限 / 沙箱 / MCP |
+| OpenHarness 模型配置 | `.env`（`OPENHARNESS_*`） | `config/backend/` | profile / 模型 / 地址 / 凭据 / 品牌 |
+| OpenHarness 高级配置（可选） | `settings.json` | `~/.openharness/` | 权限 / 沙箱 / MCP / hooks（一般无需维护） |
 | qaapp 配置 | `webapp.json`、`agents.json`、`dangerous-actions.json`、`datasources.json` | `config/backend/` | 服务、Agent 注册、高危策略、数据源（单份，不分层） |
 
-### 5.1 settings.json（OpenHarness 主配置）
+### 5.1 `.env`（OpenHarness 模型/凭据，唯一配置文件）
 
-查找顺序（**`build_runtime` 每次会话懒构建时读取**）：
+仓库**不再提供** `config/backend/settings.json`：provider、模型、模型地址、凭据来源、
+品牌信息全部收敛到 `config/backend/.env`。服务启动时 qaapp 会把 `.env` 注入进程环境，
+`abc` CLI 也会自动读取同一份文件；进程环境变量优先级最高。
 
-1. `OPENHARNESS_CONFIG_DIR` 环境变量指向的 `settings.json`
-2. 项目级 `config/backend/settings.json`（从服务启动的 `--cwd` 向上逐级找，到 git 根或 home 为止）
-3. `~/.openharness/settings.json`（legacy 用户配置）
+核心变量：
 
-**必配项**（否则首次真正调用模型会报「未配置认证」并退出）：
+| 变量 | 说明 |
+| --- | --- |
+| `OPENHARNESS_PROFILE` | profile 名（标识用；`webapp.json:provider_profile` 为空时继承它） |
+| `OPENHARNESS_PROVIDER` | 提供方（OpenAI 兼容网关填 `openai`） |
+| `OPENHARNESS_API_FORMAT` | 接口协议：`openai` / `anthropic` / `copilot` |
+| `OPENHARNESS_MODEL` | 默认模型 |
+| `OPENHARNESS_BASE_URL` | 模型网关地址 |
+| `OPENHARNESS_AUTH_SOURCE` | 凭据来源名（`dashscope_api_key` / `openai_api_key`），**不要填密钥本身** |
+| `OPENHARNESS_DASHSCOPE_API_KEY` / `OPENHARNESS_OPENAI_API_KEY` | 对应来源的密钥 |
+| `OPENHARNESS_API_KEY` | 直接指定密钥（优先级最高，可替代上面两个） |
+| `OPENHARNESS_MAX_TOKENS` / `OPENHARNESS_TIMEOUT` / `OPENHARNESS_MAX_TURNS` | 运行参数（默认 16384 / 30 / 200） |
+| `OPENHARNESS_PRODUCT_NAME` / `OPENHARNESS_SLOGAN` | 品牌文案 |
+| `OPENHARNESS_ALLOW_PROJECT_PLUGINS` / `OPENHARNESS_PROJECT_SKILL_DIRS` | 项目插件开关、技能目录 |
 
-```jsonc
-{
-  "active_profile": "qwen",
-  "profiles": {
-    "qwen": {
-      "provider": "dashscope",
-      "api_format": "openai",
-      "auth_source": "dashscope_api_key",
-      "default_model": "qwen-plus",
-      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    }
-  },
-  "model": "qwen-plus",
-  "api_format": "openai",
-  "provider": "dashscope",
-  "permission": { "mode": "default", "allowed_tools": [], "denied_tools": [] },
-  "sandbox": { "enabled": false },
-  "mcp_servers": {}
-}
+最小示例：
+
+```bash
+OPENHARNESS_PROFILE=dev
+OPENHARNESS_PROVIDER=openai
+OPENHARNESS_API_FORMAT=openai
+OPENHARNESS_MODEL=deepseek-flash
+OPENHARNESS_BASE_URL=http://ai.ac-energytech.com/v1
+OPENHARNESS_AUTH_SOURCE=dashscope_api_key
+OPENHARNESS_DASHSCOPE_API_KEY=sk-...
 ```
 
-- `active_profile` 决定默认使用哪个 profile；`webapp.json` 的 `provider_profile`
-  为空时**继承**它，非空时**覆盖**它（该 profile 必须在 `profiles` 中定义）。
-- `permission`、`sandbox`、`mcp_servers` 详见 §9。
-
-> 仓库 `config/backend/settings.json` 只保留 profile 模板，**不含任何明文 key**。
-> 真实凭据放 `config/backend/.env`（已 gitignore）或进程环境变量；详见
-> [`config/README.md`](../../config/README.md)。
+- 改完 `.env` 需重启服务；模型配置在会话首次构建时读取。
+- `OPENHARNESS_AUTH_SOURCE` 只是"用哪个密钥变量"的名字；把密钥本身写进它会报
+  `No credentials found for auth source ...`（报错已做脱敏）。
+- 仍需要权限 / 沙箱 / MCP / hooks 等结构化配置时，可在用户级
+  `~/.openharness/settings.json` 维护（可选）；对应 `OPENHARNESS_*` 环境变量优先。
+- dev / prod 切换就是复制不同的 `.env` 模板，不再需要维护 JSON 里的 profiles。
+- 从旧版本升级：先 `python scripts/migrate_settings_to_env.py --dry-run` 查看变更，
+  再执行（自动备份 `.env`）；确认服务正常后删除旧的 `config/backend/settings.json`。
 
 ### 5.2 ② qaapp 配置（单目录、单 `.env`）
 
@@ -134,7 +139,6 @@ qaapp 的配置集中在 `config/backend/`，环境差异只由一个 `.env` 控
 config/backend/
 ├── .env_dev / .env_prod   # 环境模板
 ├── .env                   # 当前环境（本机 cp 生成，gitignore）
-├── settings.json
 ├── webapp.json
 ├── agents.json
 ├── dangerous-actions.json
@@ -566,23 +570,24 @@ Authorization: Bearer <api_tokens 里的任意一个>
 
 ### 9.4 模型凭据与 profile
 
-- 必须在 `settings.json` 配好 `active_profile` + 对应 `api_key`，否则首次调用模型时
-  进程会因「未配置认证」退出。
-- `webapp.json.provider_profile` 为空 → 用 `active_profile`；非空 → 覆盖（profile 名
-  必须存在于 `profiles`）。多个租户/模型可借此切不同 profile。
-- 凭据也可走环境变量（取决于 profile 的 `auth_source`，如 `OPENAI_API_KEY`、
-  `DASHSCOPE_API_KEY` 等）。
+- 模型与凭据全部在 `config/backend/.env`：至少要有 `OPENHARNESS_PROVIDER` /
+  `OPENHARNESS_API_FORMAT` / `OPENHARNESS_MODEL` / `OPENHARNESS_BASE_URL` /
+  `OPENHARNESS_AUTH_SOURCE` 和一个密钥变量，否则首次调用模型会报「未配置认证」。
+- `webapp.json.provider_profile` 为空 → 用 `OPENHARNESS_PROFILE`；非空 → 以环境变量
+  为准（同名 profile 由 `OPENHARNESS_*` 动态定义），可据此实现多租户/多模型切换。
+- 密钥优先用 `OPENHARNESS_API_KEY`，或填 `OPENHARNESS_AUTH_SOURCE` 指向的内置变量
+  （如 `dashscope_api_key` → `OPENHARNESS_DASHSCOPE_API_KEY`）。
 
 ### 9.5 沙箱（Docker）默认关闭
 
-- `settings.json` 的 `sandbox.enabled` 默认 `false`，**不需要 Docker**。
+- `OPENHARNESS_SANDBOX_ENABLED` 默认 `false`，**不需要 Docker**。
 - 若开启 `sandbox.enabled=true` 且 `backend=docker`，则需安装 Docker 并准备镜像
   （`sandbox.docker.image`），否则启动沙箱会失败。
 
 ### 9.6 MCP 服务器
 
-- 若 `settings.json` 配置了 `mcp_servers`，每次会话懒构建时会 `connect_all()`，
-  需要网络可达；未配置则 no-op。
+- 若用户级 `~/.openharness/settings.json` 配置了 `mcp_servers`，每次会话懒构建时会
+  `connect_all()`，需要网络可达；未配置则 no-op。
 
 ### 9.7 运行时数据与日志落点
 
@@ -617,8 +622,8 @@ qaapp 额外注入：
 ### 9.9 密钥安全（重要）
 
 - 密钥只放 `config/backend/.env`（已 gitignore）或部署平台的进程环境变量。
-- `config/backend/settings.json` 只保留 profile 模板；`config/backend/local/*.json`
-  用于本机覆盖，同样不提交。
+- `config/backend/.env_dev` / `.env_prod` 是模板，**不要提交真实密钥**；
+  模板里的 key/password 应为空，由部署时填写。
 - 历史提交中如出现过明文 key，请视为已泄露并立即轮换。
 
 ### 9.10 其它
@@ -693,7 +698,7 @@ qaapp 额外注入：
 
 1. 会话目录内的**写文件**（`write_file` / `edit_file` / `notebook_edit`）免确认：
    agent 生成脚本会反复写同一目录，每次都弹窗会严重打扰；敏感路径（`.ssh` 等）
-   与 `settings.json` 硬拒绝仍然优先，不可被这一条覆盖。要恢复逐次确认，
+   与 settings 的硬拒绝规则仍然优先，不可被这一条覆盖。要恢复逐次确认，
    把 `conversation_workspace.auto_allow_write_tools` 设为 `[]`。
 2. **执行类**工具（`bash` / `run_script`）始终按危险操作门禁处理——写入是低风险可逆动作，
    执行不是。
@@ -708,7 +713,7 @@ qaapp 额外注入：
 | 现象 | 原因 / 处理 |
 | --- | --- |
 | `abcqa` 找不到命令（command not found） | 依赖通常没问题，只是命令脚本未生成：改了 `pyproject.toml` 后要重新 `pip install -e .`；或直接用 `python -m qaapp` 等价替代，见 §3.2 |
-| 首次调模型报「未配置认证」/ 直接退出 | `settings.json` 未配 `active_profile` 与 `api_key`，见 配置体系 |
+| 首次调模型报「未配置认证」/ 直接退出 | `config/backend/.env` 缺少 `OPENHARNESS_PROVIDER` / `OPENHARNESS_MODEL` / `OPENHARNESS_BASE_URL` / 密钥变量，或 `OPENHARNESS_AUTH_SOURCE` 写成了密钥本身，见 §5.1 |
 | `abcqa config` 显示 `errors` 非空 | 对应 JSON 非法（字段/枚举错）；按提示修正 |
 | 页面没有 Bearer Token 输入框了，却仍报「缺少 Bearer token」 | 确认 `webapp.json` 的 `browser_auth.enabled=true`；浏览器是否禁用了 Cookie；反向代理是否剥掉了 `Set-Cookie`；`cors_origins` 是否写成 `"*"`（分机部署时必须明确来源）。也可临时用 `VITE_API_TOKEN` 兜底 |
 | 新增 Agent 后模型不调用它 | ① 是否重启服务；② `description` 是否写清「做什么/何时用/不适用」；③ 当前 Agent 的 `tools` 是否包含 `external_agent`；④ `abcqa agents list` 确认实际生效文件 |

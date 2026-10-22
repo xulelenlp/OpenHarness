@@ -316,17 +316,16 @@ def _maybe_update_profile_auth(manager, profile_name: str) -> bool:
 def setup_cmd(
     profile: str | None = typer.Argument(None, help="Provider profile name to validate"),
 ) -> None:
-    """Validate model configuration from settings.json (non-interactive).
+    """Validate model configuration from .env (non-interactive).
 
-    Model/provider settings are configured by editing the effective settings file
-    (.openharness/settings.json inside the repo when present, otherwise
-    ~/.openharness/settings.json) or via environment variables (OPENHARNESS_MODEL,
-    OPENHARNESS_BASE_URL, OPENHARNESS_PROVIDER, OPENHARNESS_API_FORMAT, plus the
-    provider's API key).
+    Model/provider settings are configured in ``config/backend/.env`` (loaded by
+    the CLI and the web service) or via process environment variables
+    (OPENHARNESS_MODEL, OPENHARNESS_BASE_URL, OPENHARNESS_PROVIDER,
+    OPENHARNESS_API_FORMAT, OPENHARNESS_AUTH_SOURCE plus the provider's API key).
     This command only reads and validates; it never prompts interactively.
     """
     from openharness.api.provider import auth_status, detect_provider
-    from openharness.config import get_config_file_path, load_settings
+    from openharness.config import get_config_file_path, get_env_file_path, load_settings
 
     settings = load_settings()
     available = settings.merged_profiles()
@@ -344,7 +343,8 @@ def setup_cmd(
     print("OpenHarness Setup (non-interactive)")
     print()
     print("Resolved model configuration")
-    print(f"  config file:    {get_config_file_path()}")
+    print(f"  env file:       {get_env_file_path()}")
+    print(f"  settings file:  {get_config_file_path() if get_config_file_path().exists() else '(none, using .env + defaults)'}")
     print(f"  profile:        {profile_name} ({profile_obj.label})")
     print(f"  provider:       {provider.name}")
     print(f"  api_format:     {settings.api_format}")
@@ -356,30 +356,23 @@ def setup_cmd(
     if auth.startswith("missing"):
         print("Status: NOT READY")
         print()
-        print("Configure non-interactively by editing settings.json, e.g.:")
+        print("Configure non-interactively in config/backend/.env, e.g.:")
         print(
             "\n".join(
                 [
-                    "  {",
-                    '    "active_profile": "openai-compatible",',
-                    '    "profiles": {',
-                    '      "openai-compatible": {',
-                    '        "label": "DeepSeek",',
-                    '        "provider": "openai",',
-                    '        "api_format": "openai",',
-                    '        "auth_source": "openai_api_key",',
-                    '        "default_model": "deepseek-chat",',
-                    '        "base_url": "https://api.deepseek.com/v1",',
-                    '        "api_key": "sk-YOUR-KEY"',
-                    "      }",
-                    "    }",
-                    "  }",
+                    "  OPENHARNESS_PROFILE=openai-compatible",
+                    "  OPENHARNESS_PROVIDER=openai",
+                    "  OPENHARNESS_API_FORMAT=openai",
+                    "  OPENHARNESS_MODEL=deepseek-chat",
+                    "  OPENHARNESS_BASE_URL=https://api.deepseek.com/v1",
+                    "  OPENHARNESS_AUTH_SOURCE=openai_api_key",
+                    "  OPENHARNESS_API_KEY=sk-YOUR-KEY",
                 ]
             )
         )
         print()
-        print("The API key can live in settings.json (profile `api_key`, as above).")
-        print("Alternatively set an env var (e.g. OPENAI_API_KEY) or `abc auth login`.")
+        print("Credentials come from OPENHARNESS_API_KEY (or the variable named by")
+        print("OPENHARNESS_AUTH_SOURCE); you can also use `abc auth login`.")
         raise typer.Exit(1)
 
     print("Status: READY")

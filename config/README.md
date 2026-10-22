@@ -19,21 +19,29 @@ cp config/frontend/.env_prod config/frontend/.env
 | 文件 | 作用 |
 | --- | --- |
 | `.env_dev` / `.env_prod` | 开发 / 生产模板；复制为 `.env` 后生效 |
-| `.env` | 当前环境配置（本机生成，gitignore） |
-| `settings.json` | OpenHarness 模型 profile / 权限 / 沙箱等非环境配置 |
+| `.env` | 当前环境配置（本机生成，gitignore），**唯一配置来源** |
 | `agents.json` | Agent 注册表；端点用 `${...}`，值来自 `.env` |
 | `dangerous-actions.json` | 高危操作策略 |
 | `datasources.json` | MySQL/Redis 模板；连接值用 `${DB_*}` / `${REDIS_*}`，值来自 `.env` |
 
 只读取一个 `.env`，没有 base/dev/prod/local 分层合并。`.env` 中可配置：
 
-- 模型：`OPENHARNESS_PROFILE`、`OPENHARNESS_DASHSCOPE_API_KEY` / `OPENHARNESS_OPENAI_API_KEY`
+- 模型：`OPENHARNESS_PROFILE`、`OPENHARNESS_PROVIDER`、`OPENHARNESS_API_FORMAT`、`OPENHARNESS_MODEL`、`OPENHARNESS_BASE_URL`、`OPENHARNESS_AUTH_SOURCE`、`OPENHARNESS_API_KEY`、`OPENHARNESS_DASHSCOPE_API_KEY` / `OPENHARNESS_OPENAI_API_KEY`
+- 运行参数：`OPENHARNESS_MAX_TOKENS`、`OPENHARNESS_TIMEOUT`、`OPENHARNESS_MAX_TURNS`
+- 品牌：`OPENHARNESS_PRODUCT_NAME`、`OPENHARNESS_SLOGAN`
+- 项目扩展：`OPENHARNESS_ALLOW_PROJECT_PLUGINS`、`OPENHARNESS_PROJECT_SKILL_DIRS`
 - Web：`QAAPP_HOST`、`QAAPP_PORT`、`QAAPP_API_TOKENS`、`QAAPP_CORS_ORIGINS`、`QAAPP_STATIC_DIR`、`QAAPP_PROVIDER_PROFILE`、`QAAPP_BROWSER_AUTH_ENABLED`
 - 数据库：`DB_*`
 - Redis：`REDIS_*`
 - 外部 Agent：`POWER_GRID_AGENT_ENDPOINT`、`SMART_QUERY_AGENT_ENDPOINT`、`KNOWLEDGE_AGENT_ENDPOINT`、`EXTERNAL_AGENT_USER_ID`、`EXTERNAL_AGENT_ORG_CODE`
 
 进程环境变量优先于 `.env`。
+
+> 仓库不再包含 `settings.json`：模型/凭据/品牌全部在上面的 `.env` 变量里。
+> 需要定制权限 / Hooks / 沙箱 / MCP 等高级字段时，放用户级
+> `~/.openharness/settings.json`（可选，环境变量仍优先）。
+> `.env_dev` / `.env_prod` 只保留占位，真实密钥与密码写在本地 `.env`。
+> 从旧版升级可用 `python scripts/migrate_settings_to_env.py` 迁移 `settings.json`。
 
 ## 前端 `config/frontend/`
 

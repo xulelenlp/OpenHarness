@@ -4,9 +4,9 @@
 Settings are resolved with the following precedence (highest first):
 1. CLI arguments
 2. Environment variables (ANTHROPIC_API_KEY, OPENHARNESS_MODEL, etc.)
-3. Project config file (config/backend/settings.json, when running inside a repo;
-   legacy .openharness/settings.json is still accepted)
-4. User config file (~/.openharness/settings.json)
+3. Project ``config/backend/.env`` (the single configuration file; loaded by the
+   CLI and the web service)
+4. Optional structured config (``~/.openharness/settings.json``)
 5. Defaults
 """
 
@@ -470,8 +470,8 @@ class Settings(BaseModel):
             message += (
                 " Note: 'auth_source' must be a credential source name such as "
                 "'openai_api_key' or 'dashscope_api_key', not the API key itself. "
-                "Put the key in OPENHARNESS_OPENAI_API_KEY (or the profile's api_key "
-                "field) and keep it out of settings.json."
+                "Put the key in config/backend/.env (OPENHARNESS_API_KEY or the "
+                "variable named by OPENHARNESS_AUTH_SOURCE)."
             )
         raise ValueError(message)
 
@@ -538,15 +538,19 @@ class Settings(BaseModel):
 def _apply_env_overrides(settings: Settings) -> Settings:
     """Apply supported environment variable overrides over loaded settings.
 
-    Provider-scoped env vars (``ANTHROPIC_BASE_URL``, ``ANTHROPIC_MODEL``,
-    ``OPENAI_BASE_URL``) only apply when the active profile does *not*
-    explicitly configure the corresponding field.  ``OPENHARNESS_*`` env vars
-    always override (explicit user intent).
+    ``config/backend/.env`` is the single configuration file for provider /
+    model / auth settings, so every ``OPENHARNESS_*`` value below must be
+    authoritative: it is also folded into the active profile, otherwise a later
+    ``materialize_active_profile()`` would silently restore the old profile
+    values.  Provider-scoped env vars (``ANTHROPIC_BASE_URL``,
+    ``ANTHROPIC_MODEL``, ``OPENAI_BASE_URL``) remain best-effort fallbacks.
     """
     updates: dict[str, Any] = {}
 
+    env_profile_name = (os.environ.get("OPENHARNESS_PROFILE") or "").strip()
+
     # Resolve the active profile to check for explicit settings.
-    _, active_profile = settings.resolve_profile()
+    profile_name, active_profile = settings.resolve_profile(env_profile_name or None)
     profile_has_base_url = active_profile.base_url is not None
     profile_explicit_model = (active_profile.last_model or "").strip()
     profile_has_explicit_model = bool(profile_explicit_model) and profile_explicit_model.lower() not in {"", "default"}
@@ -589,10 +593,18 @@ def _apply_env_overrides(settings: Settings) -> Settings:
     if auto_compact_threshold_tokens:
         updates["auto_compact_threshold_tokens"] = int(auto_compact_threshold_tokens)
 
-    provider = os.environ.get("OPENHARNESS_PROVIDER")
-    api_format = os.environ.get("OPENHARNESS_API_FORMAT")
-    env_auth_source = active_profile.auth_source
-    if provider or api_format:
+    provider = (os.environ.get("OPENHARNESS_PROVIDER") or "").strip()
+    api_format = (os.environ.get("OPENHARNESS_API_FORMAT") or "").strip()
+    auth_source_env = (os.environ.get("OPENHARNESS_AUTH_SOURCE") or "").strip()
+
+    if provider:
+        updates["provider"] = provider
+    if api_format:
+        updates["api_format"] = api_format
+
+    # 凭据来源：显式 OPENHARNESS_AUTH_SOURCE 优先，否则按 provider/api_format 推断
+    env_auth_source = auth_source_env or active_profile.auth_source
+    if not auth_source_env and (provider or api_format):
         env_auth_source = default_auth_source_for_provider(
             provider or active_profile.provider,
             api_format or active_profile.api_format,
@@ -603,11 +615,24 @@ def _apply_env_overrides(settings: Settings) -> Settings:
         _, api_key = env_resolved
         updates["api_key"] = api_key
 
-    if api_format:
-        updates["api_format"] = api_format
+    # 直接给密钥的方式（优先级最高，便于单文件 .env 使用）
+    explicit_env_key = (os.environ.get("OPENHARNESS_API_KEY") or "").strip()
+    if explicit_env_key:
+        updates["api_key"] = explicit_env_key
 
-    if provider:
-        updates["provider"] = provider
+    allow_project_plugins = os.environ.get("OPENHARNESS_ALLOW_PROJECT_PLUGINS")
+    if allow_project_plugins is not None and allow_project_plugins.strip():
+        updates["allow_project_plugins"] = _parse_bool_env(allow_project_plugins)
+
+    allow_project_skills = os.environ.get("OPENHARNESS_ALLOW_PROJECT_SKILLS")
+    if allow_project_skills is not None and allow_project_skills.strip():
+        updates["allow_project_skills"] = _parse_bool_env(allow_project_skills)
+
+    project_skill_dirs = os.environ.get("OPENHARNESS_PROJECT_SKILL_DIRS")
+    if project_skill_dirs:
+        updates["project_skill_dirs"] = [
+            entry.strip() for entry in project_skill_dirs.split(",") if entry.strip()
+        ]
 
     sandbox_enabled = os.environ.get("OPENHARNESS_SANDBOX_ENABLED")
     sandbox_fail = os.environ.get("OPENHARNESS_SANDBOX_FAIL_IF_UNAVAILABLE")
@@ -655,6 +680,29 @@ def _apply_env_overrides(settings: Settings) -> Settings:
     if branding_updates:
         updates["branding"] = settings.branding.model_copy(update=branding_updates)
 
+    # --- keep the active profile in sync with env-provided values ---
+    # 未同步时，运行期的 materialize_active_profile() 会用旧 profile 覆盖 env。
+    profile_updates: dict[str, Any] = {}
+    if "model" in updates:
+        profile_updates["default_model"] = updates["model"]
+        profile_updates["last_model"] = None
+    if "base_url" in updates:
+        profile_updates["base_url"] = updates["base_url"]
+    if provider:
+        profile_updates["provider"] = provider
+    if api_format:
+        profile_updates["api_format"] = api_format
+    if auth_source_env:
+        profile_updates["auth_source"] = auth_source_env
+
+    if env_profile_name or profile_updates:
+        target_name = env_profile_name or profile_name
+        profiles = settings.merged_profiles()
+        base_profile = profiles.get(target_name, active_profile)
+        profiles[target_name] = base_profile.model_copy(update=profile_updates)
+        updates["profiles"] = profiles
+        updates["active_profile"] = target_name
+
     if not updates:
         return settings
     return settings.model_copy(update=updates)
@@ -665,8 +713,29 @@ def _parse_bool_env(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def apply_project_env(cwd: str | Path | None = None) -> None:
+    """Load the project ``.env`` into the process environment.
+
+    ``config/backend/.env`` is the single configuration file for provider /
+    model / auth settings. Entry points (``abc`` CLI, web service) call this so
+    the file works without exporting variables by hand. Existing process
+    environment variables always win, matching ``qaapp``'s env layering.
+    """
+    from openharness.config.layers import read_env_file
+    from openharness.config.paths import get_env_file_path
+
+    for key, value in read_env_file(get_env_file_path(cwd)).items():
+        if key not in os.environ:
+            os.environ[key] = value
+
+
 def load_settings(config_path: Path | None = None) -> Settings:
-    """Load settings from config file, merging with defaults.
+    """Load settings from config file and environment, merging with defaults.
+
+    ``config/backend/.env`` is the primary configuration source; the optional
+    ``settings.json`` (project or user level) only carries advanced structured
+    settings (permission / sandbox / MCP / hooks). When no file exists the
+    defaults are used and all ``OPENHARNESS_*`` env values still apply.
 
     Args:
         config_path: Path to settings.json. If None, uses the default location.

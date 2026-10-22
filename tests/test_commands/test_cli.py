@@ -38,7 +38,7 @@ def test_setup_non_interactive_reports_not_ready_without_config(tmp_path: Path, 
     result = runner.invoke(app, ["setup"])
     assert result.exit_code == 1
     assert "NOT READY" in result.output
-    assert "settings.json" in result.output
+    assert "OPENHARNESS_" in result.output
 
 
 def test_select_from_menu_uses_questionary_when_tty(monkeypatch):

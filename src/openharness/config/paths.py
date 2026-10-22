@@ -12,6 +12,7 @@ from openharness.utils.git import find_git_root
 
 _DEFAULT_BASE_DIR = ".openharness"
 _CONFIG_FILE_NAME = "settings.json"
+_ENV_FILE_NAME = ".env"
 
 
 def get_config_dir() -> Path:
@@ -43,13 +44,10 @@ def _project_config_candidates(base: Path) -> tuple[Path, ...]:
     )
 
 
-def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
-    """Return the nearest project-level settings file above ``cwd``, if any.
-
-    Walks from ``cwd`` up to the git root (or the home directory when no git
-    repository is detected). At each level the canonical centralized location
-    is checked first, then the legacy ``.openharness/settings.json``.
-    """
+def _find_project_file(
+    candidates_for, cwd: str | Path | None = None
+) -> Path | None:
+    """Walk ``cwd`` up to the git root (or home) looking for the first candidate."""
     start = Path(cwd).expanduser().resolve() if cwd else Path.cwd().resolve()
     if start.is_file():
         start = start.parent
@@ -60,7 +58,7 @@ def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
     home = Path.home().resolve()
     current = start
     while True:
-        for candidate in _project_config_candidates(current):
+        for candidate in candidates_for(current):
             if candidate.is_file():
                 return candidate
         if git_root is not None and current == git_root:
@@ -72,6 +70,50 @@ def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
             break
         current = parent
     return None
+
+
+def find_project_config_file(cwd: str | Path | None = None) -> Path | None:
+    """Return the nearest project-level settings file above ``cwd``, if any.
+
+    Walks from ``cwd`` up to the git root (or the home directory when no git
+    repository is detected). At each level the canonical centralized location
+    is checked first, then the legacy ``.openharness/settings.json``.
+    """
+    return _find_project_file(_project_config_candidates, cwd)
+
+
+def _project_env_candidates(base: Path) -> tuple[Path, ...]:
+    """Candidate project-level ``.env`` files, in priority order."""
+    return (
+        base / "config" / "backend" / _ENV_FILE_NAME,
+        base / _DEFAULT_BASE_DIR / _ENV_FILE_NAME,
+    )
+
+
+def find_project_env_file(cwd: str | Path | None = None) -> Path | None:
+    """Return the nearest project-level ``.env`` above ``cwd``, if any."""
+    return _find_project_file(_project_env_candidates, cwd)
+
+
+def get_env_file_path(cwd: str | Path | None = None) -> Path:
+    """Return the path of the effective ``.env`` file.
+
+    Resolution order (highest first):
+    1. ``OPENHARNESS_CONFIG_DIR`` environment variable → ``<dir>/.env``
+       (also keeps tests isolated from the repository config)
+    2. Project-local ``config/backend/.env`` (nearest ancestor of cwd, up to
+       the git root) — the single file that carries model/provider settings
+    3. ``~/.openharness/.env`` (user-level)
+    """
+    env_dir = os.environ.get("OPENHARNESS_CONFIG_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser() / _ENV_FILE_NAME
+
+    project_file = find_project_env_file(cwd)
+    if project_file is not None:
+        return project_file
+
+    return get_config_dir() / _ENV_FILE_NAME
 
 
 def get_config_file_path(cwd: str | Path | None = None) -> Path:

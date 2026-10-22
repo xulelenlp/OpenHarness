@@ -205,6 +205,12 @@ def main(
     ),
 ) -> None:
     """Start an interactive session or run a single prompt."""
+    # config/backend/.env 是模型/凭据的唯一配置来源（与 Web 服务一致）；
+    # 进程环境变量优先，不会被文件覆盖。
+    from openharness.config.settings import apply_project_env
+
+    apply_project_env()
+
     if ctx.invoked_subcommand is not None:
         return
 

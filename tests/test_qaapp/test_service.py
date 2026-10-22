@@ -98,15 +98,29 @@ def _write_agents(workspace: Path, endpoint: str) -> None:
     )
 
 
-@pytest.fixture()
-def service(tmp_path: Path, mock_agent_server: str, monkeypatch):
-    # 指向仓库自带的 .openharness 配置（含可用的 qwen profile + api key），
-    # 使 build_runtime 能成功解析 API client（测试中不会真正发起模型调用）。
-    repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend"))
+def _set_test_model_env(monkeypatch, tmp_path: Path) -> None:
+    """隔离配置目录，并用环境变量提供模型配置。
+
+    仓库不再提供 ``config/backend/settings.json``：模型/凭据完全由
+    ``config/backend/.env`` 承载，因此测试里也用 env 提供一份假配置。
+    """
+    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(tmp_path / "config"))
+    monkeypatch.setenv("OPENHARNESS_PROFILE", "test")
+    monkeypatch.setenv("OPENHARNESS_PROVIDER", "openai")
+    monkeypatch.setenv("OPENHARNESS_API_FORMAT", "openai")
+    monkeypatch.setenv("OPENHARNESS_MODEL", "deepseek-flash")
+    monkeypatch.setenv("OPENHARNESS_BASE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.setenv("OPENHARNESS_AUTH_SOURCE", "dashscope_api_key")
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
+
+
+@pytest.fixture()
+def service(tmp_path: Path, mock_agent_server: str, monkeypatch):
+    # 用 env 提供一份假的模型配置，保证 build_runtime 能解析 API client
+    # （测试中不会真正发起模型调用）。
+    _set_test_model_env(monkeypatch, tmp_path)
 
     workspace = tmp_path / ".ohmo"
     initialize_workspace(workspace)
@@ -744,11 +758,7 @@ def _write_inline_agents(workspace: Path, endpoint: str, *, conversation_id: str
 
 @pytest.fixture()
 def inline_service(tmp_path: Path, mock_agent_server: str, monkeypatch):
-    repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend"))
-    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
-    monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
+    _set_test_model_env(monkeypatch, tmp_path)
     workspace = tmp_path / ".ohmo"
     initialize_workspace(workspace)
     _write_inline_agents(workspace, mock_agent_server)
@@ -781,11 +791,7 @@ def test_inline_external_agent_can_pin_conversation_id(tmp_path, mock_agent_serv
     """对端「会话创建失败」时，可用固定 conversation_id 复用已有会话。"""
     _MockAgentHandler.received.clear()
     _MockAgentHandler.paths.clear()
-    repo_root = Path(__file__).resolve().parents[2]
-    monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(repo_root / "config" / "backend"))
-    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
-    monkeypatch.setenv("OPENHARNESS_DATA_DIR", str(tmp_path / "data"))
-    monkeypatch.setenv("OPENHARNESS_LOGS_DIR", str(tmp_path / "logs"))
+    _set_test_model_env(monkeypatch, tmp_path)
     workspace = tmp_path / ".ohmo"
     initialize_workspace(workspace)
     _write_inline_agents(workspace, mock_agent_server, conversation_id="fixed-session-001")

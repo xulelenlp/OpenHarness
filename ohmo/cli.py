@@ -386,10 +386,16 @@ def main(
     continue_session: bool = typer.Option(False, "--continue", help="Continue the latest ohmo session"),
 ) -> None:
     """Launch the ohmo app or invoke a subcommand."""
+    cwd_path = str(Path(cwd).resolve())
+
+    # 与 abc / Web 服务共用 config/backend/.env（模型/凭据的唯一来源）。
+    from openharness.config import apply_project_env
+
+    apply_project_env(cwd_path)
+
     if ctx.invoked_subcommand is not None:
         return
 
-    cwd_path = str(Path(cwd).resolve())
     workspace_root = initialize_workspace(workspace)
     backend = OhmoSessionBackend(workspace_root)
     restore_messages = None

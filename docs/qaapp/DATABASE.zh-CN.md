@@ -64,7 +64,7 @@ abcqa config             # 配置文件（webapp/agents/dangerous/datasources）
 - `skills/business-analysis/`：10 类业务场景、四阶段、提纲/EDA/深挖/报告模板；
 - `skills/multi-agent-orchestration/`：三智能体提示词模板、并行/顺序、综合检查表。
 
-`config/backend/settings.json` 的 `project_skill_dirs` 已把 `skills` 放到最后（同层同名时优先级最高）；新增/修改技能只需改这个目录，下一轮自动生效，不需要改 Python 代码。
+`config/backend/.env` 的 `OPENHARNESS_PROJECT_SKILL_DIRS` 已把 `skills` 放到最后（同层同名时优先级最高）；新增/修改技能只需改这个目录，下一轮自动生效，不需要改 Python 代码。
 
 通用助手仍是默认 Agent，原有开放任务能力不变；只有任务明确是业务分析/报告时才加载 `business-analysis`，不强制四阶段。
 

@@ -8,6 +8,9 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Changed
 
+- **配置合并（单文件）**：删除 `config/backend/settings.json`，模型 / 凭据 / 品牌 / 运行参数全部收敛到 `config/backend/.env`；新增 `OPENHARNESS_AUTH_SOURCE`、`OPENHARNESS_API_KEY`、`OPENHARNESS_ALLOW_PROJECT_PLUGINS`、`OPENHARNESS_PROJECT_SKILL_DIRS` 等环境变量支持，并修复 env 覆盖会被 `materialize_active_profile()` 回退的问题。`abc` CLI 与 Web 服务现在共用同一份 `.env`；高级结构化配置（权限 / 沙箱 / MCP / hooks）仍可通过用户级 `~/.openharness/settings.json` 维护。
+- **鉴权错误不再终止服务**：单轮执行里的 `SystemExit`（如模型凭据未配置）降级为 SSE `error` 事件 + `turn_complete`；鉴权报错会提示 `auth_source` 的正确写法并对密钥脱敏。
+
 - **全仓结构与配置重构**：配置集中到 `config/`（`backend/{base,dev,prod,local}` + `frontend`），支持 `QAAPP_ENV=dev|prod` 分层合并与 `${VAR}` 占位符；删除 `.openharness/settings.json`、`qaapp/examples/` 与旧扁平配置，新增 `config/README.md`。
 - **超大文件拆分**：`src/openharness` / `ohmo` / `qaapp` 下生产 Python 文件全部 ≤800 行；`frontend/webapp` 的 `App.tsx` / `styles.css` 拆为组件、hooks 与分职责样式；新增 800 行体积守卫测试。重点拆分包括 `commands/registry`、`cli`、`autopilot/service`、`services/compact`、`channels/impl/feishu`、`channels/impl/mochat`、`ohmo/gateway/runtime`、`swarm/permission_sync`、`config/settings`、`engine/query`、`coordinator/agent_definitions`、`ui/backend_host`、`swarm/team_lifecycle` 及 qaapp 的 `server/api`、`server/runtime`、`workspace/files`、`tools/report`。
 - **清理**：删除无生产引用的旧 Textual TUI / prompt_toolkit 模块、重复手工 E2E 脚本与 `docs/autopilot/` 构建产物；移除 `textual` / `prompt-toolkit` 直接依赖；文档中的绝对路径/内部 IP/明文密钥说明同步清理。

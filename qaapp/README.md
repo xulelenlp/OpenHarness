@@ -35,7 +35,7 @@ cp config/frontend/.env_dev config/frontend/.env
 #    已存在时跳过；想覆盖用 --force
 
 # ③ 配置模型与 API Key（关键！不配无法调用模型）
-#    编辑 config/backend/settings.json 的 profile；密钥放 config/backend/.env，详见[部署文档](../docs/qaapp/DEPLOYMENT.zh-CN.md)
+#    编辑 config/backend/.env 的 OPENHARNESS_*（模型/密钥），详见[部署文档](../docs/qaapp/DEPLOYMENT.zh-CN.md)
 
 # ④ 校验配置
 python -m qaapp config              # 配置文件的实际路径与校验结果

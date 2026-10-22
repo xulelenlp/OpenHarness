@@ -13,7 +13,7 @@
 # OHMO_WORKSPACE="$PWD/.openharness/run/ohmo-test" ./scripts/dev_services.sh restart
 ```
 
-- `config/backend/settings.json` 里已配置可用模型；`config/backend/agents.json` 的通用助手
+- `config/backend/.env` 里已配置可用模型（`OPENHARNESS_*`）；`config/backend/agents.json` 的通用助手
   `tools` 为 `["*"]`（包含 `ask_user_question`）。
 - 浏览器打开 `http://0.0.0.0:5174`（或脚本输出的局域网地址）。
 

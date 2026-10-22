@@ -163,7 +163,7 @@
 
 | 层级 | 文件 | 解析顺序 | 内容 |
 | --- | --- | --- | --- |
-| ① OpenHarness 主配置 | `config/backend/settings.json` | `OPENHARNESS_CONFIG_DIR` → `config/backend/` → `~/.openharness/`（legacy） | 模型 profile、权限、沙箱、MCP；密钥走 env |
+| ① OpenHarness 模型配置 | `config/backend/.env`（`OPENHARNESS_*`） | `.env` → 进程环境变量（后者优先）；`abc` CLI 自动读取同一文件 | provider / 模型 / 地址 / 凭据 / 品牌 |
 | ② qaapp 配置 | `config/backend/*.json` + `config/backend/.env` | `--config-dir` / `QAAPP_CONFIG_DIR` → `config/backend/` → legacy workspace | 服务、Agent 注册表、高危策略、数据源；环境值来自 `.env` |
 | ③ 外部 Agent 访问配置 | **内联在 `agents.json`** | 同 ② | endpoint / 请求体 / 响应解析 |
 
@@ -545,7 +545,7 @@ QaWebService
 
 - `general` 仍是默认 Agent，原系统提示词/直接回答/写作/代码/文件/Web/MCP/子智能体能力保持不变；
 - 四阶段业务分析放在 `business-analysis` 技能中，仅当任务明确是业务分析/报告时按需加载；
-- 项目技能统一放在仓库根 `skills/`（随 git 维护），通过 `config/backend/settings.json:project_skill_dirs` + `build_runtime(extra_skill_dirs=...)` 加载；不再放 `.openharness/skills/`；
+- 项目技能统一放在仓库根 `skills/`（随 git 维护），通过 `config/backend/.env` 的 `OPENHARNESS_PROJECT_SKILL_DIRS` + `build_runtime(extra_skill_dirs=...)` 加载；不再放 `.openharness/skills/`；
 - 能力清单第一条仍是“能直接回答就直接回答”，不把业务分析设为默认；
 - 新增测试覆盖“写邮件/解释概念”等开放任务不触发 DB/分析流程。
 

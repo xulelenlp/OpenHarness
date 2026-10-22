@@ -942,3 +942,101 @@ class TestAuthSourceMisconfiguration:
         assert "openai_api_key" in message
         assert secret not in message
         assert "sk-aaa" in message
+
+
+class TestEnvOnlySettings:
+    """`config/backend/.env` 是模型/凭据的唯一来源，settings.json 可有可无。"""
+
+    def test_env_only_settings_build_profile_without_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OPENHARNESS_PROFILE", "dev")
+        monkeypatch.setenv("OPENHARNESS_PROVIDER", "openai")
+        monkeypatch.setenv("OPENHARNESS_API_FORMAT", "openai")
+        monkeypatch.setenv("OPENHARNESS_MODEL", "deepseek-flash")
+        monkeypatch.setenv("OPENHARNESS_BASE_URL", "http://gateway.example/v1")
+        monkeypatch.setenv("OPENHARNESS_AUTH_SOURCE", "dashscope_api_key")
+        monkeypatch.setenv("OPENHARNESS_DASHSCOPE_API_KEY", "sk-test-env-only")
+
+        settings = load_settings(tmp_path / "does-not-exist.json")
+
+        assert settings.active_profile == "dev"
+        assert settings.model == "deepseek-flash"
+        name, profile = settings.resolve_profile()
+        assert name == "dev"
+        assert profile.provider == "openai"
+        assert profile.api_format == "openai"
+        assert profile.auth_source == "dashscope_api_key"
+        assert profile.base_url == "http://gateway.example/v1"
+        assert profile.default_model == "deepseek-flash"
+
+        # 再次 materialize 不能把 env 覆盖回默认 profile
+        materialized = settings.materialize_active_profile()
+        assert materialized.model == "deepseek-flash"
+        assert materialized.base_url == "http://gateway.example/v1"
+        assert materialized.resolve_auth().value == "sk-test-env-only"
+
+    def test_env_values_survive_materialize_with_settings_file(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("OPENHARNESS_PROFILE", raising=False)
+        monkeypatch.setenv("OPENHARNESS_MODEL", "env-model")
+        monkeypatch.setenv("OPENHARNESS_BASE_URL", "http://env.example/v1")
+        path = tmp_path / "settings.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "active_profile": "dev",
+                    "profiles": {
+                        "dev": {
+                            "label": "dev",
+                            "provider": "openai",
+                            "api_format": "openai",
+                            "auth_source": "openai_api_key",
+                            "default_model": "file-model",
+                            "base_url": "http://file.example/v1",
+                        }
+                    },
+                    "model": "file-model",
+                    "provider": "openai",
+                    "api_format": "openai",
+                    "base_url": "http://file.example/v1",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        settings = load_settings(path)
+        assert settings.model == "env-model"
+
+        materialized = settings.materialize_active_profile()
+        assert materialized.model == "env-model"
+        assert materialized.base_url == "http://env.example/v1"
+
+    def test_direct_api_key_env_wins(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OPENHARNESS_PROVIDER", "openai")
+        monkeypatch.setenv("OPENHARNESS_API_FORMAT", "openai")
+        monkeypatch.setenv("OPENHARNESS_API_KEY", "sk-direct-env")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-provider-env")
+        settings = load_settings(tmp_path / "missing.json")
+        assert settings.resolve_auth().value == "sk-direct-env"
+
+    def test_apply_project_env_loads_file_process_env_wins(self, tmp_path, monkeypatch):
+        import os
+
+        from openharness.config.settings import apply_project_env
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / ".env").write_text(
+            "OPENHARNESS_MODEL=from-file\nOPENHARNESS_PROVIDER=openai\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("OPENHARNESS_CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("OPENHARNESS_PROVIDER", "process-env")
+        monkeypatch.delenv("OPENHARNESS_MODEL", raising=False)
+
+        saved = dict(os.environ)
+        try:
+            apply_project_env()
+            assert os.environ["OPENHARNESS_MODEL"] == "from-file"
+            assert os.environ["OPENHARNESS_PROVIDER"] == "process-env"
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
