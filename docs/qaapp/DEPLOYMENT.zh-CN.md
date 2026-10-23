@@ -446,15 +446,19 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
   + `npm run check:turn-files`（过程/结果文件纯函数）+ `npm run check:questions`
   （选项规范化 / 审批回放）。
 
-### 8.1 配置后端地址（前后端分机部署必读）
+### 8.1 配置后端地址（前端取址与内外网双入口）
 
 前端通过**环境变量**指定后端，**无需改代码**。两个变量语义不同，别混用：
 
 | 变量 | 作用 | 用在哪 |
 | --- | --- | --- |
 | `VITE_API_TARGET` | **Vite 开发/预览服务器**代理转发的目标地址（服务端转发） | `npm run dev` / `npm run preview`；浏览器同源请求，**不产生跨域** |
-| `VITE_API_BASE_URL` | **浏览器直连**后端的基址 | 仅当前端产物部署在与后端不同的域名/端口时；需后端 `cors_origins` 放行（不能是 `"*"`，否则 Cookie 不生效） |
+| `VITE_API_BASE_URL` | **浏览器直连**后端的基址；**默认留空 = 同源（推荐）** | 仅当前端与后端是**不同站点域名**、且 API 已对外暴露时才填写；需在 `cors_origins` 里显式放行该来源 |
 | `VITE_API_TOKEN` | 构建时写死的 Bearer token（可选兜底） | 仅当 `browser_auth.enabled=false`（公网 / SSO 场景）；会打进前端产物，公网慎用 |
+
+> 记一条：`VITE_API_BASE_URL` 一旦填了绝对地址，浏览器就**固定去连那个地址**，与用户从哪个
+> 入口打开页面无关。填成内网 IP 时，外网入口会去打内网地址（不可达），或者变成跨站请求
+> （`SameSite=Lax` 的会话 Cookie 不会携带，登录也会被 CSRF 校验拒绝）。
 
 配置方式（**推荐第 2 种**，长期生效且不进版本库）：
 
@@ -472,20 +476,65 @@ npm run dev
 
 常见场景该填什么：
 
-| 场景 | `VITE_API_TARGET` |
-| --- | --- |
-| 前端与后端**同一台机器** | `http://127.0.0.1:8787`（默认值，可不配） |
-| 前端在本机、后端在另一台机器 | `http://<后端IP>:8787` |
-| 前端就跑在后端同一台机器、别人访问 `:5174` | `http://127.0.0.1:8787`（dev server 与后端同机，走回环即可） |
+| 场景 | `VITE_API_TARGET` | `VITE_API_BASE_URL` |
+| --- | --- | --- |
+| 前端与后端**同一台机器** | `http://127.0.0.1:8787`（默认值，可不配） | 留空 |
+| 前端在本机、后端在另一台机器 | `http://<后端IP>:8787` | 留空 |
+| 内网 + 外网双入口（端口映射 / 反向代理） | 后端地址（同机用回环） | **必须留空** |
+| 前端 dist 部署到不同站点域名，浏览器直连 API | 不生效（不用 Vite 代理） | `https://api.example.com`，并配 `cors_origins` |
 
-> ⚠️ `VITE_API_TARGET` 是**运行 `npm run dev` 那台机器**去连后端的地址，**不是浏览器的地址**。
-> 因此只有「前端与后端不在同一台机器」时才需要改成服务器 IP。
+> ⚠️ `VITE_API_TARGET` 是**运行 `npm run dev` 那台机器**去连后端的地址，**不是浏览器的地址**，
+> 不会出现在发给浏览器的请求里。
 
-生产构建且前后端分离部署时：
+#### 内外网双入口（内网 IP + 外网端口映射）
+
+同一份前端、同一份配置，同时支持：
+
+- 内网：`http://<内网IP>:5174/`
+- 外网：`http://<外网IP>:<外网端口>/`（路由器 / frp / nginx 映射到内网的 `5174`）
+
+做法是让**浏览器只访问"页面自己的源"**，由该入口把 `/api`、`/healthz` 转发到后端：
+
+```
+浏览器 ── http://<内网IP>:5174/ ─┐
+                                  ├─> Vite :5174 ── /api、/healthz ──> qaapp :8787
+浏览器 ── http://<外网IP>:<外网端口>/ ─┘        （Host 原样透传）
+```
+
+要求（缺一不可）：
+
+1. `config/frontend/.env` 的 `VITE_API_BASE_URL` **留空**；
+2. Vite 代理使用 `changeOrigin: false`（本仓库默认已改）：后端按 `Origin` 与 `Host` 做同源校验，
+   改写 `Host` 会把两个入口误判成跨站；
+3. 外网端口映射到**同时能提供页面和 `/api` 的进程**（dev 用 `5174`，生产可让后端
+   `static_dir` 托管 `dist` 并把端口映射到 `8787`）；
+4. `config/backend/.env` 的 `QAAPP_CORS_ORIGINS` 把两个入口都列上（它是登录 / 写请求的
+   可信来源白名单，见下一节）；入口地址变化时同步更新。
+5. 外网用**域名**而不是 IP 时，还要在 `vite.config.ts` 的 `server.allowedHosts` /
+   `preview.allowedHosts` 放行该域名（Vite 默认只信任 IP 与 localhost，防止 DNS rebinding）。
+
+验证：
+
+```bash
+# 两个入口都应该返回 200 JSON（/bootstrap 不需要登录）
+curl -sS http://<内网IP>:5174/api/v1/bootstrap
+curl -sS http://<外网IP>:<外网端口>/api/v1/bootstrap
+```
+
+登录后在浏览器开发者工具的 Network 里检查：请求 URL 的主机端口应与页面一致，
+外网页面**不应**出现 `http://<内网IP>:8787`。若登录/写请求返回 `403 cross_site`，
+说明入口改写了 `Host` 且实际 Origin 不在 `cors_origins` 里，把该来源加进去并重启后端。
+
+> 内网与外网是不同主机名，登录状态各自独立（Cookie 按主机名隔离），这是预期行为。
+
+生产构建且前后端**确实分属不同站点**时才这样用（并配 `cors_origins`）：
 
 ```bash
 VITE_API_BASE_URL=https://api.example.com npm run build
 ```
+
+> `cors_origins` 里写 `"*"` 只放开 CORS 响应，**不会**被当作登录 / 写请求的可信来源；
+> 带 Cookie 的跨域部署必须显式列出前端来源。
 
 ### 8.2 改动生效规则（很容易踩）
 
@@ -562,6 +611,8 @@ Authorization: Bearer <api_tokens 里的任意一个>
   - 后端 API：`http://<本机IP>:8787`
   - dev 模式下前端的 `/api` 由 Vite 代理转发到 `VITE_API_TARGET`（默认 `127.0.0.1:8787`），
     因此**浏览器无需跨域**；后端在别的机器时按 §8.1 改这个变量即可。
+  - 代理保留浏览器带来的 `Host`（`changeOrigin: false`），所以内网直连 `:5174`、外网端口
+    映射到 `:5174` 都能正常工作；前提是 `VITE_API_BASE_URL` 留空（见 §8.1「内外网双入口」）。
   - 查本机 IP：macOS `ipconfig getifaddr en0`；Linux `hostname -I`。
 - 因为默认已对外监听，**请务必保留账户登录并修改默认密码**
   （`webapp.json:auth.enabled`，默认账户见 [AUTH.zh-CN.md](AUTH.zh-CN.md)）：
@@ -721,7 +772,8 @@ qaapp 额外注入：
 | 首次调模型报「未配置认证」/ 直接退出 | `config/backend/.env` 缺少 `OPENHARNESS_PROVIDER` / `OPENHARNESS_MODEL` / `OPENHARNESS_BASE_URL` / 密钥变量，或 `OPENHARNESS_AUTH_SOURCE` 写成了密钥本身，见 §5.1 |
 | `abcqa config` 显示 `errors` 非空 | 对应 JSON 非法（字段/枚举错）；按提示修正 |
 | 页面没有 Bearer Token 输入框了，却仍报「缺少 Bearer token」 | 确认 `webapp.json` 的 `browser_auth.enabled=true`；浏览器是否禁用了 Cookie；反向代理是否剥掉了 `Set-Cookie`；`cors_origins` 是否写成 `"*"`（分机部署时必须明确来源）。也可临时用 `VITE_API_TOKEN` 兜底 |
-| 创建对话 / 上传附件 403，提示「跨站请求被拒绝」（`code=cross_site`） | 页面与 API 不同端口（开发态 `5174` / `8787`）或代理改写了 `Host`。当前版本按「`Origin` 与 `Host` 主机名一致」判定，升级后重启服务即可；前后端分域名部署要把前端来源写进 `webapp.json: cors_origins`（如 `https://frontend.example.com`，写成 `"*"` 不放行）。仍失败时在开发者工具里比对请求头 `Origin` 与 `Host` 的主机名 |
+| **外网访问时接口仍请求内网 IP / 登录失败**（Network 里出现 `http://192.168.x.x:8787/api/...`） | `config/frontend/.env` 的 `VITE_API_BASE_URL` 被填成了内网地址，浏览器直连它且与页面跨站。改为留空（同源），重启 Vite；若外网入口服务 `dist`，重新 `npm run build` 并刷新。详见 §8.1「内外网双入口」 |
+| 创建对话 / 上传附件 403，提示「跨站请求被拒绝」（`code=cross_site`） | 页面与 API 不同端口（开发态 `5174` / `8787`）或代理改写了 `Host`。当前版本按「显式白名单 / `Sec-Fetch-Site: same-origin` / `Origin` 与 `Host` 主机名一致」判定；分域名或改写 `Host` 的入口要把前端来源写进 `QAAPP_CORS_ORIGINS`（如 `https://frontend.example.com`，写成 `"*"` 不放行）。仍失败时在开发者工具里比对请求头 `Origin` 与 `Host` |
 | 新增 Agent 后模型不调用它 | ① 是否重启服务；② `description` 是否写清「做什么/何时用/不适用」；③ 当前 Agent 的 `tools` 是否包含 `external_agent`；④ `abcqa agents list` 确认实际生效文件 |
 | 配了 `tools` 但模型还能调用别的工具 | 确认已升级到包含 `qaapp/tools/policy.py` 的版本；旧版本只声明不生效。`disallowed_tools` 优先于 `tools` |
 | 发送消息 404 `agent_not_found` | 请求指定的 `agent` 或路由命中的 agent 未在 `agents.json` 注册 |

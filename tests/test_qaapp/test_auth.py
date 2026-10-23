@@ -136,8 +136,8 @@ def test_cross_port_frontend_write_is_allowed(auth_service):
         resp = client.post(
             "/api/v1/conversations",
             headers={
-                "Origin": "http://192.168.139.144:5174",
-                "Host": "192.168.139.144:8787",
+                "Origin": "http://192.0.2.10:5174",
+                "Host": "192.0.2.10:8787",
             },
         )
         assert resp.status_code == 201
@@ -145,8 +145,8 @@ def test_cross_port_frontend_write_is_allowed(auth_service):
         evil = client.post(
             "/api/v1/conversations",
             headers={
-                "Origin": "http://192.168.139.145:5174",
-                "Host": "192.168.139.144:8787",
+                "Origin": "http://192.0.2.11:5174",
+                "Host": "192.0.2.10:8787",
             },
         )
         assert evil.status_code == 403
@@ -193,6 +193,65 @@ def test_wildcard_cors_does_not_weaken_csrf(auth_service):
         )
         assert resp.status_code == 403
         assert resp.json()["code"] == "cross_site"
+
+
+def test_login_allows_same_origin_behind_proxy(auth_service):
+    """外网入口改写了 Host，但浏览器声明 same-origin 时登录必须放行。"""
+    with TestClient(auth_service.app) as client:
+        resp = client.post(
+            "/api/v1/auth/login",
+            json=ADMIN,
+            headers={
+                "Origin": "http://203.0.113.10:15174",
+                "Host": "127.0.0.1:8787",
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+        assert resp.status_code == 200
+        assert "qaapp_auth=" in resp.headers["set-cookie"].lower()
+
+
+def test_login_allows_explicitly_allowlisted_cross_site_origin(auth_service):
+    """分域名部署：cors_origins 显式放行的来源可以登录。"""
+    auth_service.webapp.cors_origins = ["https://frontend.example.com"]
+    with TestClient(auth_service.app) as client:
+        ok = client.post(
+            "/api/v1/auth/login",
+            json=ADMIN,
+            headers={
+                "Origin": "https://frontend.example.com",
+                "Host": "api.example.com",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        assert ok.status_code == 200
+        # 未放行的跨站来源仍然拒绝登录。
+        denied = client.post(
+            "/api/v1/auth/login",
+            json=ADMIN,
+            headers={
+                "Origin": "https://evil.example",
+                "Host": "api.example.com",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        assert denied.status_code == 403
+        assert denied.json()["code"] == "cross_site"
+
+
+def test_write_allows_same_origin_when_host_rewritten(auth_service):
+    """代理改写 Host 时，浏览器声明的 same-origin 依然可信。"""
+    with TestClient(auth_service.app) as client:
+        assert _login(client, ADMIN).status_code == 200
+        resp = client.post(
+            "/api/v1/conversations",
+            headers={
+                "Origin": "http://203.0.113.10:15174",
+                "Host": "127.0.0.1:8787",
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+        assert resp.status_code == 201
 
 
 def test_change_password_and_revoke_sessions(auth_service):

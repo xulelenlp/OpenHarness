@@ -63,6 +63,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Fixed
 
+- **外网入口登录失败 / 接口仍请求内网 IP**：`config/frontend/.env` 把 `VITE_API_BASE_URL` 写成了内网地址，浏览器从外网入口打开页面时仍直连内网 IP——真实外网不可达；即使可达也属跨站，登录被 CSRF 校验拒绝、`SameSite=Lax` Cookie 也不会携带。现在前端默认**同源**（基址留空，内外网入口共用一份构建），Vite 代理改为保留 `Host`（`changeOrigin: false`），后端登录与写请求统一按「`cors_origins` 显式白名单 / `Sec-Fetch-Site: same-origin` / `Origin` 与 `Host` 主机名一致」放行；模板不再写死内网 IP，dev 启动时对非空基址给出告警。详见 DEPLOYMENT §8.1「内外网双入口」。
 - **前端跨端口访问后端被误判为跨站（403 `cross_site`）**：临时登录启用后，`Origin` 与 `Host` 按 `host:port` 全等比较，导致「页面 5174 / API 8787」的开发态以及 Vite/Nginx 代理改写 `Host` 的部署在创建对话、上传附件时直接 403。现在改为：`Origin` 与 `Host` **主机名一致即视为同源**（端口可以不同），分域名前端可用 `webapp.json: cors_origins` 显式放行（`"*"` 不代表放行），`Sec-Fetch-Site: cross-site` 仍只允许显式放行的来源，避免退化成无防护。
 - **Word 报告图文混排（重叠、图注前空行过大）**：`write_report_docx` 之前把图片插在内嵌（inline）段落里，而图片段落沿用正文 29pt 固定行距，Word 会按行高裁切图片、让图片压在文字上；后来按图高预留整行又让图注前多出一整张图高的空行。现在图片改写为 `wp:anchor` + `wp:wrapTopAndBottom`（上下环绕、按栏居中、上下各 6pt），图片段落用单倍行距 + 1pt 段落标记并关闭网格对齐，图注以 6pt 间距、单倍行距紧跟图片，并通过 `keepNext` 保证图与图注同页；竖直定位用 `wp:align=top`，避免部分阅读器把图片排到前一段之前。
 - **Markdown 答案行距过大**：`.bubble` 的 `white-space: pre-wrap` 在 Markdown 模式下没有关闭，浏览器把渲染 HTML 里的换行/缩进当成可见文本，导致列表项之间出现大段空白。新增 `.bubble.md { white-space: normal; }`，并把 Markdown 正文收紧为 14px / 1.7 行高、段落 0.5em、列表项 0.14em、标题 0.85em，贴近 Codex 的紧凑排版；历史会话页面复测列表行距从约 57px 降到约 25px。

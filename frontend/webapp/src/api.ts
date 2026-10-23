@@ -10,12 +10,15 @@ import type {
 /**
  * 后端基址，按部署环境可配置（见 config/frontend/.env）：
  *
- * - **留空（默认）= 同源**
+ * - **留空（默认、推荐）= 同源**
  *   · 开发态：由 Vite dev server 把 `/api`、`/healthz` 代理到 `VITE_API_TARGET`
  *     （默认 `http://127.0.0.1:8787`）
  *   · 生产态：前端由 qaapp 的 `static_dir` 一同托管，天然同源
- * - **非空 = 浏览器直连该地址**，用于前后端分离部署，
- *   例如 `VITE_API_BASE_URL=https://api.example.com`（需后端 `cors_origins` 放行）
+ *   · 内外网双入口（内网 `:5174` + 外网端口映射）：浏览器始终调用当前页面的源，
+ *     由该入口的代理转发到后端，不需要为两个地址分别构建
+ * - **非空 = 浏览器直连该地址**，仅用于前后端是不同站点域名的部署，
+ *   例如 `VITE_API_BASE_URL=https://api.example.com`（需后端 `cors_origins` 放行）。
+ *   填成内网 IP 会让外网页面去连内网地址，并退化成跨站请求（Cookie 不生效）。
  *
  * 配置方式：写进 `config/frontend/.env`（已被 gitignore 忽略），
  * 或启动/构建时注入环境变量。

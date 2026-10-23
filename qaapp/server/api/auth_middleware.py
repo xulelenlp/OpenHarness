@@ -48,31 +48,35 @@ def _normalized_origin(value: str) -> tuple[str, str] | None:
     return parts.scheme.lower(), parts.netloc.lower()
 
 
-def _origin_allowed(request: Request, trusted_origins: set[tuple[str, str]]) -> bool:
-    """Cookie 鉴权的写请求必须来自可信页面。
+def origin_allowed(request: Request, trusted_origins: set[tuple[str, str]]) -> bool:
+    """判断带 Cookie 的写请求（以及登录）是否来自可信页面。
 
     判定顺序（任一条满足即通过）：
 
     1. 没有 ``Origin``（curl / 反向代理注入）：只要求 ``Sec-Fetch-Site`` 不是
        ``cross-site``；跨站表单本身也会被 ``SameSite=Lax`` 拒绝携带会话 Cookie。
-    2. ``Origin`` 与 ``Host`` **主机名一致**（允许端口不同）：开发态前端跑在
-       5174、后端在 8787，或 Vite/Nginx 代理把 ``Host`` 改写成后端端口时都属此类。
-       仅主机名相等仍能挡住来自其它站点的 CSRF。
-    3. ``Origin`` 在 ``webapp.json: cors_origins`` 里被显式放行：用于前端与后端
+    2. ``Origin`` 在 ``webapp.json: cors_origins`` 里被显式放行：用于前端与后端
        分域名部署（``cors_origins`` 里写 ``"*"`` 不等于放行，避免退化成无防护）。
+    3. 浏览器声明 ``Sec-Fetch-Site: same-origin``：页面与请求同源，代理改写
+       ``Host`` 时依然可信（该头由浏览器生成，页面无法伪造）。
+    4. ``Origin`` 与 ``Host`` **主机名一致**（允许端口不同）：开发态前端跑在
+       5174、后端在 8787，或 Vite/Nginx 代理保留 ``Host`` 时都属此类。
+       仅主机名相等仍能挡住来自其它站点的 CSRF。
 
     ``Sec-Fetch-Site: cross-site`` 只有显式放行的来源可以通过。
     """
-    cross_site = request.headers.get("sec-fetch-site", "").lower() == "cross-site"
+    site = request.headers.get("sec-fetch-site", "").strip().lower()
     origin = request.headers.get("origin", "")
     if not origin:
-        return not cross_site
+        return site != "cross-site"
     normalized = _normalized_origin(origin)
     if normalized is None:  # 例如 "Origin: null"
         return False
     if normalized in trusted_origins:
         return True
-    if cross_site:
+    if site == "same-origin":
+        return True
+    if site == "cross-site":
         return False
     host = request.headers.get("host", "")
     origin_hostname = _hostname(normalized[1])
@@ -80,7 +84,7 @@ def _origin_allowed(request: Request, trusted_origins: set[tuple[str, str]]) -> 
     return bool(origin_hostname) and origin_hostname == host_hostname
 
 
-def _trusted_origins(cors_origins: list[str] | None) -> set[tuple[str, str]]:
+def trusted_origins(cors_origins: list[str] | None) -> set[tuple[str, str]]:
     """把 ``cors_origins`` 转成可比较的来源集合；忽略 ``"*"``。"""
     trusted: set[tuple[str, str]] = set()
     for item in cors_origins or ():
@@ -114,9 +118,9 @@ class AuthMiddleware:
         self.app = app
         self.service = service
 
-    def _trusted_origins(self) -> set[tuple[str, str]]:
+    def _allowed_origins(self) -> set[tuple[str, str]]:
         webapp = getattr(self.service, "webapp", None)
-        return _trusted_origins(getattr(webapp, "cors_origins", None))
+        return trusted_origins(getattr(webapp, "cors_origins", None))
 
     async def __call__(self, scope, receive, send):
         auth = getattr(self.service, "auth", None)
@@ -165,7 +169,7 @@ class AuthMiddleware:
                 return
 
         if user.via == "cookie" and method not in SAFE_METHODS:
-            if not _origin_allowed(request, self._trusted_origins()):
+            if not origin_allowed(request, self._allowed_origins()):
                 response = error_response(403, "cross_site", "跨站请求被拒绝")
                 await response(scope, receive, send)
                 return

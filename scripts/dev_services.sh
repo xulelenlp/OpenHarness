@@ -391,6 +391,13 @@ start_frontend() {
         return 1
     fi
 
+    local api_base
+    api_base="$(env_value VITE_API_BASE_URL)"
+    if [[ -n "$api_base" ]]; then
+        warn "检测到 VITE_API_BASE_URL=$api_base：浏览器会直连该地址，内网/外网双入口会失败；"
+        warn "请把它留空，由同源代理转发 /api（见 docs/qaapp/DEPLOYMENT.zh-CN.md §8.1）"
+    fi
+
     mkdir -p "$RUN_DIR"
     {
         printf '\n=== %s 启动前端（监听 %s:%s）===\n' "$(date '+%Y-%m-%d %H:%M:%S')" \

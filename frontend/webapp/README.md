@@ -143,6 +143,24 @@ abcqa init          # 首次写入示例配置
 abcqa webapp run    # 0.0.0.0:8787
 ```
 
+## 内网 / 外网双入口
+
+前端默认**同源**取址：`config/frontend/.env` 里 `VITE_API_BASE_URL` 留空，浏览器永远请求
+当前页面的 `/api`，由 Vite（dev / preview）或反向代理转发到后端。因此：
+
+- 内网 `http://<内网IP>:5174/`
+- 外网 `http://<外网IP>:15174/`（端口映射到内网 `5174`）
+
+可以共用同一份前端、同一次构建，不需要为两个地址分别配置。注意：
+
+1. **不要把 `VITE_API_BASE_URL` 填成内网 IP**：外网页面会去连内网地址，登录会被判为跨站
+   而失败（`SameSite=Lax` 的 Cookie 也不会跨站发送）。
+2. Vite 代理保留 `Host`（`changeOrigin: false`），后端据此做同源校验；外网入口若改写了
+   `Host`，把该入口地址加进后端 `QAAPP_CORS_ORIGINS`。
+3. 内网与外网是不同主机名，登录状态各自独立，属预期。
+4. 外网入口必须能访问到同时提供页面和 `/api` 的进程（dev 是 `5174`，生产可让后端
+   `static_dir` 托管 `dist` 并映射到 `8787`）。
+
 ## 生产
 
 ```bash
@@ -150,4 +168,4 @@ npm run build       # 产物输出到 dist/
 ```
 
 将 `dist/` 目录路径填入 `~/.ohmo/webapp.json` 的 `static_dir`，
-重启 `abcqa webapp run`，即可由同一端口托管前端与 API。
+重启 `abcqa webapp run`，即可由同一端口托管前端与 API（同样保持 `VITE_API_BASE_URL` 留空）。

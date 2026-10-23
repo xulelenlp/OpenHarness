@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from qaapp.server.api.auth_middleware import json_body
+from qaapp.server.api.auth_middleware import json_body, origin_allowed, trusted_origins
 from qaapp.server.api.context import ApiContext
 from qaapp.server.auth import AuthError
 
@@ -60,7 +60,9 @@ def build_routes(ctx: ApiContext) -> list[Route]:
         if not auth.enabled:
             return ctx.error(404, "not_found", "未启用账户登录")
         # 防登录 CSRF：跨站页面不能把用户静默登录到别的账号。
-        if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
+        # 判定与写请求一致：同源 / 同主机名（允许端口不同）/ cors_origins 显式放行；
+        # 分域名部署时把前端来源写进 cors_origins 即可正常登录。
+        if not origin_allowed(request, trusted_origins(service.webapp.cors_origins)):
             return ctx.error(403, "cross_site", "不允许从跨站页面登录")
         raw = await request.body()
         if len(raw) > _MAX_BODY_BYTES:
