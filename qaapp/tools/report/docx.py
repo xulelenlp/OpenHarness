@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,9 @@ from qaapp.tools.report.models import (
     WriteReportDocxInput,
 )
 from qaapp.tools.report.styles import _set_run_eastasia, _set_style_eastasia
+
+#: 图片段落预留的额外行高（pt）：图高之外再留出的上下留白。
+_IMAGE_LINE_PADDING_PT = 12.0
 
 
 class ReportRendererMixin:
@@ -524,7 +528,7 @@ class ReportRendererMixin:
             return
         try:
             # A4 正文宽度 = 21 - 2.8 - 2.8 = 15.4cm，图片不得越界。
-            doc.add_picture(
+            inline_shape = doc.add_picture(
                 str(path),
                 width=Cm(max(5.0, min(15.4, float(image.width_cm or 15.0)))),
             )
@@ -534,6 +538,13 @@ class ReportRendererMixin:
                 alignment=WD_ALIGN_PARAGRAPH.CENTER,
                 first_line_indent=Pt(0),
             )
+            # 图片段落不能沿用正文 29pt 固定行距，否则图片会被裁成一条并压住正文。
+            # 这里按“图高 + 留白”预留整行：即使阅读器把浮动图片当成行内对象排版，
+            # 行高也足以容纳整张图，正文自然落到图片上下两侧。
+            image_height_pt = float(inline_shape.height.pt) + _IMAGE_LINE_PADDING_PT
+            picture_paragraph.paragraph_format.line_spacing = Pt(image_height_pt)
+            # 改为“上下环绕”浮动图片，文字只出现在图片上方和下方。
+            self._wrap_top_and_bottom(inline_shape)
             if image.caption:
                 caption = doc.add_paragraph()
                 self._format_paragraph(
@@ -545,3 +556,89 @@ class ReportRendererMixin:
                 self._format_run(run, _BODY_FONT, _TABLE_SIZE, False)
         except Exception as exc:  # noqa: BLE001 - 单张图片失败不阻断整篇
             warnings.append(f"图片插入失败 {image.path}: {exc}")
+
+    @staticmethod
+    def _wrap_top_and_bottom(shape: Any, *, gap_emu: int = 76200) -> None:
+        """把内嵌图片改写成锚定图片，环绕方式为“上下环绕”。
+
+        python-docx 只支持内嵌（inline）图片；内嵌图片位于行内，一旦所在段落
+        使用固定行距，Word 会按行高裁切图片，导致图片与正文重叠。这里改写
+        ``wp:inline`` 为 ``wp:anchor`` + ``wp:wrapTopAndBottom``：图片按列居中、
+        上下文字自动让位，既有间距也不会串行。
+        """
+        inline = shape._inline
+        parent = inline.getparent()
+        if parent is None:  # pragma: no cover - 正常文档不会出现
+            return
+
+        anchor = OxmlElement("wp:anchor")
+        for name, value in (
+            ("distT", str(gap_emu)),
+            ("distB", str(gap_emu)),
+            ("distL", "0"),
+            ("distR", "0"),
+            ("simplePos", "0"),
+            ("relativeHeight", "251658240"),
+            ("behindDoc", "0"),
+            ("locked", "0"),
+            ("layoutInCell", "1"),
+            ("allowOverlap", "0"),
+        ):
+            anchor.set(name, value)
+
+        simple_pos = OxmlElement("wp:simplePos")
+        simple_pos.set("x", "0")
+        simple_pos.set("y", "0")
+        anchor.append(simple_pos)
+
+        position_h = OxmlElement("wp:positionH")
+        position_h.set("relativeFrom", "column")
+        align = OxmlElement("wp:align")
+        align.text = "center"
+        position_h.append(align)
+        anchor.append(position_h)
+
+        position_v = OxmlElement("wp:positionV")
+        position_v.set("relativeFrom", "paragraph")
+        # 用 align=top 而不是 posOffset=0：部分阅读器（LibreOffice/WPS）会把
+        # 段落相对偏移 0 解释成“贴到段落底部”，从而把图片排到前一段之前。
+        vertical = OxmlElement("wp:align")
+        vertical.text = "top"
+        position_v.append(vertical)
+        anchor.append(position_v)
+
+        extent = inline.find(qn("wp:extent"))
+        if extent is not None:
+            anchor.append(deepcopy(extent))
+
+        effect_extent = inline.find(qn("wp:effectExtent"))
+        if effect_extent is not None:
+            anchor.append(deepcopy(effect_extent))
+        else:
+            effect_extent = OxmlElement("wp:effectExtent")
+            for name in ("l", "t", "r", "b"):
+                effect_extent.set(name, "0")
+            anchor.append(effect_extent)
+
+        anchor.append(OxmlElement("wp:wrapTopAndBottom"))
+
+        doc_pr = inline.find(qn("wp:docPr"))
+        if doc_pr is not None:
+            anchor.append(deepcopy(doc_pr))
+
+        frame_pr = inline.find(qn("wp:cNvGraphicFramePr"))
+        if frame_pr is not None:
+            anchor.append(deepcopy(frame_pr))
+        else:
+            frame_pr = OxmlElement("wp:cNvGraphicFramePr")
+            locks = OxmlElement("a:graphicFrameLocks")
+            locks.set("noChangeAspect", "1")
+            frame_pr.append(locks)
+            anchor.append(frame_pr)
+
+        graphic = inline.find(qn("a:graphic"))
+        if graphic is None:  # pragma: no cover - 缺少图形节点时保持内嵌
+            return
+        anchor.append(deepcopy(graphic))
+
+        parent.replace(inline, anchor)
