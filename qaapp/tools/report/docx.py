@@ -40,8 +40,8 @@ from qaapp.tools.report.models import (
 )
 from qaapp.tools.report.styles import _set_run_eastasia, _set_style_eastasia
 
-#: 图片段落预留的额外行高（pt）：图高之外再留出的上下留白。
-_IMAGE_LINE_PADDING_PT = 12.0
+#: 图片段落与上下文、图注之间的间距（pt）。
+_IMAGE_GAP_PT = 6.0
 
 
 class ReportRendererMixin:
@@ -538,24 +538,74 @@ class ReportRendererMixin:
                 alignment=WD_ALIGN_PARAGRAPH.CENTER,
                 first_line_indent=Pt(0),
             )
-            # 图片段落不能沿用正文 29pt 固定行距，否则图片会被裁成一条并压住正文。
-            # 这里按“图高 + 留白”预留整行：即使阅读器把浮动图片当成行内对象排版，
-            # 行高也足以容纳整张图，正文自然落到图片上下两侧。
-            image_height_pt = float(inline_shape.height.pt) + _IMAGE_LINE_PADDING_PT
-            picture_paragraph.paragraph_format.line_spacing = Pt(image_height_pt)
+            # 图片段落不能用正文的 29pt 固定行距，否则图片会被裁成一条并压住正文；
+            # 也不能按图高预留行高，否则 Word/WPS 会在图片下方再空出一整张图的高度。
+            # 这里用单倍行距 + 1pt 段落标记：浮动图片只由“上下环绕”占位，空段落几乎不占高。
+            picture_paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+            picture_paragraph.paragraph_format.space_before = Pt(_IMAGE_GAP_PT)
+            picture_paragraph.paragraph_format.space_after = Pt(0)
+            self._compact_paragraph_mark(picture_paragraph)
             # 改为“上下环绕”浮动图片，文字只出现在图片上方和下方。
             self._wrap_top_and_bottom(inline_shape)
             if image.caption:
+                # 图与图注不拆页：图注若放不下，整块留到下一页，避免“图在这页、图注在下页”。
+                picture_paragraph.paragraph_format.keep_with_next = True
                 caption = doc.add_paragraph()
                 self._format_paragraph(
                     caption,
                     alignment=WD_ALIGN_PARAGRAPH.CENTER,
                     first_line_indent=Pt(0),
                 )
+                # 图注用单倍行距，避免 29pt 行距把图注推离图片。
+                caption.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+                caption.paragraph_format.space_before = Pt(_IMAGE_GAP_PT)
+                caption.paragraph_format.space_after = Pt(0)
                 run = caption.add_run(image.caption)
                 self._format_run(run, _BODY_FONT, _TABLE_SIZE, False)
         except Exception as exc:  # noqa: BLE001 - 单张图片失败不阻断整篇
             warnings.append(f"图片插入失败 {image.path}: {exc}")
+
+    @staticmethod
+    def _compact_paragraph_mark(paragraph: Any) -> None:
+        """把空段落的段落标记压到 1pt，并关闭网格对齐。
+
+        图片段落的正文只有一张浮动图片；段落标记若仍是三号字（且吸附文档网格），
+        会在图片下方撑出一整行空白。压小标记字号后，这段空行基本不占高度。
+        """
+        p_pr = paragraph._p.get_or_add_pPr()
+
+        snap_to_grid = p_pr.find(qn("w:snapToGrid"))
+        if snap_to_grid is None:
+            snap_to_grid = OxmlElement("w:snapToGrid")
+            snap_to_grid.set(qn("w:val"), "0")
+            p_pr.insert_element_before(
+                snap_to_grid,
+                "w:spacing",
+                "w:ind",
+                "w:contextualSpacing",
+                "w:mirrorIndents",
+                "w:suppressOverlap",
+                "w:jc",
+                "w:textDirection",
+                "w:textAlignment",
+                "w:textboxTightWrap",
+                "w:outlineLvl",
+                "w:divId",
+                "w:cnfStyle",
+                "w:rPr",
+                "w:sectPr",
+                "w:pPrChange",
+            )
+
+        r_pr = p_pr.find(qn("w:rPr"))
+        if r_pr is None:
+            r_pr = OxmlElement("w:rPr")
+            p_pr.insert_element_before(r_pr, "w:sectPr", "w:pPrChange")
+        for tag in ("w:sz", "w:szCs"):
+            if r_pr.find(qn(tag)) is None:
+                size = OxmlElement(tag)
+                size.set(qn("w:val"), "2")  # 半磅制：2 = 1pt
+                r_pr.append(size)
 
     @staticmethod
     def _wrap_top_and_bottom(shape: Any, *, gap_emu: int = 76200) -> None:
