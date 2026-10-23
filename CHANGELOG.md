@@ -63,6 +63,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Fixed
 
+- **前端跨端口访问后端被误判为跨站（403 `cross_site`）**：临时登录启用后，`Origin` 与 `Host` 按 `host:port` 全等比较，导致「页面 5174 / API 8787」的开发态以及 Vite/Nginx 代理改写 `Host` 的部署在创建对话、上传附件时直接 403。现在改为：`Origin` 与 `Host` **主机名一致即视为同源**（端口可以不同），分域名前端可用 `webapp.json: cors_origins` 显式放行（`"*"` 不代表放行），`Sec-Fetch-Site: cross-site` 仍只允许显式放行的来源，避免退化成无防护。
 - **Word 报告图文混排（重叠、图注前空行过大）**：`write_report_docx` 之前把图片插在内嵌（inline）段落里，而图片段落沿用正文 29pt 固定行距，Word 会按行高裁切图片、让图片压在文字上；后来按图高预留整行又让图注前多出一整张图高的空行。现在图片改写为 `wp:anchor` + `wp:wrapTopAndBottom`（上下环绕、按栏居中、上下各 6pt），图片段落用单倍行距 + 1pt 段落标记并关闭网格对齐，图注以 6pt 间距、单倍行距紧跟图片，并通过 `keepNext` 保证图与图注同页；竖直定位用 `wp:align=top`，避免部分阅读器把图片排到前一段之前。
 - **Markdown 答案行距过大**：`.bubble` 的 `white-space: pre-wrap` 在 Markdown 模式下没有关闭，浏览器把渲染 HTML 里的换行/缩进当成可见文本，导致列表项之间出现大段空白。新增 `.bubble.md { white-space: normal; }`，并把 Markdown 正文收紧为 14px / 1.7 行高、段落 0.5em、列表项 0.14em、标题 0.85em，贴近 Codex 的紧凑排版；历史会话页面复测列表行距从约 57px 降到约 25px。
 - **qaapp 审批/问题刷新回放**：新增 `approval_resolved` 事件后，已回答的问题与已处理的权限/编辑审批在刷新页面后显示为「已确认 / 已允许」等完成态，不再重新出现操作按钮；超时也会发 `decision: "timeout"` 的解决事件，等待卡不会一直悬挂。前端 `reduceEvent` 兼容孤立 `approval_resolved` 事件。

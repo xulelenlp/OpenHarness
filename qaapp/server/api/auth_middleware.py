@@ -33,20 +33,61 @@ def error_response(status: int, code: str, message: str) -> JSONResponse:
     )
 
 
-def _host_matches_origin(request: Request) -> bool:
-    """Cookie 鉴权的写请求必须来自同源页面。
+def _hostname(netloc: str) -> str:
+    """取 ``host[:port]`` 里的主机名（兼容 IPv6 字面量）。"""
+    return (urlsplit(f"//{netloc.strip()}").hostname or "").lower()
 
-    浏览器对同源 POST 也会带 ``Origin``；缺失时（curl / 反向代理注入）放行，
-    因为跨站表单会被 ``SameSite=Lax`` 拒绝携带会话 Cookie。
+
+def _normalized_origin(value: str) -> tuple[str, str] | None:
+    try:
+        parts = urlsplit(value.strip())
+    except ValueError:  # pragma: no cover - urlsplit 很少抛错
+        return None
+    if not parts.scheme or not parts.netloc:
+        return None
+    return parts.scheme.lower(), parts.netloc.lower()
+
+
+def _origin_allowed(request: Request, trusted_origins: set[tuple[str, str]]) -> bool:
+    """Cookie 鉴权的写请求必须来自可信页面。
+
+    判定顺序（任一条满足即通过）：
+
+    1. 没有 ``Origin``（curl / 反向代理注入）：只要求 ``Sec-Fetch-Site`` 不是
+       ``cross-site``；跨站表单本身也会被 ``SameSite=Lax`` 拒绝携带会话 Cookie。
+    2. ``Origin`` 与 ``Host`` **主机名一致**（允许端口不同）：开发态前端跑在
+       5174、后端在 8787，或 Vite/Nginx 代理把 ``Host`` 改写成后端端口时都属此类。
+       仅主机名相等仍能挡住来自其它站点的 CSRF。
+    3. ``Origin`` 在 ``webapp.json: cors_origins`` 里被显式放行：用于前端与后端
+       分域名部署（``cors_origins`` 里写 ``"*"`` 不等于放行，避免退化成无防护）。
+
+    ``Sec-Fetch-Site: cross-site`` 只有显式放行的来源可以通过。
     """
-    if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
-        return False
+    cross_site = request.headers.get("sec-fetch-site", "").lower() == "cross-site"
     origin = request.headers.get("origin", "")
     if not origin:
+        return not cross_site
+    normalized = _normalized_origin(origin)
+    if normalized is None:  # 例如 "Origin: null"
+        return False
+    if normalized in trusted_origins:
         return True
+    if cross_site:
+        return False
     host = request.headers.get("host", "")
-    origin_host = urlsplit(origin).netloc
-    return bool(host) and origin_host == host
+    origin_hostname = _hostname(normalized[1])
+    host_hostname = _hostname(host)
+    return bool(origin_hostname) and origin_hostname == host_hostname
+
+
+def _trusted_origins(cors_origins: list[str] | None) -> set[tuple[str, str]]:
+    """把 ``cors_origins`` 转成可比较的来源集合；忽略 ``"*"``。"""
+    trusted: set[tuple[str, str]] = set()
+    for item in cors_origins or ():
+        normalized = _normalized_origin(item)
+        if normalized is not None:
+            trusted.add(normalized)
+    return trusted
 
 
 def _bearer_user(request: Request, tokens: list[str]) -> AuthUser | None:
@@ -72,6 +113,10 @@ class AuthMiddleware:
     def __init__(self, app, service) -> None:
         self.app = app
         self.service = service
+
+    def _trusted_origins(self) -> set[tuple[str, str]]:
+        webapp = getattr(self.service, "webapp", None)
+        return _trusted_origins(getattr(webapp, "cors_origins", None))
 
     async def __call__(self, scope, receive, send):
         auth = getattr(self.service, "auth", None)
@@ -120,7 +165,7 @@ class AuthMiddleware:
                 return
 
         if user.via == "cookie" and method not in SAFE_METHODS:
-            if not _host_matches_origin(request):
+            if not _origin_allowed(request, self._trusted_origins()):
                 response = error_response(403, "cross_site", "跨站请求被拒绝")
                 await response(scope, receive, send)
                 return

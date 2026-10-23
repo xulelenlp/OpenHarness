@@ -721,6 +721,7 @@ qaapp 额外注入：
 | 首次调模型报「未配置认证」/ 直接退出 | `config/backend/.env` 缺少 `OPENHARNESS_PROVIDER` / `OPENHARNESS_MODEL` / `OPENHARNESS_BASE_URL` / 密钥变量，或 `OPENHARNESS_AUTH_SOURCE` 写成了密钥本身，见 §5.1 |
 | `abcqa config` 显示 `errors` 非空 | 对应 JSON 非法（字段/枚举错）；按提示修正 |
 | 页面没有 Bearer Token 输入框了，却仍报「缺少 Bearer token」 | 确认 `webapp.json` 的 `browser_auth.enabled=true`；浏览器是否禁用了 Cookie；反向代理是否剥掉了 `Set-Cookie`；`cors_origins` 是否写成 `"*"`（分机部署时必须明确来源）。也可临时用 `VITE_API_TOKEN` 兜底 |
+| 创建对话 / 上传附件 403，提示「跨站请求被拒绝」（`code=cross_site`） | 页面与 API 不同端口（开发态 `5174` / `8787`）或代理改写了 `Host`。当前版本按「`Origin` 与 `Host` 主机名一致」判定，升级后重启服务即可；前后端分域名部署要把前端来源写进 `webapp.json: cors_origins`（如 `https://frontend.example.com`，写成 `"*"` 不放行）。仍失败时在开发者工具里比对请求头 `Origin` 与 `Host` 的主机名 |
 | 新增 Agent 后模型不调用它 | ① 是否重启服务；② `description` 是否写清「做什么/何时用/不适用」；③ 当前 Agent 的 `tools` 是否包含 `external_agent`；④ `abcqa agents list` 确认实际生效文件 |
 | 配了 `tools` 但模型还能调用别的工具 | 确认已升级到包含 `qaapp/tools/policy.py` 的版本；旧版本只声明不生效。`disallowed_tools` 优先于 `tools` |
 | 发送消息 404 `agent_not_found` | 请求指定的 `agent` 或路由命中的 agent 未在 `agents.json` 注册 |

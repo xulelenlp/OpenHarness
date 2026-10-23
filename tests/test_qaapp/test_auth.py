@@ -115,11 +115,84 @@ def test_cross_site_write_is_rejected(auth_service):
         )
         assert resp.status_code == 403
         assert resp.json()["code"] == "cross_site"
+        # Sec-Fetch-Site 明确标记跨站时，即使主机名相同也拒绝。
+        fake_same_host = client.post(
+            "/api/v1/conversations",
+            headers={"Origin": "http://testserver", "Sec-Fetch-Site": "cross-site"},
+        )
+        assert fake_same_host.status_code == 403
+        assert fake_same_host.json()["code"] == "cross_site"
         # 同源写请求正常。
         same_origin = client.post(
             "/api/v1/conversations", headers={"Origin": "http://testserver"}
         )
         assert same_origin.status_code == 201
+
+
+def test_cross_port_frontend_write_is_allowed(auth_service):
+    """前端 5174 / 后端 8787（或 Vite 代理改写 Host）仍算可信来源。"""
+    with TestClient(auth_service.app) as client:
+        assert _login(client, ADMIN).status_code == 200
+        resp = client.post(
+            "/api/v1/conversations",
+            headers={
+                "Origin": "http://192.168.139.144:5174",
+                "Host": "192.168.139.144:8787",
+            },
+        )
+        assert resp.status_code == 201
+        # 不同主机名仍必须被拒绝。
+        evil = client.post(
+            "/api/v1/conversations",
+            headers={
+                "Origin": "http://192.168.139.145:5174",
+                "Host": "192.168.139.144:8787",
+            },
+        )
+        assert evil.status_code == 403
+
+
+def test_explicit_cors_origin_write_is_allowed(auth_service):
+    """分域名部署：cors_origins 显式放行的来源允许写请求。"""
+    auth_service.webapp.cors_origins = ["https://frontend.example.com"]
+    with TestClient(auth_service.app) as client:
+        assert _login(client, ADMIN).status_code == 200
+        resp = client.post(
+            "/api/v1/conversations",
+            headers={
+                "Origin": "https://frontend.example.com",
+                "Host": "api.example.com",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        assert resp.status_code == 201
+        # 未放行的来源继续拒绝。
+        denied = client.post(
+            "/api/v1/conversations",
+            headers={
+                "Origin": "https://evil.example",
+                "Host": "api.example.com",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        assert denied.status_code == 403
+
+
+def test_wildcard_cors_does_not_weaken_csrf(auth_service):
+    """cors_origins 里的 "*" 不能当放行名单用。"""
+    auth_service.webapp.cors_origins = ["*"]
+    with TestClient(auth_service.app) as client:
+        assert _login(client, ADMIN).status_code == 200
+        resp = client.post(
+            "/api/v1/conversations",
+            headers={
+                "Origin": "https://evil.example",
+                "Host": "api.example.com",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "cross_site"
 
 
 def test_change_password_and_revoke_sessions(auth_service):

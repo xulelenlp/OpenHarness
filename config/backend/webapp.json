@@ -21,7 +21,7 @@
     "lockout_seconds": 300,
     "trust_proxy_headers": false
   },
-  "_cors_comment": "前后端分机部署且使用浏览器会话 Cookie 时，cors_origins 必须写成明确来源（不能是 \"*\"），浏览器才会在跨域请求里带上 Cookie。",
+  "_cors_comment": "前后端分机部署且使用浏览器会话 Cookie 时，cors_origins 必须写成明确来源（不能是 \"*\"），浏览器才会在跨域请求里带上 Cookie。同主机不同端口（开发态前端 5174 / 后端 8787，或代理改写了 Host）按同源处理，无需配置；只有跨主机名部署才需要在这里列出来源。",
   "cors_origins": [
     "*"
   ],

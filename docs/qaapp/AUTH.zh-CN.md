@@ -41,7 +41,7 @@
 | 密码存储 | `scrypt`（N=16384, r=8, p=1）+ 每用户 16 字节随机盐；`hmac.compare_digest`；未知账号也跑一次哈希，避免时序探测 |
 | 会话 | 服务端 256 位随机 token；`HttpOnly` + `SameSite=Lax` + HTTPS 下 `Secure`；绝对有效期 12h、空闲 3h；退出 / 改密立即失效 |
 | 暴力破解 | 同一用户名 5 次失败 / 5 分钟锁定；同一 IP 20 次（阈值的 4 倍）；返回 `429` + `Retry-After` |
-| CSRF | 会话 Cookie 的写请求校验 `Origin` / `Sec-Fetch-Site`；`SameSite=Lax` 兜底 |
+| CSRF | 会话 Cookie 的写请求校验 `Origin` / `Sec-Fetch-Site`：`Origin` 与 `Host` 主机名一致即视为同源（允许端口不同，覆盖「页面 5174 / API 8787」与代理改写 `Host`）；分域名前端用 `cors_origins` 显式放行，`"*"` 不算放行；`Sec-Fetch-Site: cross-site` 仅显式放行的来源可通过；`SameSite=Lax` 兜底 |
 | 响应头 | `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer`、`Permissions-Policy` |
 | 账号文件 | 原子写（临时文件 + `os.replace`）、`0600`；解析失败直接拒绝启动（不静默降级） |
 | 缓存 | 登录 / 当前用户 / 登出响应 `Cache-Control: no-store` |
