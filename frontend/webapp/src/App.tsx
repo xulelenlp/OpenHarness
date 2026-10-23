@@ -3,10 +3,12 @@ import {
   bootstrap,
   createConversation,
   getConversation,
+  getSession,
   hasStaticToken,
   interruptConversation,
   listAgents,
   listConversations,
+  logout as logoutRequest,
   resolveApproval,
   streamMessage,
 } from "./api";
@@ -15,13 +17,14 @@ import type { TurnAccumulator } from "./turn";
 import { deriveTurnFilesFromSteps, keepResultFiles } from "./turnFiles";
 import { copyText } from "./clipboard";
 import { Composer } from "./components/Composer";
+import { LoginPage } from "./components/LoginPage";
 import { MessageList } from "./components/MessageList";
+import { PasswordDialog } from "./components/PasswordDialog";
 import { PreviewModal } from "./components/PreviewModal";
 import { Sidebar } from "./components/Sidebar";
 import type { ApprovalAction } from "./components/StepCard";
 import { TopBar } from "./components/TopBar";
 import { WorkspaceDrawer } from "./components/WorkspaceDrawer";
-import { FILE_WRITING_TOOLS } from "./chat/constants";
 import { buildHistoryMessages, type ConversationDetailShape } from "./chat/history";
 import { useAttachments } from "./hooks/useAttachments";
 import { useWorkspaceFiles } from "./hooks/useWorkspaceFiles";
@@ -34,6 +37,8 @@ import {
 import type {
   AgentInfo,
   AttachmentInfo,
+  AuthState,
+  AuthUser,
   ChatMessage,
   ConversationSummary,
   Step,
@@ -66,6 +71,13 @@ export default function App() {
   const [renderOverride, setRenderOverride] = useState<Record<number, boolean>>({});
   /** 刚复制过的消息下标（用于按钮上的短暂反馈）。 */
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  // ---- 登录状态（TEMP-AUTH）----
+  const [auth, setAuth] = useState<AuthState>({ status: "checking" });
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [defaultCredentials, setDefaultCredentials] = useState(false);
+  const [authNotice, setAuthNotice] = useState("");
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
 
   // ---- 布局与加载状态 ----
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -201,32 +213,84 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // 先向服务端建立浏览器会话：服务端读取配置并签发 HttpOnly Cookie。
+    // 启动：取服务端鉴权配置，再确认当前会话。
+    // 旧的 bootstrap 快捷会话会在这里签发 Cookie；启用登录后只返回 login_required。
     let cancelled = false;
     void (async () => {
+      let info: Awaited<ReturnType<typeof bootstrap>> | null = null;
       try {
-        const info = await bootstrap();
-        if (cancelled) return;
-        if (info.auth_required && !info.browser_session && !hasStaticToken()) {
-          setError(
-            "服务端要求 Bearer token，但未启用浏览器会话。请启用 browser_auth，" +
-              "或在构建前端时设置 VITE_API_TOKEN，或由反向代理注入 Authorization。",
-          );
-        }
+        info = await bootstrap();
       } catch (e) {
         if (!cancelled) setError(`初始化会话失败：${(e as Error).message}`);
       }
       if (cancelled) return;
-      await Promise.all([refreshAgents(), refreshConversations()]);
+      const requiresLogin = Boolean(info?.login_required ?? info?.auth_enabled);
+      setLoginRequired(requiresLogin);
+      setDefaultCredentials(Boolean(info?.default_credentials));
+      if (info?.auth_required && !info.browser_session && !requiresLogin && !hasStaticToken()) {
+        setError(
+          "服务端要求 Bearer token，但未启用浏览器会话。请启用 browser_auth，" +
+            "或在构建前端时设置 VITE_API_TOKEN，或由反向代理注入 Authorization。",
+        );
+      }
+      try {
+        const session = await getSession();
+        if (cancelled) return;
+        if (session?.user) {
+          setAuth({ status: "authenticated", user: session.user });
+          setDefaultCredentials(Boolean(session.default_password));
+        } else if (requiresLogin) {
+          setAuth({ status: "anonymous" });
+        } else {
+          // 未启用登录（兼容旧部署）：没有用户菜单，直接进入应用。
+          setAuth({
+            status: "authenticated",
+            user: { username: "", role: "admin", display_name: "" },
+          });
+        }
+      } catch (e) {
+        if (cancelled) return;
+        if (requiresLogin) {
+          setAuth({ status: "anonymous" });
+        } else {
+          setError(`检查登录状态失败：${(e as Error).message}`);
+          setAuth({
+            status: "authenticated",
+            user: { username: "", role: "admin", display_name: "" },
+          });
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshAgents, refreshConversations]);
+  }, []);
+
+  // 登录后才加载会话列表与智能体；退出登录时清空，避免看到上一个账号的数据。
+  useEffect(() => {
+    if (auth.status !== "authenticated") return;
+    void Promise.all([refreshAgents(), refreshConversations()]);
+  }, [auth.status, refreshAgents, refreshConversations]);
+
+  // 会话过期 / 被服务端吊销时回到登录页（旧部署没有登录页，保持原行为）。
+  useEffect(() => {
+    if (!loginRequired) return;
+    const onUnauthorized = () => {
+      // 会话过期 / 被吊销：清掉上一个账号的对话内容，避免下次登录看到别人的数据。
+      setMessages([]);
+      setConversations([]);
+      setActiveId(null);
+      activeIdRef.current = null;
+      setAuth({ status: "anonymous" });
+    };
+    window.addEventListener("qaapp:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("qaapp:unauthorized", onUnauthorized);
+  }, [loginRequired]);
 
   const workspaceFiles = useWorkspaceFiles({
     activeId,
     activeIdRef,
+    streaming,
     onError: (message) => setError(message),
   });
   const {
@@ -240,12 +304,52 @@ export default function App() {
     copiedDir,
     downloadingPath,
     fileGroups,
-    scheduleWorkspaceRefresh,
     flushWorkspaceRefresh,
     handleCopyDir,
     downloadPath,
     previewPath,
   } = workspaceFiles;
+
+  const handleLoggedIn = useCallback((user: AuthUser, usingDefaultPassword: boolean) => {
+    setAuth({ status: "authenticated", user });
+    setDefaultCredentials(usingDefaultPassword);
+    setAuthNotice("");
+    setError("");
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutRequest();
+    } catch {
+      // 服务端会话可能已失效；前端仍然回到登录页。
+    }
+    setPasswordDialogOpen(false);
+    setMessages([]);
+    setConversations([]);
+    setActiveId(null);
+    activeIdRef.current = null;
+    setWorkspace(null);
+    setDrawerOpen(false);
+    setPreview(null);
+    setAuth({ status: "anonymous" });
+    setAuthNotice("已退出登录");
+    setError("");
+  }, [setDrawerOpen, setPreview, setWorkspace]);
+
+  const handlePasswordChanged = useCallback((message: string) => {
+    setPasswordDialogOpen(false);
+    setMessages([]);
+    setConversations([]);
+    setActiveId(null);
+    activeIdRef.current = null;
+    setWorkspace(null);
+    setDrawerOpen(false);
+    setPreview(null);
+    setAuth({ status: "anonymous" });
+    setAuthNotice(message);
+    setError("");
+  }, [setDrawerOpen, setPreview, setWorkspace]);
+
 
   const attachmentState = useAttachments({
     activeId,
@@ -320,6 +424,7 @@ export default function App() {
     // 已就绪（非 pending）的附件可以独立支撑一次发送：只传文件、不写文字是合法的。
     const ready = attachments.filter((a) => a.parse_status !== "pending");
     // 上传还没结束就发：此时 attachment_id 还没拿到，发出去会丢掉附件。
+    if (auth.status !== "authenticated" || auth.user.role === "viewer") return;
     if (streaming || uploading || (!content && ready.length === 0)) return;
     // 但真正发出去的是**当前全部**附件：用户已经把它放进这一轮了，
     // 不该因为某个还在解析就静默丢掉（pending 只影响"能否单独靠附件发送"）。
@@ -399,14 +504,6 @@ export default function App() {
       reduceEvent(acc, evt);
       const idx = assistantIndexRef.current;
       const type = evt.type as string;
-      // 抽屉打开时，写文件类工具一完成就静默刷新（600ms 防抖），
-      // 不必等整轮结束才看到新生成的脚本 / 产物。
-      if (
-        type === "tool_completed" &&
-        FILE_WRITING_TOOLS.has(String(evt.tool_name ?? ""))
-      ) {
-        scheduleWorkspaceRefresh(conversationId);
-      }
       if (type === "error") {
         setError((evt.text as string) ?? "出错了");
       }
@@ -431,7 +528,7 @@ export default function App() {
       });
       if (type === "turn_complete") {
         turnFilesShown = true;
-        // 任务结束：取消待执行的静默刷新，立即刷新一次「会话文件」列表。
+        // 任务结束：立即刷新一次「会话文件」列表（进行中由定时轮询同步）。
         // 抽屉没打开也更新缓存，用户随后打开即可看到新生成的脚本 / 产物。
         flushWorkspaceRefresh(conversationId);
       }
@@ -471,11 +568,11 @@ export default function App() {
   }, [
     activeId,
     attachments,
+    auth,
     input,
     messages.length,
     refreshConversations,
     flushWorkspaceRefresh,
-    scheduleWorkspaceRefresh,
     selectedAgent,
     streaming,
     updateMessage,
@@ -643,11 +740,33 @@ export default function App() {
     setStepOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  const readOnly = auth.status === "authenticated" && auth.user.role === "viewer";
   // 有文字，或至少有一个"已就绪"的附件，即可发送。
   const canSend =
-    !streaming && !uploading && (input.trim().length > 0 || attachments.some((a) => a.parse_status !== "pending"));
+    !readOnly &&
+    !streaming &&
+    !uploading &&
+    (input.trim().length > 0 || attachments.some((a) => a.parse_status !== "pending"));
   // 流式回答期间（以及上传中）禁止增删附件：附件必须属于下一轮，中途变更会挂错轮次。
-  const attachmentsLocked = streaming || uploading;
+  const attachmentsLocked = streaming || uploading || readOnly;
+
+  if (auth.status === "checking") {
+    return (
+      <div className="auth-loading" role="status">
+        正在检查登录状态…
+      </div>
+    );
+  }
+
+  if (auth.status === "anonymous") {
+    return (
+      <LoginPage
+        defaultCredentials={defaultCredentials}
+        notice={authNotice}
+        onSuccess={handleLoggedIn}
+      />
+    );
+  }
 
   return (
     <div className={`layout${sidebarOpen ? " sidebar-open" : ""}`}>
@@ -661,6 +780,7 @@ export default function App() {
         setConversationFilter={setConversationFilter}
         onNewConversation={() => void handleNewConversation()}
         onOpenConversation={(id) => void openConversation(id)}
+        readOnly={readOnly}
       />
 
       <main className="main">
@@ -679,6 +799,9 @@ export default function App() {
           sidebarOpen={sidebarOpen}
           onOpenSidebar={() => setSidebarOpen(true)}
           onToggleDrawer={() => setDrawerOpen((v) => !v)}
+          user={auth.user.username ? auth.user : null}
+          onLogout={() => void handleLogout()}
+          onChangePassword={() => setPasswordDialogOpen(true)}
         />
         <MessageList
           messages={messages}
@@ -736,6 +859,7 @@ export default function App() {
         streaming={streaming}
         pendingQuestion={Boolean(pendingQuestion)}
         pendingApproval={Boolean(pendingApproval)}
+        readOnly={readOnly}
         textareaRef={textareaRef}
         fileInputRef={fileInputRef}
         onFileInputChange={handleFileInputChange}
@@ -760,6 +884,13 @@ export default function App() {
     />
 
       <PreviewModal preview={preview} onClose={() => setPreview(null)} />
+
+      {passwordDialogOpen ? (
+        <PasswordDialog
+          onClose={() => setPasswordDialogOpen(false)}
+          onChanged={handlePasswordChanged}
+        />
+      ) : null}
     </div>
   );
 }

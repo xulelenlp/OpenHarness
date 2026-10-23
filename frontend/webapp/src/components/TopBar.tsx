@@ -1,5 +1,7 @@
-import { ChevronDownIcon, FolderIcon, MenuIcon } from "../icons";
-import type { AgentInfo, ConversationSummary } from "../types";
+import { useState } from "react";
+
+import { ChevronDownIcon, FolderIcon, MenuIcon, UserIcon } from "../icons";
+import type { AgentInfo, AuthUser, ConversationSummary } from "../types";
 
 interface TopBarProps {
   sessionTitle: string;
@@ -16,6 +18,10 @@ interface TopBarProps {
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   onToggleDrawer: () => void;
+  /** 当前登录用户；未启用登录时为 null。 */
+  user: AuthUser | null;
+  onLogout: () => void;
+  onChangePassword: () => void;
 }
 
 export function TopBar({
@@ -33,7 +39,11 @@ export function TopBar({
   sidebarOpen,
   onOpenSidebar,
   onToggleDrawer,
+  user,
+  onLogout,
+  onChangePassword,
 }: TopBarProps) {
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   return (
         <header className="topbar">
           <button
@@ -119,6 +129,57 @@ export function TopBar({
               <FolderIcon size={17} />
               <span className="icon-btn-label">文件</span>
             </button>
+
+            {user?.username ? (
+              <div className="user-menu">
+                <button
+                  type="button"
+                  className={`icon-btn user-chip${userMenuOpen ? " active" : ""}`}
+                  title={`${user.display_name || user.username}（${user.role === "viewer" ? "只读" : "管理员"}）`}
+                  aria-label="账户菜单"
+                  aria-expanded={userMenuOpen}
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                >
+                  <UserIcon size={16} />
+                  <span className="user-chip-name">{user.display_name || user.username}</span>
+                </button>
+                {userMenuOpen ? (
+                  <>
+                    <div
+                      className="user-menu-backdrop"
+                      aria-hidden="true"
+                      onClick={() => setUserMenuOpen(false)}
+                    />
+                    <div className="user-popover" role="menu">
+                      <div className="user-popover-head">
+                        <strong>{user.display_name || user.username}</strong>
+                        <span>{user.role === "viewer" ? "只读账户" : "管理员"}</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          onChangePassword();
+                        }}
+                      >
+                        修改密码
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          onLogout();
+                        }}
+                      >
+                        退出登录
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </header>
   );

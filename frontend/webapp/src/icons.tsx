@@ -188,6 +188,15 @@ export function FileIcon(props: IconProps) {
   );
 }
 
+export function UserIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="8.2" r="3.6" />
+      <path d="M4.8 20.2c1.3-3.5 4-5.3 7.2-5.3s5.9 1.8 7.2 5.3" />
+    </Icon>
+  );
+}
+
 export function RefreshIcon(props: IconProps) {
   return (
     <Icon {...props}>

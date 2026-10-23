@@ -32,6 +32,7 @@ from qaapp.data.datasources import (
     create_data_runtime,
     load_datasources_config,
 )
+from qaapp.server.auth import AuthManager
 from qaapp.server.logging import configure_logging
 from qaapp.server.runtime import RuntimeMixin
 from qaapp.server.session import ConversationSession, PendingRequest
@@ -64,6 +65,28 @@ class QaWebService(RuntimeMixin):
         # 启动时把实际生效的文件打出来，避免「改了配置没生效」时无从判断。
         self._config_kwargs: dict[str, Any] = {"cwd": self.cwd, "config_dir": config_dir}
         self.webapp = load_webapp_config(workspace, **self._config_kwargs)
+        auth_config = self.webapp.auth
+        users_file = Path(auth_config.users_file).expanduser() if auth_config.users_file else root / "users.json"
+        if not users_file.is_absolute():
+            users_file = Path(self.cwd) / users_file
+        self.auth = AuthManager(
+            enabled=auth_config.enabled,
+            users_file=users_file,
+            session_ttl_seconds=auth_config.session_ttl_seconds,
+            idle_timeout_seconds=auth_config.idle_timeout_seconds,
+            cookie_name=auth_config.cookie_name,
+            max_failed_attempts=auth_config.max_failed_attempts,
+            lockout_seconds=auth_config.lockout_seconds,
+            trust_proxy_headers=auth_config.trust_proxy_headers,
+        )
+        if auth_config.enabled:
+            logger.info(
+                "登录已启用：%d 个账户，会话 %d 秒（空闲 %d 秒），用户文件 %s",
+                self.auth.account_count,
+                auth_config.session_ttl_seconds,
+                auth_config.idle_timeout_seconds,
+                users_file,
+            )
         self.registry = load_agent_registry(workspace, **self._config_kwargs)
         self.dangerous = load_dangerous_actions(workspace, **self._config_kwargs)
         # 数据源：唯一入口 datasources.json；未配置时 data_runtime=None，通用问答不受影响。
@@ -186,16 +209,36 @@ class QaWebService(RuntimeMixin):
         resolved_host = host or self.webapp.host
         resolved_port = port if port is not None else self.webapp.port
 
-        # 安全兜底：默认监听所有网卡且未配 token 时，同网段任何人都能调用对话 API，
-        # 进而触发文件写入 / shell 执行。这里给出醒目告警而不是静默开放。
-        if resolved_host in {"0.0.0.0", "::", ""} and not self.webapp.api_tokens:
+        # 安全兜底：默认监听所有网卡且既没有 token 也没有登录时，同网段任何人都能
+        # 调用对话 API，进而触发文件写入 / shell 执行。这里给出醒目告警而不是静默开放。
+        if (
+            resolved_host in {"0.0.0.0", "::", ""}
+            and not self.webapp.api_tokens
+            and not self.webapp.auth.enabled
+        ):
             logger.warning(
-                "安全告警：服务监听 %s:%s（所有网卡）但 api_tokens 为空——"
+                "安全告警：服务监听 %s:%s（所有网卡）但既未配置 api_tokens 也未启用账户登录——"
                 "同一局域网内任何人都能无需鉴权调用对话 API，并触发文件写入 / shell 执行。"
-                "请设置 api_tokens（见 README §9.1），或把 webapp.json 的 host 改回 127.0.0.1。",
+                "外网部署请开启 webapp.json 的 auth.enabled，或设置 api_tokens。",
                 resolved_host,
                 resolved_port,
             )
+
+        if self.webapp.auth.enabled:
+            if self.auth.default_passwords:
+                logger.warning(
+                    "安全告警：账户仍在使用默认密码（admin / viewer）。"
+                    "公网部署前请登录后在右上角修改密码，或用 QAAPP_DEFAULT_ADMIN_PASSWORD "
+                    "等环境变量在首次生成用户文件时覆盖默认密码。"
+                )
+            if (
+                resolved_host in {"0.0.0.0", "::", ""}
+                and not self.webapp.auth.trust_proxy_headers
+            ):
+                logger.info(
+                    "登录提示：服务直接监听所有网卡。公网部署请放在 HTTPS 反向代理之后，"
+                    "并设置 QAAPP_AUTH_TRUST_PROXY=true，登录 Cookie 才会带 Secure。"
+                )
 
         if (
             self.webapp.api_tokens

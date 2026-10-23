@@ -60,7 +60,10 @@ The reference web client lives in [`frontend/webapp/`](frontend/webapp/).
 Agent definitions, external-agent endpoints, and routing hints all live in
 [`config/backend/agents.json`](config/backend/agents.json); the UI no longer asks users to
 type a Bearer token (the server reads `webapp.json:api_tokens` and issues a
-browser session cookie).
+browser session cookie). A temporary account login is enabled by default: see
+[`docs/qaapp/AUTH.zh-CN.md`](docs/qaapp/AUTH.zh-CN.md) for the default accounts,
+roles, and the checklist for exposing the service to the internet (HTTPS,
+default-password change, rate limiting).
 
 ## Repository layout
 

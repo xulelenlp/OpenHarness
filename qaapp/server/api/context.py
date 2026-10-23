@@ -43,7 +43,16 @@ class ApiContext:
         return bool(CONVERSATION_ID_PATTERN.match(conversation_id or ""))
 
     async def auth(self, request: Request) -> JSONResponse | None:
-        """Bearer token or browser session cookie; ``None`` means allowed."""
+        """鉴权兜底；``None`` 表示放行。
+
+        账户登录开启时以 ``AuthMiddleware`` 为准（它已写入 ``request.state``）；
+        这里再查一次，避免将来新增路由漏挂中间件。旧的 Bearer / 快捷 Cookie
+        逻辑保留给未启用登录的部署。
+        """
+        if getattr(request.state, "auth_user", None) is not None:
+            return None
+        if self.service.webapp.auth.enabled:
+            return error_response(401, "unauthorized", "请先登录")
         tokens = self.service.webapp.api_tokens
         if not tokens:
             return None

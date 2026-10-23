@@ -18,6 +18,8 @@ interface SidebarProps {
   setConversationFilter: (value: string) => void;
   onNewConversation: () => void;
   onOpenConversation: (id: string) => void;
+  /** 只读账户不能新建对话。 */
+  readOnly?: boolean;
 }
 
 export function Sidebar({
@@ -30,6 +32,7 @@ export function Sidebar({
   setConversationFilter,
   onNewConversation,
   onOpenConversation,
+  readOnly = false,
 }: SidebarProps) {
   return (
     <>
@@ -62,6 +65,8 @@ export function Sidebar({
         <button
           type="button"
           className="new-chat"
+          title={readOnly ? "只读账户不能新建对话" : undefined}
+          disabled={readOnly}
           onClick={() => void onNewConversation()}
         >
           <PlusIcon size={16} />

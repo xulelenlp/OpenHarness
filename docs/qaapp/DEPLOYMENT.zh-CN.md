@@ -190,8 +190,14 @@ abcqa webapp stop && abcqa webapp start
 | `host` | `0.0.0.0` | 监听地址。**默认监听所有网卡**，便于局域网内的 APP / 其他设备直接访问；仅需本机访问时改为 `127.0.0.1`。对外暴露务必配 `api_tokens`（见 部署与运维注意事项） |
 | `port` | `8787` | 监听端口 |
 | `provider_profile` | `""` | 空=继承 `active_profile`；非空=指定 profile 名 |
-| `api_tokens` | `[]` | 服务端 token 列表；**空=不鉴权**。非空时，API 客户端用 `Authorization: Bearer <token>`，浏览器用 `browser_auth` 自动建立会话（见 部署与运维注意事项） |
-| `browser_auth.enabled` | `true` | 浏览器免手工 token：`/api/v1/bootstrap` 用 `api_tokens` 的存在性签发 HttpOnly 会话 Cookie。关闭后前端需 `VITE_API_TOKEN` 或反向代理注入 Authorization |
+| `auth.enabled` | `true` | 临时账户登录（TEMP-AUTH）：登录页 + HttpOnly 会话 + 角色 + 限流。正式部署接 OSS/SSO 后应关闭并删除，见 [AUTH.zh-CN.md](AUTH.zh-CN.md) |
+| `auth.users_file` | `""` | 账户文件；空 = `<workspace>/users.json`，首次启动自动生成 admin / viewer |
+| `auth.session_ttl_seconds` | `43200` | 会话绝对有效期（12h） |
+| `auth.idle_timeout_seconds` | `10800` | 空闲超时（3h） |
+| `auth.max_failed_attempts` | `5` | 同一用户名连续失败上限（同 IP 放宽 4 倍） |
+| `auth.trust_proxy_headers` | `false` | 反向代理后置 `true`，用 `X-Forwarded-Proto/For` 判断 HTTPS 与真实 IP |
+| `api_tokens` | `[]` | 可选的服务端 token 列表，供 API / 自动化使用；配置后 `Authorization: Bearer <token>` 等价 admin。浏览器登录不依赖它 |
+| `browser_auth.enabled` | `true` | **仅在未启用账户登录时生效**：`/api/v1/bootstrap` 用 `api_tokens` 签发 HttpOnly 快捷会话 Cookie |
 | `browser_auth.ttl_seconds` | `604800` | 浏览器会话 Cookie 有效期（秒，默认 7 天） |
 | `browser_auth.cookie_name` | `"qaapp_session"` | Cookie 名；同主机多实例时用于区分 |
 | `cors_origins` | `["*"]` | 允许跨域来源；前后端分机 + 浏览器会话 Cookie 时必须写成明确来源（不能是 `"*"`） |
@@ -427,8 +433,9 @@ npm run preview  # 预览构建产物：监听 0.0.0.0:4173
   轨迹事件还原附件芯片。
 - **右侧「会话文件」抽屉**：按 uploads/extracted/scripts/tmp/outputs 分组列出会话目录文件，
   支持下载（fetch + Blob，避免 token 进 URL）、文本预览与复制会话目录绝对路径。
-  **自动同步刷新**：抽屉打开时写文件类工具完成即静默刷新（600ms 防抖），任务结束 /
-  中断时也会刷新；新生成的脚本与产物无需手动关闭重开抽屉。
+  **自动同步刷新**：任务进行中、抽屉打开时每 5 秒静默同步一次，任务结束 / 中断时立即
+  刷新一次；只有文件清单（路径 / 大小 / 修改时间）真的变化才重渲染，避免列表闪动；
+  新生成的脚本与产物无需手动关闭重开抽屉。
 - **过程文件 / 结果文件卡片**：任务全部完成后，每轮回答正文下方先展示「已编辑 N 个文件
   +X -Y」的过程文件卡片（默认展开前 5 个，可看全部 / 折叠），再展示 `outputs/` 下的成果
   文件卡片（Word / PDF / PPT / Excel / Markdown）；结果文件点击卡片或「下载」即可直接
@@ -504,26 +511,19 @@ VITE_API_BASE_URL=https://api.example.com npm run build
 > 因此 `api_tokens` **强烈建议务必配置**；留空等于把「对话 API + 文件写入 + shell 执行」
 > 的能力开放给同网段所有人。仅需本机访问时，把 `host` 改回 `127.0.0.1`。
 
-#### 浏览器：免手工 token（默认）
+#### 浏览器：账户登录（默认，TEMP-AUTH）
 
-页面不再要求用户填 Bearer Token。流程是：
+当前默认开启临时账户登录：登录页 → `POST /api/v1/auth/login` → 服务端下发
+`Set-Cookie: qaapp_auth=<256 位随机 token>; HttpOnly; SameSite=Lax`（HTTPS 下
+带 `Secure`）。所有 `/api/*` 默认拒绝，只有 `/healthz`、`/api/v1/bootstrap` 与
+登录接口开放；`viewer` 角色只允许 GET。
 
-```text
-浏览器 GET /api/v1/bootstrap
-  服务端读取 webapp.json:api_tokens
-  → 签发 Set-Cookie: qaapp_session=<进程内随机值>; HttpOnly; SameSite=Lax
-浏览器后续请求自动携带 Cookie
-```
-
-- Cookie 值**不是 token 本身**，也不进入 localStorage / JS；
-- `api_tokens` 为空时 `auth_required=false`，前端不需要任何凭据；
-- 服务重启后随机值变化，前端收到 401 会自动重建一次会话；
-- 关闭：`webapp.json` 设 `"browser_auth": {"enabled": false}`，此时前端需
-  `VITE_API_TOKEN` 构建，或由反向代理 / SSO 注入 `Authorization`。
-
-> ⚠️ **边界**：能访问 `/api/v1/bootstrap` 的客户端都能建立会话。它是「免手工输入」的
-> 体验优化，**不是访问控制边界**。公网部署必须在网关层做认证/限流，或关闭
-> `browser_auth` 使用严格 Bearer。
+- 默认账户与密码、改密、限流、外网清单见 [AUTH.zh-CN.md](AUTH.zh-CN.md)。
+- 关闭登录：`webapp.json` 设 `"auth": {"enabled": false}`（或
+  `QAAPP_AUTH_ENABLED=false`），后端回到旧的 `api_tokens` / `browser_auth` 模式。
+- 启用登录后 `/api/v1/bootstrap` **不再**免密签发会话；旧的
+  `qaapp_session` 快捷会话仅在 `auth.enabled=false` 时生效。
+- 正式接入 OSS / SSO 时按 AUTH 文档删除临时模块，替换身份解析即可。
 
 #### API 客户端：Bearer
 
@@ -533,13 +533,14 @@ API 客户端（APP / curl / 服务端调用）仍使用：
 Authorization: Bearer <api_tokens 里的任意一个>
 ```
 
-`api_tokens` 非空时，**以下端点仍不鉴权**：`/healthz`、`/api/v1/bootstrap`、
-`/api/v1/agents`、WebSocket `/stream`。其余 API 需要 Cookie 或 Bearer。
+启用登录（或配置 `api_tokens`）后，**只有以下端点不鉴权**：`/healthz`、
+`/api/v1/bootstrap`、`/api/v1/auth/login`。`/api/v1/agents`、WebSocket `/stream`
+及其余 API 都需要登录 Cookie 或 Bearer。
 
-- `api_tokens` 为空 = 完全开放，**仅限本机/可信内网**。
-- 生产对公网暴露时，建议：① 配 `api_tokens`；② 在反向代理（Nginx/Caddy）层对
-  `/api/v1/*`（含 bootstrap/agents/ws）统一加认证/限流；③ 用 TLS；④ 必要时关闭
-  `browser_auth`，只允许网关注入 Authorization。
+- 两者都关闭 = 完全开放，**仅限本机/可信内网**。
+- 生产对公网暴露时：① 开启 `auth.enabled` 并改掉默认密码；② 前置 HTTPS 反向代理
+  并设置 `QAAPP_AUTH_TRUST_PROXY=true`；③ 只在反代层暴露 443；④ 不用的
+  `api_tokens` 清空，保留则按密码级密钥管理。
 
 ### 9.2 会话是「单进程内存 + 磁盘快照」
 
@@ -562,8 +563,9 @@ Authorization: Bearer <api_tokens 里的任意一个>
   - dev 模式下前端的 `/api` 由 Vite 代理转发到 `VITE_API_TARGET`（默认 `127.0.0.1:8787`），
     因此**浏览器无需跨域**；后端在别的机器时按 §8.1 改这个变量即可。
   - 查本机 IP：macOS `ipconfig getifaddr en0`；Linux `hostname -I`。
-- 因为默认已对外监听，**请务必设置 `api_tokens`**：否则同网段任何人都能调用对话
-  API，进而触发文件写入 / shell 执行（见 部署与运维注意事项）。
+- 因为默认已对外监听，**请务必保留账户登录并修改默认密码**
+  （`webapp.json:auth.enabled`，默认账户见 [AUTH.zh-CN.md](AUTH.zh-CN.md)）：
+  否则同网段任何人都能调用对话 API，进而触发文件写入 / shell 执行。
 - 生产建议前置 Nginx/Caddy 做 TLS 终止、反向代理到 `127.0.0.1:8787`，并对 SSE 路径
   关闭缓冲（`proxy_buffering off`）以保持流式。
 - SSE 长连接会占用连接数，注意反向代理的 `proxy_read_timeout` 调大（如 300s+）。

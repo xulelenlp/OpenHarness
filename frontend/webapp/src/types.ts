@@ -170,6 +170,25 @@ export interface ConversationWorkspace {
   truncated: boolean;
 }
 
+export interface AuthUser {
+  username: string;
+  /** admin = 可读写；viewer = 只读（GET）。 */
+  role: "admin" | "viewer";
+  display_name: string;
+}
+
+export type AuthState =
+  | { status: "checking" }
+  | { status: "anonymous" }
+  | { status: "authenticated"; user: AuthUser };
+
+export interface SessionInfo {
+  auth_enabled: boolean;
+  user: AuthUser | null;
+  /** 是否仍有账户在用默认密码（登录页 / 顶栏提示）。 */
+  default_password?: boolean;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

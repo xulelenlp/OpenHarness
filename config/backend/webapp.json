@@ -1,5 +1,5 @@
 {
-  "_comment": "qaapp Web 服务默认配置。环境差异（host/port/token/cors/static_dir/browser_auth）由 config/backend/.env 的 QAAPP_* 覆盖。",
+  "_comment": "qaapp Web 服务默认配置。环境差异（host/port/token/cors/static_dir/browser_auth/auth）由 config/backend/.env 的 QAAPP_* 覆盖。",
   "host": "0.0.0.0",
   "port": 8787,
   "provider_profile": "",
@@ -10,6 +10,16 @@
     "enabled": true,
     "ttl_seconds": 604800,
     "cookie_name": "qaapp_session"
+  },
+  "auth": {
+    "enabled": true,
+    "users_file": "",
+    "session_ttl_seconds": 43200,
+    "idle_timeout_seconds": 10800,
+    "cookie_name": "qaapp_auth",
+    "max_failed_attempts": 5,
+    "lockout_seconds": 300,
+    "trust_proxy_headers": false
   },
   "_cors_comment": "前后端分机部署且使用浏览器会话 Cookie 时，cors_origins 必须写成明确来源（不能是 \"*\"），浏览器才会在跨域请求里带上 Cookie。",
   "cors_origins": [
@@ -57,5 +67,6 @@
     "script_timeout_seconds": 300,
     "script_code_max_chars": 200000,
     "script_output_max_chars": 40000
-  }
+  },
+  "_auth_comment": "临时账户登录（TEMP-AUTH）：正式部署接入 OSS/SSO 后应删除该配置与对应后端模块，改由 OSS 回调校验。users_file 留空 = <workspace>/users.json，首次启动自动生成 admin / viewer 两个账户（默认密码见 docs/qaapp/AUTH.zh-CN.md），请尽快修改。"
 }

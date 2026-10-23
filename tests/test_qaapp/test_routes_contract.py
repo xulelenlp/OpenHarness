@@ -11,6 +11,10 @@ from qaapp.server.api.app import build_app
 EXPECTED_HTTP = {
     ("/healthz", ("GET",)),
     ("/api/v1/bootstrap", ("GET",)),
+    ("/api/v1/auth/login", ("POST",)),
+    ("/api/v1/auth/logout", ("POST",)),
+    ("/api/v1/auth/me", ("GET",)),
+    ("/api/v1/auth/password", ("POST",)),
     ("/api/v1/agents", ("GET",)),
     ("/api/v1/conversations", ("POST",)),
     ("/api/v1/conversations", ("GET",)),
@@ -29,6 +33,13 @@ EXPECTED_WS = {"/api/v1/conversations/{conversation_id}/stream"}
 def _fake_service():
     return SimpleNamespace(
         webapp=SimpleNamespace(cors_origins=["*"], static_dir=""),
+        auth=SimpleNamespace(
+            enabled=False,
+            cookie_name="qaapp_auth",
+            session_ttl_seconds=3600,
+            trust_proxy_headers=False,
+            default_passwords=False,
+        ),
         _browser_session_value="test",
     )
 

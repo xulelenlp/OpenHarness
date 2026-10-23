@@ -19,6 +19,8 @@ interface ComposerProps {
   streaming: boolean;
   pendingQuestion: boolean;
   pendingApproval: boolean;
+  /** 只读账户：可浏览历史 / 文件，但不能发起对话或上传附件。 */
+  readOnly?: boolean;
   textareaRef: RefObject<HTMLTextAreaElement>;
   fileInputRef: RefObject<HTMLInputElement>;
   onFileInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -41,6 +43,7 @@ export function Composer({
   streaming,
   pendingQuestion,
   pendingApproval,
+  readOnly = false,
   textareaRef,
   fileInputRef,
   onFileInputChange,
@@ -77,7 +80,9 @@ export function Composer({
               value={input}
               rows={1}
               placeholder={
-                streaming
+                readOnly
+                  ? "只读账户：可查看历史对话与文件，不能发起新对话"
+                  : streaming
                   ? pendingQuestion
                     ? "请先回答上方的问题…"
                     : pendingApproval
@@ -93,7 +98,7 @@ export function Composer({
                   void onSend();
                 }
               }}
-              disabled={streaming}
+              disabled={streaming || readOnly}
             />
             <div className="composer-toolbar">
               <div className="composer-left">
@@ -102,14 +107,16 @@ export function Composer({
                   className="icon-btn attach-btn"
                   title={`上传附件（最多 ${MAX_FILES} 个：Word / Excel / TXT 等），也可以直接把文件拖进页面`}
                   aria-label="上传附件"
-                  disabled={attachmentsLocked}
+                  disabled={attachmentsLocked || readOnly}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <PaperclipIcon size={16} />
                   <span>{uploading ? "解析中…" : "附件"}</span>
                 </button>
                 <span className="composer-hint">
-                  {pendingQuestion
+                  {readOnly
+                    ? "只读账户"
+                    : pendingQuestion
                     ? "回答上方问题后继续"
                     : pendingApproval
                       ? "确认上方操作后继续"

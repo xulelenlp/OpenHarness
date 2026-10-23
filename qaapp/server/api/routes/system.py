@@ -18,12 +18,20 @@ def build_routes(ctx: ApiContext) -> list[Route]:
         return JSONResponse({"status": "ok", "active_sessions": len(service._sessions)})
 
     async def bootstrap(request: Request):
-        """Issue an HttpOnly browser session cookie when api_tokens are set."""
+        """前端启动信息：是否需要登录 / 是否签发快捷会话 Cookie。"""
         browser_auth = service.webapp.browser_auth
-        auth_required = bool(service.webapp.api_tokens)
-        can_session = bool(auth_required and browser_auth.enabled)
+        account_auth = service.auth
+        login_required = bool(account_auth.enabled)
+        auth_required = bool(service.webapp.api_tokens or login_required)
+        # 启用账户登录后，不再用 bootstrap 免密签发会话，登录必须走 /auth/login。
+        can_session = bool(auth_required and browser_auth.enabled and not login_required)
         payload: dict[str, Any] = {
             "auth_required": auth_required,
+            "login_required": login_required,
+            "auth_enabled": login_required,
+            "default_credentials": (
+                account_auth.default_passwords if login_required else False
+            ),
             "browser_session": can_session,
             "session_ttl_seconds": browser_auth.ttl_seconds if can_session else 0,
         }

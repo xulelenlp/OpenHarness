@@ -1,0 +1,283 @@
+/* 临时账户登录页 / 改密弹窗 / 账户菜单（TEMP-AUTH，接入 OSS 后可整段删除）。 */
+
+.auth-page {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+  background:
+    radial-gradient(1000px 520px at 18% -10%, var(--brand-50), transparent 65%),
+    radial-gradient(900px 480px at 92% 8%, var(--surface-3), transparent 60%),
+    var(--canvas);
+}
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(400px, 100%);
+  padding: 28px 28px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.auth-brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.auth-mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--brand-600);
+  border-radius: 13px;
+  place-items: center;
+}
+
+.auth-brand h1 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--ink);
+}
+
+.auth-brand p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.auth-field input {
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-field input:focus {
+  border-color: var(--brand-500);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brand-50);
+}
+
+.auth-submit {
+  padding: 11px 14px;
+  margin-top: 2px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  background: var(--brand-600);
+  border: 0;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.auth-submit:hover:not(:disabled) {
+  background: var(--brand-700);
+}
+
+.auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.auth-error {
+  padding: 8px 10px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+}
+
+.auth-warning {
+  padding: 8px 10px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid #f0d9ae;
+  border-radius: var(--radius-sm);
+}
+
+.auth-notice {
+  padding: 8px 10px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--brand-700);
+  background: var(--brand-50);
+  border-radius: var(--radius-sm);
+}
+
+.auth-foot {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.auth-loading {
+  display: grid;
+  min-height: 100vh;
+  font-size: 13px;
+  color: var(--muted);
+  place-items: center;
+}
+
+/* ---------- 改密弹窗 ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  padding: 20px;
+  background: rgb(15 23 42 / 42%);
+  place-items: center;
+}
+
+.auth-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 22px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.auth-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--ink);
+}
+
+.auth-dialog .muted {
+  margin: -4px 0 2px;
+  font-size: 12px;
+}
+
+.auth-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.auth-dialog-actions .auth-submit {
+  width: auto;
+  margin: 0;
+  padding: 9px 16px;
+}
+
+.ghost-btn {
+  padding: 9px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.ghost-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+/* ---------- 顶栏账户菜单 ---------- */
+
+.user-menu {
+  position: relative;
+}
+
+.user-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 160px;
+}
+
+.user-chip-name {
+  max-width: 96px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.user-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  width: 184px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+}
+
+.user-popover-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.user-popover-head span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.user-popover button {
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.user-popover button:hover {
+  background: var(--surface-2);
+}

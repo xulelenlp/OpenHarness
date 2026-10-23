@@ -132,6 +132,31 @@ def load_webapp_config(
             }
         )
         updates["browser_auth"] = browser
+
+    auth_updates: dict[str, Any] = {}
+    if env.get("QAAPP_AUTH_ENABLED") is not None:
+        auth_updates["enabled"] = env["QAAPP_AUTH_ENABLED"].strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    if env.get("QAAPP_USERS_FILE"):
+        auth_updates["users_file"] = env["QAAPP_USERS_FILE"].strip()
+    if env.get("QAAPP_SESSION_TTL_SECONDS"):
+        try:
+            auth_updates["session_ttl_seconds"] = int(env["QAAPP_SESSION_TTL_SECONDS"])
+        except ValueError:
+            pass
+    if env.get("QAAPP_AUTH_TRUST_PROXY") is not None:
+        auth_updates["trust_proxy_headers"] = env["QAAPP_AUTH_TRUST_PROXY"].strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    if auth_updates:
+        updates["auth"] = config.auth.model_copy(update=auth_updates)
     return config.model_copy(update=updates) if updates else config
 
 

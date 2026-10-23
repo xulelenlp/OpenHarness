@@ -1,8 +1,10 @@
 import type {
   AgentListResponse,
   AttachmentInfo,
+  AuthUser,
   ConversationSummary,
   ConversationWorkspace,
+  SessionInfo,
 } from "./types";
 
 /**
@@ -31,9 +33,15 @@ const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 const STATIC_TOKEN = (import.meta.env.VITE_API_TOKEN ?? "").trim();
 
 export interface BootstrapInfo {
-  /** 服务端是否配置了 api_tokens（true = 必须鉴权）。 */
+  /** 服务端是否要求鉴权（token 或登录）。 */
   auth_required: boolean;
-  /** 服务端是否已签发浏览器会话 Cookie（true = 前端无需任何凭据）。 */
+  /** 是否启用临时账户登录（TEMP-AUTH）。 */
+  login_required?: boolean;
+  /** 登录是否启用（与 login_required 同义，供前端判断展示登录页）。 */
+  auth_enabled?: boolean;
+  /** 是否仍有账户使用默认密码。 */
+  default_credentials?: boolean;
+  /** 服务端是否已签发浏览器快捷会话 Cookie（登录模式下恒为 false）。 */
   browser_session: boolean;
   /** 会话 Cookie 有效期（秒），0 表示未签发。 */
   session_ttl_seconds?: number;
@@ -65,14 +73,12 @@ export function bootstrap(): Promise<BootstrapInfo> {
   return bootstrapPromise;
 }
 
-/** 会话失效（服务重启 / Cookie 过期）时重建一次，再重试原请求。 */
-async function refreshBrowserSession(): Promise<void> {
-  bootstrapPromise = null;
-  await bootstrap();
-}
-
 function authHeaders(): Record<string, string> {
   return STATIC_TOKEN ? { Authorization: `Bearer ${STATIC_TOKEN}` } : {};
+}
+
+function notifyUnauthorized(): void {
+  window.dispatchEvent(new CustomEvent("qaapp:unauthorized"));
 }
 
 async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
@@ -85,15 +91,79 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
       ...(init?.headers ?? {}),
     },
   });
-  if (resp.status === 401 && retry && !STATIC_TOKEN) {
-    await refreshBrowserSession();
-    return request<T>(path, init, false);
+  if (resp.status === 401) {
+    // 旧的 bootstrap 快捷会话会在这里补一次 Cookie；启用登录后不再自动续期，
+    // 直接通知界面回到登录页（SameSite/HttpOnly，前端拿不到 Cookie 内容）。
+    if (retry && !STATIC_TOKEN) {
+      const info = await bootstrap().catch(() => null);
+      if (!info?.login_required && !info?.auth_enabled) {
+        return request<T>(path, init, false);
+      }
+    }
+    notifyUnauthorized();
   }
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error((body as { message?: string }).message || `HTTP ${resp.status}`);
   }
   return (await resp.json()) as T;
+}
+
+// ---------------------------------------------------------------------------
+// 临时账户登录（TEMP-AUTH）：正式接入 OSS 时替换这一段与 LoginPage。
+// ---------------------------------------------------------------------------
+
+/** 当前登录用户；未登录（401）返回 null，不弹全局错误。 */
+export async function getSession(): Promise<SessionInfo | null> {
+  const resp = await fetch(`${BASE}/api/v1/auth/me`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  if (resp.status === 401) return null;
+  if (!resp.ok) throw await errorFrom(resp);
+  return (await resp.json()) as SessionInfo;
+}
+
+export interface LoginResult {
+  user: AuthUser;
+  expires_in: number;
+  default_password: boolean;
+}
+
+export async function login(username: string, password: string): Promise<LoginResult> {
+  const resp = await fetch(`${BASE}/api/v1/auth/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!resp.ok) throw await errorFrom(resp);
+  return (await resp.json()) as LoginResult;
+}
+
+export async function logout(): Promise<void> {
+  await fetch(`${BASE}/api/v1/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    headers: authHeaders(),
+  });
+}
+
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const resp = await fetch(`${BASE}/api/v1/auth/password`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  });
+  if (!resp.ok) throw await errorFrom(resp);
 }
 
 export function listAgents(): Promise<AgentListResponse> {
@@ -143,6 +213,7 @@ export async function uploadAttachments(
     headers: { ...authHeaders() },
     body: form,
   });
+  if (resp.status === 401) notifyUnauthorized();
   if (!resp.ok) throw await errorFrom(resp);
   return (await resp.json()) as { conversation_id: string; attachments: AttachmentInfo[] };
 }
@@ -309,10 +380,17 @@ export async function streamMessage(
     });
 
   let resp = await doFetch();
-  // 服务重启后进程内会话密钥会变，旧 Cookie 失效 → 重建一次再重试。
+  // 旧部署：服务重启后快捷会话密钥会变，重建一次再重试；
+  // 启用登录后：401 表示会话过期，直接回到登录页。
   if (resp.status === 401 && !STATIC_TOKEN) {
-    await refreshBrowserSession();
-    resp = await doFetch();
+    const info = await bootstrap().catch(() => null);
+    if (!info?.login_required && !info?.auth_enabled) {
+      bootstrapPromise = null;
+      await bootstrap();
+      resp = await doFetch();
+    } else {
+      notifyUnauthorized();
+    }
   }
 
   if (!resp.ok || !resp.body) {

@@ -126,6 +126,41 @@ class BrowserAuthConfig(BaseModel):
         return value
 
 
+class AuthConfig(BaseModel):
+    """``webapp.json:auth`` —— 账户登录（外网部署必须开启）。
+
+    - 账户存 ``users.json``（默认 ``<workspace>/users.json``），只有 scrypt 摘要；
+    - 会话是服务端随机 token + HttpOnly Cookie，支持空闲超时与绝对过期；
+    - ``viewer`` 角色只允许 GET/HEAD，``admin`` 可读写；
+    - 同一用户名 / IP 连续失败 ``max_failed_attempts`` 次后锁定 ``lockout_seconds``。
+    """
+
+    enabled: bool = False
+    #: 账户文件路径；为空 = ``<workspace>/users.json``。
+    users_file: str = ""
+    #: 会话绝对有效期（秒）；默认 12 小时。
+    session_ttl_seconds: int = 12 * 3600
+    #: 空闲超时（秒）；默认 3 小时无操作即失效。
+    idle_timeout_seconds: int = 3 * 3600
+    cookie_name: str = "qaapp_auth"
+    max_failed_attempts: int = 5
+    lockout_seconds: int = 300
+    #: 部署在反向代理后时，用 X-Forwarded-Proto 判断是否加 Secure Cookie。
+    trust_proxy_headers: bool = False
+
+    @field_validator(
+        "session_ttl_seconds",
+        "idle_timeout_seconds",
+        "max_failed_attempts",
+        "lockout_seconds",
+    )
+    @classmethod
+    def _validate_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("auth 的时长 / 次数必须 > 0")
+        return value
+
+
 class WebappConfig(BaseModel):
     """``webapp.json`` —— Web 服务配置。"""
 
@@ -137,8 +172,10 @@ class WebappConfig(BaseModel):
     #: 为空 = 继承 .env 的 OPENHARNESS_PROFILE；否则以环境变量为准。
     provider_profile: str = ""
     api_tokens: list[str] = Field(default_factory=list)
-    #: 浏览器端免手工 token：服务端用 api_tokens 签发 HttpOnly 会话 Cookie。
+    #: 浏览器快捷会话（仅在没有启用账户登录时生效）。
     browser_auth: BrowserAuthConfig = Field(default_factory=BrowserAuthConfig)
+    #: 账户登录：登录页 / 会话 / 角色 / 限流。
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     static_dir: str = ""
     conversation: ConversationPoolConfig = Field(default_factory=ConversationPoolConfig)

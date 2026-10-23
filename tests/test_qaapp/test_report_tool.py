@@ -117,6 +117,116 @@ def test_parse_markdown_table_and_heading():
     assert "heading" in kinds
     assert "table" in kinds
 
+
+def _write_png(path: Path, width: int, height: int) -> None:
+    """写一张纯白 PNG（避免为测试引入 Pillow 依赖）。"""
+    import struct
+    import zlib
+
+    raw = b"".join(b"\x00" + b"\xff\xff\xff" * width for _ in range(height))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(tag + data) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
+
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_is_floating_top_and_bottom(tmp_path: Path):
+    """图片是“上下环绕”浮动对象，且图片段落不额外占一整行高度。"""
+    from docx.oxml.ns import qn
+
+    image_path = tmp_path / "outputs" / "figure.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_png(image_path, 1200, 600)
+
+    result = await WriteReportDocxTool().execute(
+        WriteReportDocxInput(
+            title="图片版式",
+            sections=[
+                ReportSection(
+                    heading="一、图",
+                    paragraphs=["图前正文。"],
+                    images=[{"path": "outputs/figure.png", "caption": "图 1 测试"}],
+                )
+            ],
+        ),
+        _context(tmp_path),
+    )
+    assert result.is_error is False
+    doc = Document(result.metadata["path"])
+
+    anchors = doc.element.body.findall(".//" + qn("wp:anchor"))
+    assert len(anchors) == 1
+    assert doc.element.body.findall(".//" + qn("wp:inline")) == []
+    assert anchors[0].find(qn("wp:wrapTopAndBottom")) is not None
+    # 竖直方向按段落顶部对齐（align=top），避免部分阅读器把图排到前一段之前。
+    position_v = anchors[0].find(qn("wp:positionV"))
+    assert position_v.get("relativeFrom") == "paragraph"
+    assert position_v.find(qn("wp:align")).text == "top"
+
+    picture_paragraph = next(p for p in doc.paragraphs if p._p.findall(".//" + qn("wp:anchor")))
+    # 不能用 29pt 固定行距（会裁切图片），也不能按图高预留行高（会多出大段空行）。
+    assert picture_paragraph.paragraph_format.line_spacing_rule == WD_LINE_SPACING.SINGLE
+    assert picture_paragraph.paragraph_format.space_before.pt == 6
+    assert picture_paragraph.paragraph_format.keep_with_next is True
+
+    p_pr = picture_paragraph._p.find(qn("w:pPr"))
+    assert p_pr.find(qn("w:snapToGrid")).get(qn("w:val")) == "0"
+    assert p_pr.find(qn("w:rPr")).find(qn("w:sz")).get(qn("w:val")) == "2"
+
+    caption = next(p for p in doc.paragraphs if p.text == "图 1 测试")
+    assert caption.paragraph_format.line_spacing_rule == WD_LINE_SPACING.SINGLE
+    assert caption.paragraph_format.space_before.pt == 6
+    texts = [p.text for p in doc.paragraphs]
+    assert "图前正文。" in texts
+
+
+@pytest.mark.asyncio
+async def test_multiple_images_stay_compact(tmp_path: Path):
+    """连续两张图都要用单倍行距 + 1pt 段落标记，不能只处理第一张。"""
+    from docx.oxml.ns import qn
+
+    image_path = tmp_path / "outputs" / "figure.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_png(image_path, 1200, 600)
+
+    result = await WriteReportDocxTool().execute(
+        WriteReportDocxInput(
+            title="多图版式",
+            sections=[
+                ReportSection(
+                    heading="一、两张图",
+                    images=[
+                        {"path": "outputs/figure.png", "caption": "图 1"},
+                        {"path": "outputs/figure.png", "caption": "图 2"},
+                    ],
+                )
+            ],
+        ),
+        _context(tmp_path),
+    )
+    assert result.is_error is False
+    doc = Document(result.metadata["path"])
+
+    picture_paragraphs = [
+        p for p in doc.paragraphs if p._p.findall(".//" + qn("wp:anchor"))
+    ]
+    assert len(picture_paragraphs) == 2
+    for paragraph in picture_paragraphs:
+        assert paragraph.paragraph_format.line_spacing_rule == WD_LINE_SPACING.SINGLE
+        p_pr = paragraph._p.find(qn("w:pPr"))
+        assert p_pr.find(qn("w:rPr")).find(qn("w:sz")).get(qn("w:val")) == "2"
+    captions = [p.text for p in doc.paragraphs if p.text in {"图 1", "图 2"}]
+    assert captions == ["图 1", "图 2"]
+
+
 @pytest.mark.asyncio
 async def test_report_uses_state_grid_official_format(tmp_path: Path):
     """生成的 Word 必须符合国网公文格式（字体/字号/行距/页边距）。"""

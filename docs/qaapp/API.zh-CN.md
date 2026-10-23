@@ -5,8 +5,12 @@
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
 | GET | `/healthz` | **否** | 健康检查 |
-| GET | `/api/v1/bootstrap` | **否** | 浏览器启动引导：返回是否需要鉴权；启用 `browser_auth` 时签发 HttpOnly 会话 Cookie |
-| GET | `/api/v1/agents` | **否** | Agent 列表 |
+| GET | `/api/v1/bootstrap` | **否** | 浏览器启动引导：返回是否需要登录 / 是否签发快捷会话 Cookie；启用账户登录后不再免密签发 |
+| POST | `/api/v1/auth/login` | **否** | 临时账户登录：`{username,password}` → `{user,expires_in,default_password}` + HttpOnly Cookie |
+| POST | `/api/v1/auth/logout` | 是 | 退出登录并吊销会话 |
+| GET | `/api/v1/auth/me` | 是 | 当前登录用户；未登录 401 |
+| POST | `/api/v1/auth/password` | 是 | 修改密码 `{old_password,new_password}`；成功后全部会话失效 |
+| GET | `/api/v1/agents` | 是 | Agent 列表 |
 | POST | `/api/v1/conversations` | 是 | 创建对话 → `{"conversation_id": "..."}` |
 | GET | `/api/v1/conversations` | 是 | 列出对话（`?limit=&offset=`） |
 | GET | `/api/v1/conversations/{id}` | 是 | 对话详情（含 `messages`、`turns`、`pending_approvals`） |
@@ -17,12 +21,13 @@
 | GET | `/api/v1/conversations/{id}/turns/{turn_id}` | 是 | 单轮完整轨迹（含中间执行过程） |
 | POST | `/api/v1/conversations/{id}/approvals/{request_id}` | 是 | 响应审批 |
 | POST | `/api/v1/conversations/{id}/interrupt` | 是 | 中断当前回答 |
-| WS | `/api/v1/conversations/{id}/stream` | **否** | WebSocket 流式订阅 |
+| WS | `/api/v1/conversations/{id}/stream` | 是 | WebSocket 流式订阅（与 HTTP 共用登录 Cookie） |
 
-> 「鉴权」列 = 配置了 `api_tokens` 之后是否要求凭据。浏览器默认走 `browser_auth`
-> 的 HttpOnly 会话 Cookie（用户无需手填 token）；API 客户端仍用
-> `Authorization: Bearer <token>`。`/healthz`、`/api/v1/bootstrap`、`/api/v1/agents`
-> 与 WebSocket 在开启鉴权后仍然开放，见 §9.1。
+> 「鉴权」列 = 启用账户登录（`webapp.json:auth.enabled`）或配置 `api_tokens`
+> 后是否要求凭据。浏览器登录后使用 HttpOnly 会话 Cookie；API 客户端仍可用
+> `Authorization: Bearer <token>`（等价 admin）。`/healthz` 与
+> `/api/v1/bootstrap` 始终开放，`/api/v1/auth/login` 仅登录时开放；其余 `/api/*`
+> 默认拒绝。默认账户、限流与外网部署见 [AUTH.zh-CN.md](AUTH.zh-CN.md)。
 
 **发送消息**：
 
