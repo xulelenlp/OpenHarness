@@ -35,16 +35,15 @@ description: 查询客户业务库（MySQL）的指标、维度、机构、天�
 | `forecast` | 读取 Redis 预测/特征缓存（辅助） | `start="2026-09-30"` |
 | `sql` | 受控只读 SQL（默认关闭） | 仅高级场景 |
 
-## 取数之后（分析场景，必做）
+## 取数之后（分析场景）
 
-单值查询到此结束。若用户要的是“分析/研判/专题/报告”，取数只是输入，下一步必须补外部信息（完整做法见 `business-analysis` 技能 Phase 3）：
+单值查询到此结束。若要出分析/报告，先校验再筛因素（完整做法见 `business-analysis` 五步工作流）：
 
-- `db_query(operation="news")`：查库内政策/企业事件，对齐业务口径。
-- `web_search` / `web_fetch`：查公开政策原文、行业与宏观数据、企业动态、舆情，以及**节假日安排、气象气候、重大外部事件**；每次查询加地域、时间、信息类型词，关键条目打开原文核对。
-- 气温/天气优先用业务库天气表（`zhss_result_data_tqyb_mx`）与指标日期对齐；台风路径、气候监测、节假日安排以官方公开信息为准。
-- 每条外部信息记“机构 + 发布日期 + 链接”，落 `outputs/external/sources.csv` 与事实台账 `facts.csv`（编号/事实/来源/核验状态），正文事实标 `[S1]`/`[D1]`。
-- 数字仍以 `db_query` 为准；外部信息只用于解释、对照与前瞻，不能替代取数；没有来源的事实不得写进结论。
-- 检索失败或无外网：说明原因，用 `news` + `knowledge-qa` 兜底，并在报告局限性中披露。
+- **校验四查**：口径、时点、勾稽、异常；错误/恒定/缺失的数据直接剔除或换可靠口径，不写进报告。
+- **筛影响因素**：围绕主题看政策、节假日、气象、重大事件、价格、客户/项目、基数；只有“时点吻合、方向一致、量级可解释、来源可靠”四项都成立才写入报告，1–3 个即可。
+- `db_query(operation="news")` 查库内政策/企业事件；需要核实公开信息时用 `web_search` / `web_fetch` 打开原文；无法核实、来源存疑的一律不用。
+- 气温/天气优先用业务库天气表（`zhss_result_data_tqyb_mx`）与指标日期对齐；节假日安排以官方通知为准。
+- 数字以 `db_query` 为准；不写“情景假设”，不写分析过程。
 
 ## 表路由规则（按优先级）
 
@@ -82,9 +81,10 @@ description: 查询客户业务库（MySQL）的指标、维度、机构、天�
 
 ## 数据质量处理
 
-- `high`：`constant_series`、`no_data` → 必须在回答/报告披露，不得写趋势。
-- `warn`：`stale_data/period_fallback/table_fallback/dim_fallback/org_fallback/outlier/missing_ratio/unit_mismatch/duplicate_rows` → 说明口径或限制。
-- 任何数字都带：指标 + 机构 + 周期 + 日期 + 单位 + 来源表/SQL。
+- `high`（`constant_series`、`no_data`）：不得用于分析结论与报告；问答场景说明“暂无可用数据/数据异常”。
+- `warn`（fallback/outlier/missing/unit 等）：内部记录并判断是否影响结论；影响则换口径或剔除，不影响则正常使用。
+- 报告不设“数据质量”章节；校验与剔除记录留在内部底稿。
+- 任何数字都带：指标 + 机构 + 周期 + 日期 + 单位 + 来源表/SQL（内部可追溯；报告按需在表下注明来源）。
 
 ## 示例
 
@@ -98,8 +98,9 @@ description: 查询客户业务库（MySQL）的指标、维度、机构、天�
 → 1.1044 亿千瓦时，同比 -13.85%
 
 用户：分析福建2026年9月售电量
-→ 先 db_query(operation="outline", scenario="sales", theme=...)，确认大纲
+→ db_query(operation="outline", scenario="sales", theme=...) 生成分析主线
 → db_query(operation="explore", indicators=["售电量"], org="福建", start="2025-10", end="2026-09")
-→ 取数后 web_search 查“福建 2026 售电量 增速 原因 / 电价政策 / 高温台风”，web_fetch 核对原文
-→ 再 consult_agents / run_script / write_report_docx
+→ 校验四查；剔除异常/恒定/缺失数据
+→ 筛影响因素（时点/方向/量级/来源），只保留 1–3 个有影响的
+→ run_script 出图表 → write_report_docx
 ```

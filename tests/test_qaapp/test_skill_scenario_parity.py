@@ -28,3 +28,12 @@ def test_skill_table_covers_runtime_scenarios():
     assert _skill_scenario_keys() == set(SCENARIOS), (
         "skills/business-analysis/SKILL.md 的场景表与 qaapp.agents.scenarios.SCENARIOS 不一致"
     )
+
+
+def test_scenario_report_sections_avoid_forbidden_chapters():
+    """正式报告不设外部环境/数据质量/情景章节，避免把过程或不确定内容写进报告。"""
+    forbidden = {"外部环境", "数据质量", "情景分析", "情景假设"}
+    for key, scenario in SCENARIOS.items():
+        assert "摘要" in scenario.report_sections, key
+        overlap = forbidden.intersection(scenario.report_sections)
+        assert not overlap, f"{key} 的报告章节包含不应出现的 {overlap}"
