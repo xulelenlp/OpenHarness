@@ -35,6 +35,16 @@ description: 查询客户业务库（MySQL）的指标、维度、机构、天�
 | `forecast` | 读取 Redis 预测/特征缓存（辅助） | `start="2026-09-30"` |
 | `sql` | 受控只读 SQL（默认关闭） | 仅高级场景 |
 
+## 取数之后（分析场景，必做）
+
+单值查询到此结束。若用户要的是“分析/研判/专题/报告”，取数只是输入，下一步必须补外部信息（完整做法见 `business-analysis` 技能 Phase 3）：
+
+- `db_query(operation="news")`：查库内政策/企业事件，对齐业务口径。
+- `web_search` / `web_fetch`：查公开政策原文、行业与宏观数据、企业动态、天气与舆情；每次查询加地域、时间、信息类型词，关键条目打开原文核对。
+- 每条外部信息记“机构 + 发布日期 + 链接”，落 `outputs/external/sources.csv`，并与 `findings.md` 的问题点做交叉验证。
+- 数字仍以 `db_query` 为准；外部信息只用于解释、对照与前瞻，不能替代取数。
+- 检索失败或无外网：说明原因，用 `news` + `knowledge-qa` 兜底，并在报告局限性中披露。
+
 ## 表路由规则（按优先级）
 
 1. **特殊表**
@@ -89,5 +99,6 @@ description: 查询客户业务库（MySQL）的指标、维度、机构、天�
 用户：分析福建2026年9月售电量
 → 先 db_query(operation="outline", scenario="sales", theme=...)，确认大纲
 → db_query(operation="explore", indicators=["售电量"], org="福建", start="2025-10", end="2026-09")
+→ 取数后 web_search 查“福建 2026 售电量 增速 原因 / 电价政策 / 高温台风”，web_fetch 核对原文
 → 再 consult_agents / run_script / write_report_docx
 ```

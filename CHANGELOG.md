@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Changed
 
+- **业务分析技能升级为五阶段（新增互联网外部信息检索）**：`skills/business-analysis/SKILL.md` 在“取数完成”与“深入剖析”之间新增 **Phase 3 外部信息检索**——按 `outline.scenario.external_sources` 与 `findings.md` 的问题点，用 `web_search` / `web_fetch` 主动检索政策、行业、企业、宏观、天气与舆情（政策必查），按 A/B/C/D 分级采信，结果落 `outputs/external/sources.csv`，并要求至少 1 条外部信息与数据问题形成交叉验证；报告新增“外部环境与政策背景”“外部信息与数据交叉验证”“外部来源清单”。同步更新 `database-query` 技能、能力清单（`qaapp/agents/capabilities.py`）、`config/backend/agents.json` 系统提示、文档与测试（四阶段 → 五阶段）。
 - **`.env` 密码 / Token 编码**：新增 `scripts/env_crypt.py`（`ENC[...]` 编解码，兼容既有 `DB_PASSWORD=ENC[...]` 格式），`qaapp` / `abc` / `abcag` 读取 `.env` 时自动还原；覆盖 `DB_PASSWORD` / `REDIS_PASSWORD` / `*_API_KEY` / `*_API_TOKENS` 等变量，空值跳过，无需密钥文件。
 - **配置合并（单文件）**：删除 `config/backend/settings.json`，模型 / 凭据 / 品牌 / 运行参数全部收敛到 `config/backend/.env`；新增 `OPENHARNESS_AUTH_SOURCE`、`OPENHARNESS_API_KEY`、`OPENHARNESS_ALLOW_PROJECT_PLUGINS`、`OPENHARNESS_PROJECT_SKILL_DIRS` 等环境变量支持，并修复 env 覆盖会被 `materialize_active_profile()` 回退的问题。`abc` CLI 与 Web 服务现在共用同一份 `.env`；高级结构化配置（权限 / 沙箱 / MCP / hooks）仍可通过用户级 `~/.openharness/settings.json` 维护。
 - **鉴权错误不再终止服务**：单轮执行里的 `SystemExit`（如模型凭据未配置）降级为 SSE `error` 事件 + `turn_complete`；鉴权报错会提示 `auth_source` 的正确写法并对密钥脱敏。

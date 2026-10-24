@@ -61,12 +61,12 @@ abcqa config             # 配置文件（webapp/agents/dangerous/datasources）
 项目内新增三个技能，统一放在仓库根目录 **`skills/`**（随 git 维护，不再放 `.openharness/skills/`）：
 
 - `skills/database-query/`：取数细节、表路由、数据坑；
-- `skills/business-analysis/`：10 类业务场景、四阶段、提纲/EDA/深挖/报告模板；
+- `skills/business-analysis/`：10 类业务场景、五阶段（含取数后的互联网外部信息检索）、提纲/EDA/深挖/报告模板；
 - `skills/multi-agent-orchestration/`：三智能体提示词模板、并行/顺序、综合检查表。
 
 `config/backend/.env` 的 `OPENHARNESS_PROJECT_SKILL_DIRS` 已把 `skills` 放到最后（同层同名时优先级最高）；新增/修改技能只需改这个目录，下一轮自动生效，不需要改 Python 代码。
 
-通用助手仍是默认 Agent，原有开放任务能力不变；只有任务明确是业务分析/报告时才加载 `business-analysis`，不强制四阶段。
+通用助手仍是默认 Agent，原有开放任务能力不变；只有任务明确是业务分析/报告时才加载 `business-analysis`，不强制五阶段。取数完成后，`business-analysis` 的 Phase 3 会用 `web_search` / `web_fetch` 主动检索政策、行业、企业、天气与舆情，作为报告的背景与交叉验证来源。
 
 ### 12.4 依赖
 

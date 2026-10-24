@@ -544,7 +544,7 @@ QaWebService
 ### 13.3 通用能力保留
 
 - `general` 仍是默认 Agent，原系统提示词/直接回答/写作/代码/文件/Web/MCP/子智能体能力保持不变；
-- 四阶段业务分析放在 `business-analysis` 技能中，仅当任务明确是业务分析/报告时按需加载；
+- 五阶段业务分析放在 `business-analysis` 技能中，仅当任务明确是业务分析/报告时按需加载；其中 Phase 3 在取数完成后强制做一轮互联网外部信息检索（政策/行业/企业/天气/舆情），并记录来源用于交叉验证；
 - 项目技能统一放在仓库根 `skills/`（随 git 维护），通过 `config/backend/.env` 的 `OPENHARNESS_PROJECT_SKILL_DIRS` + `build_runtime(extra_skill_dirs=...)` 加载；不再放 `.openharness/skills/`；
 - 能力清单第一条仍是“能直接回答就直接回答”，不把业务分析设为默认；
 - 新增测试覆盖“写邮件/解释概念”等开放任务不触发 DB/分析流程。
