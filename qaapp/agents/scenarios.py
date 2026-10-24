@@ -51,7 +51,7 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         indicator_keywords=("营业收入", "利润总额", "售电量", "代理购电价格", "平均到户用电价格", "电费回收率", "预收电费"),
         dimensions=("时间", "地市", "产业"),
         required_analyses=("目标完成度", "同比环比", "结构变化", "地市对比", "异常识别"),
-        external_sources=("政策", "节假日", "气象气候", "能源价格", "重大事件"),
+        external_sources=("政策", "节假日", "气象气候", "能源价格", "重大事件", "国外政策事件"),
         report_sections=("摘要", "总体经营情况", "售电量与电价", "电费回收", "问题诊断", "成因分析", "建议"),
     ),
     "sales": AnalysisScenario(
@@ -63,7 +63,7 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         indicator_keywords=("售电量", "全社会用电量", "分产业售电量", "业扩净增容量", "最高用电负荷", "发电量"),
         dimensions=("时间", "地市", "产业", "行业", "客户类型", "气温"),
         required_analyses=("趋势", "同比环比", "九地市对比", "产业/行业贡献度", "目标完成", "气温/负荷相关性", "政策/企业事件"),
-        external_sources=("新能源政策", "电价政策", "地方重大企业", "节假日", "气温与气候", "重大事件"),
+        external_sources=("新能源政策", "电价政策", "地方重大企业", "节假日", "气温与气候", "重大事件", "国外政策事件"),
         report_sections=("摘要", "总体售电情况", "时间趋势", "区域对比", "产业/行业结构", "问题诊断", "成因分析", "趋势与建议"),
     ),
     "recovery": AnalysisScenario(
@@ -123,7 +123,7 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         indicator_keywords=("新能源发电量", "全口径发电装机容量", "代理购电价格", "市场化直接交易购电价格", "发电量"),
         dimensions=("时间", "地市", "能源类型"),
         required_analyses=("政策时间线", "影响路径", "数据验证", "趋势研判"),
-        external_sources=("新能源政策", "电价政策", "地方企业", "重大事件"),
+        external_sources=("新能源政策", "电价政策", "地方企业", "重大事件", "国外政策事件"),
         report_sections=("摘要", "政策背景", "新能源发展", "电价/市场", "影响分析", "建议"),
     ),
     "region": AnalysisScenario(
@@ -147,7 +147,7 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         indicator_keywords=("售电量预测", "预估售电量", "营业收入", "利润总额", "售电量"),
         dimensions=("时间", "地市"),
         required_analyses=("预测偏差", "目标缺口", "趋势研判", "建议"),
-        external_sources=("政策", "经济环境", "天气", "节假日"),
+        external_sources=("政策", "经济环境", "天气", "节假日", "国外政策事件"),
         report_sections=("摘要", "目标完成", "预测与偏差", "趋势研判", "建议"),
     ),
     "custom": AnalysisScenario(

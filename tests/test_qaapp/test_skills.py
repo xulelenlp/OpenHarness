@@ -33,7 +33,9 @@ async def test_skill_tool_loads_from_tracked_folder():
     )
     result = await SkillTool().execute(SkillToolInput(name="business-analysis"), context)
     assert result.is_error is False
-    assert "五步" in result.output
+    assert "六步" in result.output
+    assert "公网信息" in result.output
+    assert "国外政策事件" in result.output
     assert "影响因素筛选" in result.output
     assert "不确定的不写" in result.output
     assert "国网公文" in result.output
