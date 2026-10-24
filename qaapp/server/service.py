@@ -35,6 +35,7 @@ from qaapp.data.datasources import (
 from qaapp.server.auth import AuthManager
 from qaapp.server.logging import configure_logging
 from qaapp.server.runtime import RuntimeMixin
+from qaapp.server.runtime.approvals import public_pending_payload
 from qaapp.server.session import ConversationSession, PendingRequest
 from qaapp.tools.dangerous import DangerousActionGate
 from qaapp.workspace.trace import ConversationTraceStore
@@ -175,6 +176,65 @@ class QaWebService(RuntimeMixin):
             "created_at": snapshot.get("created_at"),
             "messages": snapshot.get("messages", []),
             "turns": turns,
+        }
+
+    # ------------------------------------------------------------------
+    # 审批状态同步（不依赖某一条 SSE 连接是否还活着）
+    # ------------------------------------------------------------------
+
+    def approval_snapshot(self) -> dict:
+        """返回所有「内存中仍有活动回合」的会话的待审批与运行状态。
+
+        页面刷新会断掉 ``POST /messages`` 的 SSE，但服务端的回合还在跑；
+        前端靠这个轻量快照（每几秒一次）恢复审批卡片、角标与断线跟进。
+        """
+        approvals: list[dict] = []
+        running: list[dict] = []
+        for conversation_id, session in list(self._sessions.items()):
+            current_turn = session.current_turn or {}
+            if session.busy:
+                running.append(
+                    {
+                        "conversation_id": conversation_id,
+                        "turn_id": current_turn.get("turn_id"),
+                        "message_id": current_turn.get("message_id"),
+                        "started_at": session.busy_since,
+                    }
+                )
+            for request in session.pending.values():
+                approvals.append(
+                    {
+                        "conversation_id": conversation_id,
+                        "request_id": request.request_id,
+                        "kind": request.kind,
+                        "payload": public_pending_payload(request.payload),
+                        "created_at": request.created_at,
+                        "turn_id": current_turn.get("turn_id"),
+                    }
+                )
+        approvals.sort(key=lambda item: item.get("created_at") or 0)
+        running.sort(key=lambda item: item.get("started_at") or 0)
+        return {"approvals": approvals[:50], "running": running[:50]}
+
+    def turn_tail(self, conversation_id: str, turn_id: str, after: int = 0) -> dict:
+        """按游标增量读取一轮的轨迹，并给出该轮是否仍在运行。"""
+        events, total, reset = self.trace_store.load_trace_tail(
+            conversation_id, turn_id, after
+        )
+        session = self._sessions.get(conversation_id)
+        running_turn = (
+            (session.current_turn or {}).get("turn_id")
+            if session is not None and session.busy
+            else None
+        )
+        return {
+            "conversation_id": conversation_id,
+            "turn_id": turn_id,
+            "events": events,
+            "total": total,
+            "after": after,
+            "reset": reset,
+            "finished": running_turn != turn_id,
         }
 
     # ------------------------------------------------------------------

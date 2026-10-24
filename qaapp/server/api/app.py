@@ -15,8 +15,8 @@ from starlette.routing import Mount, Route
 
 from qaapp.server.api.auth_middleware import AuthMiddleware, SecurityHeadersMiddleware
 from qaapp.server.api.context import ApiContext
+from qaapp.server.api.routes import approvals, conversations, files, messages, system
 from qaapp.server.api.routes import auth as auth_routes
-from qaapp.server.api.routes import conversations, files, messages, system
 
 __all__ = ["build_app"]
 
@@ -43,6 +43,7 @@ def build_app(service) -> Starlette:
     routes.extend(system.build_routes(ctx))
     routes.extend(auth_routes.build_routes(ctx))
     routes.extend(conversations.build_routes(ctx))
+    routes.extend(approvals.build_routes(ctx))
     routes.extend(messages.build_routes(ctx))
     routes.extend(files.build_routes(ctx))
 

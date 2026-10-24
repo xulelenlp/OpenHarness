@@ -13,12 +13,13 @@
 | GET | `/api/v1/agents` | 是 | Agent 列表 |
 | POST | `/api/v1/conversations` | 是 | 创建对话 → `{"conversation_id": "..."}` |
 | GET | `/api/v1/conversations` | 是 | 列出对话（`?limit=&offset=`） |
-| GET | `/api/v1/conversations/{id}` | 是 | 对话详情（含 `messages`、`turns`、`pending_approvals`） |
+| GET | `/api/v1/conversations/{id}` | 是 | 对话详情（含 `messages`、`turns`、`pending_approvals`、`busy`、`turn_id`） |
 | POST | `/api/v1/conversations/{id}/messages` | 是 | 发送消息（`stream:true` 走 SSE）；body 可带 `attachment_ids` |
 | POST | `/api/v1/conversations/{id}/attachments` | 是 | 上传附件（multipart，字段名 `files`，1..2 个），服务端立即解析 |
 | GET | `/api/v1/conversations/{id}/workspace` | 是 | 列出会话临时目录文件（uploads/extracted/scripts/tmp/outputs） |
 | GET | `/api/v1/conversations/{id}/files/{相对路径}` | 是 | 下载会话目录内的文件（越界路径一律 404） |
-| GET | `/api/v1/conversations/{id}/turns/{turn_id}` | 是 | 单轮完整轨迹（含中间执行过程） |
+| GET | `/api/v1/conversations/{id}/turns/{turn_id}` | 是 | 单轮轨迹（含中间执行过程）；`?after=N` 按游标增量返回 |
+| GET | `/api/v1/approvals` | 是 | 所有活动会话的待审批 + 运行中回合（与 SSE 连接无关，供轮询恢复） |
 | POST | `/api/v1/conversations/{id}/approvals/{request_id}` | 是 | 响应审批 |
 | POST | `/api/v1/conversations/{id}/interrupt` | 是 | 中断当前回答 |
 | WS | `/api/v1/conversations/{id}/stream` | 是 | WebSocket 流式订阅（与 HTTP 共用登录 Cookie） |
@@ -144,6 +145,51 @@ POST /api/v1/conversations/{id}/approvals/{request_id}
 ```
 
 超时为 `decision: "timeout"`、`reply: ""`；问题会返回 `(no response)` 给模型。
+
+**审批状态同步（不依赖 SSE 连接）**
+
+`approval_required` 只随发起该轮的 `POST /messages` 响应流下发；页面刷新、切换会话或网络
+中断后连接就没有了，但服务端那一轮还在跑。前端因此用两条与连接无关的通道恢复状态：
+
+```jsonc
+// GET /api/v1/approvals —— 每 4s 轮询
+{
+  "approvals": [
+    { "conversation_id": "de4391e72be3", "request_id": "23a9ffc30191",
+      "kind": "permission", "payload": { "tool": "write_report_docx" },
+      "created_at": 1792842686.68, "turn_id": "c47363f8df85" }
+  ],
+  "running": [
+    { "conversation_id": "de4391e72be3", "turn_id": "c47363f8df85",
+      "message_id": "30e030db752e", "started_at": 1792842333.8 }
+  ]
+}
+```
+
+- `approvals[].payload` 裁掉了大字段 `input`（完整入参仍随 SSE / 轨迹下发）；
+- `running` 表示服务端此刻仍在执行的回合。前端对「当前会话 + 仍在运行 + 本地没有实时流」
+  的情况，按轨迹游标增量补事件；
+- 快照只覆盖**本进程内存中的会话**。服务重启后以对话详情里的 `pending_approvals`
+  和轨迹为准，残留的等待卡片会被标成「已失效（未处理）」。
+
+**按游标增量读取轨迹**：
+
+```bash
+GET /api/v1/conversations/{id}/turns/{turn_id}?after=1234
+```
+
+```jsonc
+{
+  "events": [ /* 第 1234 条之后的事件 */ ],
+  "total": 1300,
+  "after": 1234,
+  "reset": false,   // true = after 超出轨迹长度，调用方应整体重载
+  "finished": false // true = 该轮已不在运行
+}
+```
+
+前端在页面刷新 / 切走再回来后用它继续跟进审批与执行进度（≤4s 粒度），
+不需要重新发起一轮，也不会重复触发模型调用。
 
 ---
 

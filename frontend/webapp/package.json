@@ -11,7 +11,8 @@
     "check:attachments": "node scripts/check-attachments.mjs",
     "check:turn-files": "node scripts/check-turn-files.mjs",
     "check:questions": "node scripts/check-questions.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:approvals": "node scripts/check-approvals.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

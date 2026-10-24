@@ -14,6 +14,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from qaapp.agents.router import AgentNotFoundError, NoDefaultAgentError
 from qaapp.server.api.context import ApiContext
+from qaapp.server.runtime.events import sse_turn_stream
 from qaapp.workspace.files import AttachmentError, AttachmentNotFound
 
 
@@ -69,6 +70,12 @@ def build_routes(ctx: ApiContext) -> list[Route]:
         def _consume_exception(t: asyncio.Task) -> None:
             if not t.cancelled():
                 t.exception()  # 已通过 error 事件暴露，这里仅避免 never retrieved 告警
+            # 兜底：任务在 run_turn 的 try 之前就被取消等极端情况下，也别把会话
+            # 永久卡在 busy 上。正常路径由 run_turn 的 finally 收尾。
+            if session.current_task is t:
+                session.current_task = None
+                session.busy = False
+                session.busy_since = None
 
         task.add_done_callback(_consume_exception)
 
@@ -78,28 +85,24 @@ def build_routes(ctx: ApiContext) -> list[Route]:
             except (AgentNotFoundError, NoDefaultAgentError) as exc:
                 return ctx.error(404, "agent_not_found", str(exc))
             finally:
-                session.subscribers.remove(queue)
-                session.busy = False
-                session.current_task = None
+                with contextlib.suppress(ValueError):
+                    session.subscribers.remove(queue)
             turn_ids = service.trace_store.list_turn_ids(conversation_id)
             turn_id = turn_ids[-1] if turn_ids else ""
             return JSONResponse({"conversation_id": conversation_id, "turn_id": turn_id})
 
         async def gen():
+            # 订阅生命周期（含客户端断开时退订）由 sse_turn_stream 负责；
+            # 这里不再动 busy / current_task，否则刷新页面会让后台回合“假结束”。
+            stream = sse_turn_stream(session, queue)
             try:
-                while True:
-                    event = await queue.get()
-                    event_type = event.get("type")
+                async for event in stream:
                     yield {
-                        "event": event_type or "message",
+                        "event": event.get("type") or "message",
                         "data": json.dumps(event, ensure_ascii=False, default=str),
                     }
-                    if event_type == "turn_complete":
-                        break
             finally:
-                session.subscribers.remove(queue)
-                session.busy = False
-                session.current_task = None
+                await stream.aclose()
 
         # SSE 帧分隔符显式指定为 "\n"：sse-starlette 默认用 "\r\n"，
         # 前端按 "\n\n" 分帧会永远匹配不到。

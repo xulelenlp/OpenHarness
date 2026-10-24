@@ -210,3 +210,18 @@
 .sidebar-backdrop {
   display: none;
 }
+
+/* 后台会话有待审批：给出一个安静但显眼的标记 */
+.conversation-item.waiting {
+  border-color: #ecd9b6;
+  background: var(--warn-soft);
+}
+
+.conv-waiting {
+  padding: 0 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--warn);
+  background: #fbeccd;
+  border-radius: 999px;
+}

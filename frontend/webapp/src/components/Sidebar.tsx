@@ -18,6 +18,8 @@ interface SidebarProps {
   setConversationFilter: (value: string) => void;
   onNewConversation: () => void;
   onOpenConversation: (id: string) => void;
+  /** 会话 id → 待审批数量：后台会话也在等确认时给出可见提醒。 */
+  pendingApprovalCounts?: Record<string, number>;
   /** 只读账户不能新建对话。 */
   readOnly?: boolean;
 }
@@ -32,6 +34,7 @@ export function Sidebar({
   setConversationFilter,
   onNewConversation,
   onOpenConversation,
+  pendingApprovalCounts = {},
   readOnly = false,
 }: SidebarProps) {
   return (
@@ -98,18 +101,26 @@ export function Sidebar({
           {filteredConversations.map((c) => {
             const title = truncateText(c.summary || c.preview || "新对话", 30) || "新对话";
             const time = conversationTime(c.created_at);
+            const waiting = pendingApprovalCounts[c.conversation_id] ?? 0;
             return (
               <button
                 type="button"
                 key={c.conversation_id}
-                className={`conversation-item ${c.conversation_id === activeId ? "active" : ""}`}
+                className={`conversation-item ${c.conversation_id === activeId ? "active" : ""}${waiting > 0 ? " waiting" : ""}`}
                 onClick={() => void onOpenConversation(c.conversation_id)}
-                title={c.summary || c.preview || c.conversation_id}
+                title={
+                  waiting > 0
+                    ? `有 ${waiting} 个操作等待你的确认：${c.summary || c.preview || c.conversation_id}`
+                    : c.summary || c.preview || c.conversation_id
+                }
               >
                 <span className="conv-title">{title}</span>
                 <span className="conv-meta">
                   <span>#{shortId(c.conversation_id)}</span>
                   {c.message_count ? <span>{c.message_count} 条</span> : null}
+                  {waiting > 0 ? (
+                    <span className="conv-waiting">待审批 {waiting}</span>
+                  ) : null}
                   {time ? <span>{time}</span> : null}
                 </span>
               </button>

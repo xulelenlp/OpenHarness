@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ## [Unreleased]
 
+### Fixed
+
+- **审批卡片刷新后才可见、随后 300s 超时**：`approval_required` 过去只随发起该轮的 SSE 响应下发，页面刷新 / 切换会话后连接断开，服务端那一轮仍在跑却再也无法把审批送到界面（线上 `de4391e72be3` 的 `write_report_docx` 因此等满 300s 被拒；访问日志里还有一次 `POST /conversations/3ecff8bc3744/approvals/23a9ffc30191 → 404`）。新增 `GET /api/v1/approvals`（内存中活动会话的待审批 + 运行中回合，`payload` 裁掉大字段 `input`）与 `GET /conversations/{id}/turns/{turn_id}?after=N` 轨迹游标；前端每 4s 同步待审批、给后台会话加「待审批」角标与轻提示，并在刷新/切走后按游标继续跟进执行进度（≤4s 粒度）；对话详情补充 `busy` / `turn_id`。
+- **审批提交发错会话**：`handleApproval` 改用 `request_id` 所属会话而不是当前 `activeId`；`openConversation` 增加过期响应保护，避免快速切换时把上一个会话的消息/审批渲染到当前会话下。
+- **断流把会话标成空闲**：SSE 生成器 `finally` 不再清 `busy` / `current_task`，回合生命周期统一由 `run_turn` 收尾；浏览器刷新只退订，`interrupt` 仍然可用，也不会在同一会话里并发起第二轮。
+- **审批超时显示成「已允许」**：`approvalResultLabel` 对 `permission` / `edit` 的 `timeout` 明确显示「已超时（按拒绝处理）」。
+- **审批事件没有日志**：`approval_required` 改走 `_emit`，`webapp.log` 可看到 `sse emit: type=approval_required ... request=...`，便于排障。
+- `App.tsx` 拆分（发送编排 / 审批中心 / 断线跟进 / 鉴权初始化 / 标题过滤）后回到 800 行以内，修复 `tests/test_architecture.py` 的体积守卫失败。
+
 ### Changed
 
 - **业务分析技能改为“面向国网领导的正式报告”工作法**：`skills/business-analysis/SKILL.md` 重写为六步（定主题口径 → 取数校验 → 公网信息补充 → 影响因素筛选 → 结构设计 → 图文撰写），并立四条硬规则——不确定的不写（来源存疑、无法核实、情景假设一律不进报告）、不相关的不写（因素过“时点/方向/量级/来源”四问，只留 1–3 个有影响的，不做逐层剥离式罗列）、有错误的不写（错误/恒定/缺失数据剔除或换口径，报告不设数据质量章节）、对不上时间的不写（公网信息先判重合/前置/后置，再看能否传导到指标）。新增 **第三步 公网信息补充**：用 `web_search` / `web_fetch` 检索国内政策事件（发改委/能源局/省市政策、电价与新能源等）与国外政策事件（欧盟、美国关税与补贴、OPEC+、国际能源价格、地缘与汇率），逐条记录发布时间、生效时间、来源、与报告期关系、传导指标与是否采用（内部 `external.md`），只把对本期有影响的内容写入原因分析；后置信息仅在趋势研判/建议中简要提示，不展开推演。报告结构为内容提要、总体情况、主要特点、需要关注的问题、原因分析、趋势研判、工作建议、附录；正文只写确定事实，来源放表下或附录，不用 `[S1]`/`[D1]` 标记与事实台账。同步调整 `database-query` 技能（取数后校验、公网信息补充与因素筛选、`high` 数据不用于报告）、能力清单（`qaapp/agents/capabilities.py`）、`config/backend/agents.json` 系统提示、10 类场景的 `report_sections`（移除“外部环境/情景分析/数据质量”章节）、大纲写作目标与要求（新增 `data_checks_required`）、文档与测试。
@@ -19,6 +28,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Added
 
+- **审批状态自检**：前端新增 `npm run check:approvals`（待审批合并/去重/失效、提交归属、跨会话不串写、轨迹游标）；`check:questions` 补充权限/编辑审批超时文案断言；后端新增 `tests/test_qaapp/test_approval_sync.py`（快照裁剪、`approval_required` 日志与轨迹、轨迹游标 reset/finished、SSE 断开不清会话状态、`/api/v1/approvals` 与详情 `busy`）。
 - **临时账户登录（TEMP-AUTH）**：新增登录页与 `/api/v1/auth/login|logout|me|password`；账户存 `<workspace>/users.json`（scrypt 加盐摘要、`0600`、首次启动生成 `admin` / `viewer` 两个默认账户）；会话为服务端随机 token + HttpOnly/SameSite=Lax（HTTPS 下 Secure），绝对 12h / 空闲 3h；用户名 5 次、同 IP 20 次失败锁定 5 分钟；`viewer` 只读，`/api/*` 默认拒绝并在 Cookie 写请求上校验 Origin。顶栏账户菜单支持改密 / 退出，改密吊销全部会话。正式部署接 OSS/SSO 时按 [`docs/qaapp/AUTH.zh-CN.md`](docs/qaapp/AUTH.zh-CN.md) 删除临时模块。
 - **qaapp 前端视觉重构（国网绿 + Codex 风格）**：`frontend/webapp` 重做设计 token 与布局——国网绿 `#006656` 主色、浅色中性画布、272px 侧边栏、860px 居中对话列、细边框卡片、浮动输入区、移动端侧边栏/文件抽屉、会话搜索、自动增高输入、流式自动跟随、错误 toast、加载骨架、代码块复制、编辑审批 diff 预览、权限审批参数展开；新增 `icons.tsx` / `EmptyState.tsx` / `clipboard.ts`，主要 chrome 不再使用 emoji。自检 `npm run typecheck` / `check:render` / `check:attachments` / `check:turn-files` / `check:questions` / `build` 全部通过。
 - **执行中选项式澄清**：`ask_user_question` 新增 `options`（2–6 个 `label` / `description` / `recommended`，兼容字符串和缺失 label 的弱模型调用）；qaapp 审批载荷下发 `options` / `allow_other`，前端渲染原生 radio +「其他」自由输入 +「确认并继续」，用户确认后工具返回选项 label 或自定义文本，模型继续执行。不新增计划模式或计划页面，复用现有 `ask_user_question` + 审批通道。新增 `approval_resolved` SSE 事件并写入轨迹，刷新后已回答的问题显示为「已确认」；新增 `npm run check:questions`、`tests/test_tools/test_ask_user_question.py` 与验收文档 `docs/qaapp/ASK_USER_OPTIONS.zh-CN.md`。

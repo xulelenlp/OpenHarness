@@ -1,10 +1,12 @@
 import type {
   AgentListResponse,
+  ApprovalsSnapshot,
   AttachmentInfo,
   AuthUser,
   ConversationSummary,
   ConversationWorkspace,
   SessionInfo,
+  TurnTail,
 } from "./types";
 
 /**
@@ -183,6 +185,29 @@ export function listConversations(): Promise<{ conversations: ConversationSummar
 
 export function getConversation(conversationId: string): Promise<unknown> {
   return request(`/api/v1/conversations/${conversationId}`);
+}
+
+/**
+ * 所有活动会话的待审批 / 运行中回合。
+ *
+ * 审批卡片过去只通过发起该轮的 SSE 下发，页面刷新或切走后连接断掉就再也
+ * 收不到，只能等 300s 超时。这个快照接口与连接无关，前端每几秒轮询一次
+ * 来恢复卡片、角标和断线后的实时跟进。
+ */
+export function listApprovals(): Promise<ApprovalsSnapshot> {
+  return request<ApprovalsSnapshot>("/api/v1/approvals");
+}
+
+/** 按游标增量读取某一轮的轨迹事件（断线跟进用）。 */
+export function getTurnEvents(
+  conversationId: string,
+  turnId: string,
+  after = 0,
+): Promise<TurnTail> {
+  const query = after > 0 ? `?after=${after}` : "";
+  return request<TurnTail>(
+    `/api/v1/conversations/${conversationId}/turns/${encodeURIComponent(turnId)}${query}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

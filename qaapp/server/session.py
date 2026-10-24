@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import deque
 from typing import TYPE_CHECKING
 
@@ -38,10 +39,14 @@ def _normalize_permission_mode(value: str | None) -> str:
 class PendingRequest:
     """一个等待前端/API 响应的审批/提问。"""
 
-    def __init__(self, request_id: str, kind: str, payload: dict) -> None:
+    def __init__(
+        self, request_id: str, kind: str, payload: dict, created_at: float | None = None
+    ) -> None:
         self.request_id = request_id
         self.kind = kind  # permission | question | edit
         self.payload = payload
+        #: 请求产生时间（epoch 秒），供跨会话的待审批快照排序与展示。
+        self.created_at = created_at if created_at is not None else time.time()
         self.future: asyncio.Future = asyncio.get_running_loop().create_future()
 
 
@@ -54,6 +59,8 @@ class ConversationSession:
         self.cwd = service.cwd
         self.bundle: RuntimeBundle | None = None
         self.busy = False
+        #: 本轮开始时间（epoch 秒）；``busy`` 为 False 时为 None。
+        self.busy_since: float | None = None
         self.current_task: asyncio.Task | None = None
         self.current_turn: dict | None = None
         self.subscribers: list[asyncio.Queue] = []

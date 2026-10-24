@@ -83,6 +83,52 @@ class ConversationTraceStore:
             return []
         return events
 
+    def load_trace_tail(
+        self,
+        conversation_id: str,
+        turn_id: str,
+        after: int = 0,
+    ) -> tuple[list[dict[str, Any]], int, bool]:
+        """按游标增量读取某一轮的轨迹事件。
+
+        返回 ``(events, total, reset)``：
+
+        - ``events``：该轮第 ``after`` 条之后的事件（只 JSON 解析真正要返回的行，
+          避免前端轮询时反复解析整份大轨迹）；
+        - ``total``：该轮已写入的事件总数，前端把它当作下一次的游标；
+        - ``reset``：``after`` 超过了现有总数（轨迹被清理 / 轮次重建），
+          调用方应整体重载而不是继续追加。
+        """
+        path = get_trace_path(self._workspace, conversation_id)
+        if not path.exists():
+            return [], 0, after > 0
+        # 轨迹由 trace_store 自己写盘，字段格式固定为 ``"turn_id": "xxx"``；
+        # 先用子串过滤，只有真正要返回的行才做 JSON 解析。
+        needle = f'"turn_id": "{turn_id}"'
+        events: list[dict[str, Any]] = []
+        total = 0
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if needle not in line:
+                        continue
+                    index = total
+                    total += 1
+                    if index < after:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    # 子串命中的误报（正文里恰好出现同样文本）不能混进这一轮。
+                    if event.get("turn_id") != turn_id:
+                        total -= 1
+                        continue
+                    events.append(event)
+        except OSError:
+            return [], 0, after > 0
+        return events, total, after > total
+
     def list_turn_ids(self, conversation_id: str) -> list[str]:
         """按首次出现顺序返回该对话的所有 turn_id。"""
         seen: list[str] = []

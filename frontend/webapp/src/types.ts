@@ -70,6 +70,44 @@ export interface ApprovalEvent {
   payload?: Record<string, unknown>;
 }
 
+/** `GET /api/v1/approvals` 里的一条待审批（与具体 SSE 连接无关）。 */
+export interface PendingApprovalInfo {
+  conversation_id: string;
+  request_id: string;
+  kind: "permission" | "edit" | "question";
+  /** 快照里裁掉了大字段 `input`；完整载荷随轨迹增量下发。 */
+  payload: Record<string, unknown>;
+  created_at?: number;
+  turn_id?: string | null;
+}
+
+/** 服务端仍在执行的回合，前端据此恢复「断线后的实时跟进」。 */
+export interface RunningTurnInfo {
+  conversation_id: string;
+  turn_id?: string | null;
+  message_id?: string | null;
+  started_at?: number | null;
+}
+
+/** `GET /api/v1/approvals` 的响应：所有内存中活动会话的待审批与运行中回合。 */
+export interface ApprovalsSnapshot {
+  approvals: PendingApprovalInfo[];
+  running: RunningTurnInfo[];
+}
+
+/** `GET /conversations/{id}/turns/{turn_id}?after=N` 的响应（轨迹游标）。 */
+export interface TurnTail {
+  conversation_id: string;
+  turn_id: string;
+  events: Array<Record<string, unknown>>;
+  total: number;
+  after: number;
+  /** true = 游标超出轨迹长度，需要整体重载会话。 */
+  reset: boolean;
+  /** true = 该轮已不在运行。 */
+  finished: boolean;
+}
+
 /**
  * 附件解析状态。
  *
@@ -192,6 +230,8 @@ export interface SessionInfo {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** 该消息属于哪个会话（审批提交必须用它，而不是当前打开的会话）。 */
+  conversationId?: string;
   agentName?: string;
   turnId?: string;
   /** 该轮的执行轨迹步骤序列（替代旧的 toolEvents）。 */

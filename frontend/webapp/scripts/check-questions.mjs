@@ -129,12 +129,19 @@ export const result = {
     denied: approvalResultLabel("permission", "deny"),
     always: approvalResultLabel("permission", "always"),
     timeout: approvalResultLabel("question", "timeout"),
+    permissionTimeout: approvalResultLabel("permission", "timeout"),
+    editTimeout: approvalResultLabel("edit", "timeout"),
   },
   titles: {
     question: approvalStepTitle("question", {}),
     questionDone: approvalStepTitle("question", {}, "已确认：按行业分类"),
     permissionDone: approvalStepTitle("permission", { tool: "bash" }, "已总是允许"),
     editDone: approvalStepTitle("edit", { path: "a/b/报告.docx" }, "已允许修改"),
+    permissionTimeout: approvalStepTitle(
+      "permission",
+      { tool: "write_report_docx" },
+      approvalResultLabel("permission", "timeout"),
+    ),
   },
 };
 `;
@@ -201,6 +208,21 @@ try {
   check("拒绝文案正确", result.labels.denied === "已拒绝");
   check("总是允许文案正确", result.labels.always === "已总是允许");
   check("超时文案正确", result.labels.timeout === "已超时，未回答");
+  check(
+    "权限审批超时不再显示已允许",
+    result.labels.permissionTimeout === "已超时（按拒绝处理）",
+    result.labels.permissionTimeout,
+  );
+  check(
+    "编辑审批超时按拒绝处理",
+    result.labels.editTimeout === "已超时（按拒绝处理）",
+    result.labels.editTimeout,
+  );
+  check(
+    "权限超时标题带工具名",
+    result.titles.permissionTimeout.includes("工具「write_report_docx」"),
+    result.titles.permissionTimeout,
+  );
 
   check("等待问题标题正确", result.titles.question === "需要你确认");
   check("完成问题标题正确", result.titles.questionDone === "已确认");

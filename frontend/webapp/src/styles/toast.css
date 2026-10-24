@@ -50,3 +50,27 @@
   color: var(--ink);
   background: var(--surface-2);
 }
+
+/* 其他会话在等审批：信息型提示（非错误） */
+.toast.approval {
+  border-color: var(--brand-100);
+}
+
+.toast.approval > svg {
+  color: var(--brand-600);
+}
+
+.toast-action {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  border-radius: 7px;
+}
+
+.toast-action:hover {
+  background: var(--brand-100);
+}

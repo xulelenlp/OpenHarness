@@ -44,10 +44,15 @@ def build_routes(ctx: ApiContext) -> list[Route]:
         if detail is None:
             return ctx.not_found()
         session = service._sessions.get(conversation_id)
+        busy = bool(session and session.busy)
         detail["pending_approvals"] = [
             {"request_id": r.request_id, "kind": r.kind, "payload": r.payload}
             for r in (session.pending.values() if session else [])
         ]
+        detail["busy"] = busy
+        detail["turn_id"] = (
+            (session.current_turn or {}).get("turn_id") if session and busy else None
+        )
         return JSONResponse(detail)
 
     async def get_turn(request: Request):
@@ -58,12 +63,15 @@ def build_routes(ctx: ApiContext) -> list[Route]:
         turn_id = request.path_params["turn_id"]
         if not ctx.valid_conversation_id(conversation_id):
             return ctx.not_found("轮次不存在")
-        events = service.trace_store.load_trace(conversation_id, turn_id=turn_id)
-        if not events:
+        raw_after = request.query_params.get("after")
+        try:
+            after = max(0, int(raw_after)) if raw_after else 0
+        except (TypeError, ValueError):
+            return ctx.error(422, "unprocessable", "after 必须是 ≥0 的整数")
+        payload = service.turn_tail(conversation_id, turn_id, after)
+        if payload["total"] == 0:
             return ctx.not_found("轮次不存在")
-        return JSONResponse(
-            {"conversation_id": conversation_id, "turn_id": turn_id, "events": events}
-        )
+        return JSONResponse(payload)
 
     return [
         Route("/api/v1/conversations", create_conversation, methods=["POST"]),

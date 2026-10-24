@@ -8,6 +8,16 @@ from uuid import uuid4
 from qaapp.server.session import ConversationSession, PendingRequest, _edit_key
 
 
+def public_pending_payload(payload: dict) -> dict:
+    """跨会话待审批快照用的载荷。
+
+    ``payload.input`` 是工具入参原文（例如整篇报告 JSON，可能几十 KB），
+    轮询快照每几秒下发一次，必须裁掉；完整的入参仍然通过 SSE 事件和轨迹下发，
+    前端在增量跟进时会用完整载荷覆盖卡片。
+    """
+    return {key: value for key, value in payload.items() if key != "input"}
+
+
 class ApprovalsMixin:
     async def _request_approval(
         self, session: ConversationSession, kind: str, payload: dict
@@ -15,13 +25,14 @@ class ApprovalsMixin:
         request_id = uuid4().hex[:12]
         request = PendingRequest(request_id, kind, payload)
         session.pending[request_id] = request
-        event = self._event(
+        # 走统一事件通道：日志、轨迹、SSE 广播一次完成。
+        # 之前直接 session.emit + trace.append，导致审批请求既没有日志、
+        # 也不受统一的生命周期管理，出问题时只能靠猜。
+        self._emit(
             session,
             "approval_required",
             {"request_id": request_id, "kind": kind, "payload": payload},
         )
-        session.emit(event)
-        self.trace_store.append(session.conversation_id, event)
 
         timeout = self.dangerous.approval_timeout_seconds
         try:

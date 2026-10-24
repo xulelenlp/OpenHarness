@@ -94,11 +94,15 @@ export function approvalResultLabel(
     return answer ? `已确认：${answer}` : "已确认";
   }
   if (kind === "permission") {
+    // 超时是「按拒绝处理」，绝不能再落到默认分支显示成「已允许」——
+    // 线上就出现过卡片写「已允许」、下面却跟着「审批超时，已按拒绝处理」。
+    if (decision === "timeout") return "已超时（按拒绝处理）";
     if (decision === "deny") return "已拒绝";
     if (decision === "always") return "已总是允许";
     return "已允许";
   }
   if (kind === "edit") {
+    if (decision === "timeout") return "已超时（按拒绝处理）";
     if (decision === "deny") return "已拒绝修改";
     if (decision === "always") return "已允许修改（本会话）";
     return "已允许修改";
@@ -132,8 +136,7 @@ export function approvalStepTitle(
     if (kind === "permission") {
       const tool = payloadTool(payload);
       return tool ? `${resolvedLabel} · 工具「${tool}」` : resolvedLabel;
-    }
-    if (kind === "edit") {
+    }    if (kind === "edit") {
       const name = payloadFileName(payload);
       return name ? `${resolvedLabel} · 文件「${name}」` : resolvedLabel;
     }

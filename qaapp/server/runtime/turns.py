@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from uuid import uuid4
 
 from qaapp.agents.router import AgentNotFoundError, NoDefaultAgentError, resolve_agent
@@ -31,6 +32,10 @@ class TurnsMixin:
         }
         session.turn_approved.clear()
         session.current_attachments = []
+        # 回合状态由任务本身负责：SSE 连接只是观察者，断开不代表回合结束。
+        session.busy = True
+        session.busy_since = time.time()
+        session.current_task = asyncio.current_task()
         before_files: Snapshot | None = None
         try:
             before_files = await self._snapshot_turn_files(session)
@@ -96,6 +101,11 @@ class TurnsMixin:
                 self._emit_turn_files(session, before_files)
             self._emit(session, "turn_complete", {})
             session.current_turn = None
+            session.busy = False
+            session.busy_since = None
+            # 只有当前任务仍是本任务时才清空，避免把后来者的指针抹掉。
+            if session.current_task is asyncio.current_task():
+                session.current_task = None
 
     async def _snapshot_turn_files(self, session: ConversationSession) -> Snapshot | None:
         try:
