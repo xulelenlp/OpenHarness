@@ -403,6 +403,9 @@ class BusinessQueryService(ResolverMixin, FetcherMixin, ShapingMixin):
                 "minimum_problem_points": 2,
                 "minimum_causes": 2,
                 "minimum_recommendations": 3,
+                "minimum_external_categories": 4,
+                "external_information_required": True,
+                "fact_sources_required": True,
                 "data_quality_required": True,
                 "outline_confirmation_required": True,
             },
@@ -594,13 +597,18 @@ class BusinessQueryService(ResolverMixin, FetcherMixin, ShapingMixin):
             return "列出 2–3 个问题，按严重程度排序；每个问题给数据证据、影响与涉及机构。"
         if "成因" in text:
             return "按政策/企业事件/天气/市场/基数等假设，给出影响路径与数据验证；区分事实/推断。"
+        if "外部" in text:
+            return (
+                "用官方来源补节假日与工作日数、气象与气候、重大外部事件；"
+                "逐条记录机构/日期/链接，并与数据问题做交叉验证；矛盾处写明待验证。"
+            )
         if "建议" in text or "预测" in text:
             return "给趋势/情景判断和 3–5 条可执行建议；标注不确定性与责任方向。"
         return f"围绕「{title}」回答：{('、'.join(scenario.required_analyses)) or '现状、问题、成因与建议'}。"
 
     @staticmethod
     def _suggested_agents(title: str) -> list[str]:
-        if any(word in title for word in ("政策", "背景", "成因")):
+        if any(word in title for word in ("政策", "背景", "成因", "外部")):
             return ["knowledge-qa", "power-grid-analysis"]
         if any(word in title for word in ("趋势", "预测", "建议")):
             return ["power-grid-analysis", "smart-data-query"]

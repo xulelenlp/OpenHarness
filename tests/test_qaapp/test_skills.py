@@ -35,4 +35,7 @@ async def test_skill_tool_loads_from_tracked_folder():
     assert result.is_error is False
     assert "五阶段" in result.output
     assert "外部信息检索" in result.output
+    assert "节假日" in result.output
+    assert "气象与气候" in result.output
+    assert "事实台账" in result.output
     assert "业务分析" in result.output
