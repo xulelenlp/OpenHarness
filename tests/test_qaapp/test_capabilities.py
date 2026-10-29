@@ -79,6 +79,39 @@ def test_catalog_includes_option_clarification_when_tool_available():
     assert "选项式澄清（ask_user_question）" not in without_tool
 
 
+def test_catalog_alignment_protocol_covers_three_task_types():
+    catalog = build_capability_catalog(
+        _registry(),
+        current_agent_id="general",
+        available_tools={
+            "ask_user_question",
+            "skill",
+            "db_query",
+            "run_script",
+            "write_report_docx",
+        },
+    )
+    assert "先对齐再执行" in catalog
+    assert "分析报告" in catalog
+    assert "上传文档分析总结" in catalog
+    assert "指标口径查询" in catalog
+    assert "任务简报" in catalog
+    assert "推断" in catalog
+    assert "不要重复问" in catalog
+    assert "document-analysis" in catalog
+
+
+def test_alignment_protocol_requires_question_tool():
+    without_tool = build_capability_catalog(
+        _registry(),
+        current_agent_id="general",
+        available_tools={"skill", "db_query", "run_script"},
+    )
+    assert "选项式澄清" not in without_tool
+    assert "先用 `ask_user_question` 提供 2–4 个具体选项" not in without_tool
+    assert "当前会话没有 `ask_user_question`" in without_tool
+
+
 def test_catalog_respects_tool_boundary():
     only_external = build_capability_catalog(
         _registry(),
@@ -152,6 +185,10 @@ def test_actual_general_config_keeps_tools_and_analysis_optional():
     assert "能直接回答就直接回答" in general["system_prompt"]
     assert "业务分析（按需" in general["system_prompt"]
     assert "不要强行套流程" in general["system_prompt"]
+    assert "先对齐" in general["system_prompt"]
+    assert "指标口径" in general["system_prompt"]
+    assert "上传文档" in general["system_prompt"]
+    assert "document-analysis" in general["system_prompt"]
     assert general["max_turns"] >= 60
 
 

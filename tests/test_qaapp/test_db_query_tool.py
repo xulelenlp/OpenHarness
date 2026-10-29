@@ -59,3 +59,53 @@ async def test_query_output_contains_metrics_and_quality(tmp_path: Path):
     assert "-2.48" in result.output
     assert "示例告警" in result.output
     assert "outputs/data/x.csv" in result.output
+
+
+class FakeDescribeService:
+    def describe(self, **kwargs):
+        return {
+            "status": "ok",
+            "summary": "指标：售电量",
+            "indicators": [
+                {
+                    "name": "售电量",
+                    "index_id": "IDX-1",
+                    "unit": "亿千瓦时",
+                    "periods": ["月", "年"],
+                    "latest_available": "2026-09-30",
+                    "definition": {"index_define": "统计期内售出的电量"},
+                    "dimensions": [{"name": "产业"}],
+                }
+            ],
+            "candidates": [
+                {
+                    "name": "售电量",
+                    "index_id": "IDX-1",
+                    "score": 0.91,
+                    "match_type": "exact",
+                },
+                {
+                    "name": "全社会用电量",
+                    "index_id": "IDX-2",
+                    "score": 0.89,
+                    "match_type": "fuzzy",
+                },
+            ],
+            "needs_confirmation": True,
+            "notes": ["按“售电量”匹配到多个候选"],
+        }
+
+
+@pytest.mark.asyncio
+async def test_describe_surfaces_candidates_for_confirmation(tmp_path: Path):
+    tool = DbQueryTool(FakeDescribeService())
+    result = await tool.execute(
+        DbQueryInput(operation="describe", indicators=["售电量"]),
+        ToolExecutionContext(cwd=tmp_path, metadata={CONVERSATION_DIR_KEY: str(tmp_path)}),
+    )
+    assert result.is_error is False
+    assert "多个候选" in result.output
+    assert "ask_user_question" in result.output
+    assert "全社会用电量" in result.output
+    assert "备注" in result.output
+    assert "亿千瓦时" in result.output

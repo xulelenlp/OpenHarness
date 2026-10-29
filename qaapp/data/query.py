@@ -133,7 +133,14 @@ class BusinessQueryService(ResolverMixin, FetcherMixin, ShapingMixin):
                     ],
                 }
             )
-        return {"status": "ok" if items else "no_data", "summary": self._resolved_summary(resolved), "indicators": items}
+        return {
+            "status": "ok" if items else "no_data",
+            "summary": self._resolved_summary(resolved),
+            "indicators": items,
+            "candidates": resolved.candidates,
+            "needs_confirmation": resolved.needs_confirmation,
+            "notes": resolved.notes,
+        }
 
     def query(
         self,

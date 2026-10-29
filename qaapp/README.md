@@ -90,7 +90,7 @@ abcqa webapp start|stop|status [--workspace DIR]
 | --- | --- |
 | 多 Agent 接入 | 通过 `agents.json` 声明 Agent：默认由 **harness 通用助手总控**（开放问答直接回答，需要专业能力时自动调用 `external_agent` 工具），也支持关键词路由 / 显式指定 |
 | 动态能力清单 | 每轮由 `agents.json` 生成「可调度能力 + 决策顺序」注入系统提示：新增 Agent 不用改通用提示词 |
-| 选项式澄清 | 执行中遇到口径/范围/格式等不明确点，`ask_user_question` 给 2–6 个选项 +「其他」，确认后再继续；不新增计划模式 |
+| 选项式澄清 | 分析报告/上传文档分析总结/指标口径查询开工前对齐关键参数；1 个点缺失给 2–4 个选项，2 个以上用「任务简报」卡 +「其他」，确认后再继续；不新增计划模式 |
 | Agent 工具边界 | `tools` / `disallowed_tools` 在运行时真正生效（支持 `*` 与通配），不再只是声明 |
 | 浏览器免手工 token | 前端启动时 `GET /api/v1/bootstrap`，服务端读取 `webapp.json:api_tokens` 并签发 HttpOnly 会话 Cookie；token 不进入页面/JS |
 | 高危操作门禁 | `dangerous-actions.json` 对删除/写文件/执行命令等做 allow / confirm / deny 三级控制 |
@@ -98,6 +98,7 @@ abcqa webapp start|stop|status [--workspace DIR]
 | 对话历史 | 每个对话有独立 `conversation_id`，历史（含中间工具执行过程）可查询 |
 | Word 报告 | `write_report_docx` 固定按国网公文格式输出（A4、35/28mm 页边距、29 磅行距、宋体二号标题、仿宋三号正文） |
 | 附件上传解析 | 对话框上传 Word / Excel / TXT（单条消息最多 2 个），服务端主动解析成文本并注入模型上下文 |
+| 上传文档分析 | 按需加载 `document-analysis` 技能：盘点 Excel/Word/TXT → 抽取核验 → 对比/趋势/异常/原因分析 → 结构化总结；不把 1500 字预览当全文 |
 | 会话临时目录 | 每个 `conversation_id` 一个独立目录 `~/.ohmo/conversations/<id>/`（uploads / extracted / scripts / tmp / outputs） |
 | 会话脚本执行 | 内置 `run_script` 工具：脚本一律写入本会话 `scripts/`，用共享 conda 环境执行，产物落 `outputs/` |
 

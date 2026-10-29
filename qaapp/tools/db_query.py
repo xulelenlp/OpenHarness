@@ -278,6 +278,22 @@ class DbQueryTool(BaseTool):
             return "\n".join(lines)
 
         if arguments.operation == "describe":
+            candidates = result.get("candidates") or []
+            names = {str(item.get("name") or "") for item in candidates}
+            if len(names) > 1:
+                lines.append(
+                    "- 候选指标："
+                    + "、".join(
+                        f"{item.get('name')}（{item.get('match_type')}，score={item.get('score')}）"
+                        for item in candidates[:5]
+                    )
+                )
+            if result.get("needs_confirmation"):
+                lines.append(
+                    "- ⚠️ 指标存在多个候选，请先用 `ask_user_question` 让用户确认，不要擅自选。"
+                )
+            for note in result.get("notes") or []:
+                lines.append(f"- 备注：{note}")
             for item in result.get("indicators", []):
                 lines.append(f"### {item.get('name')}（{item.get('index_id')}）")
                 lines.append(

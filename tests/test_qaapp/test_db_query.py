@@ -130,6 +130,38 @@ def _service() -> tuple[BusinessQueryService, FakeClient]:
     return BusinessQueryService(client, FakeCatalog(), _config()), client
 
 
+class AmbiguousCatalog(FakeCatalog):
+    def resolve_indicators(self, text: str, **kwargs):
+        other = Indicator(
+            index_id="IDX-2006-00010001",
+            name="全社会用电量",
+            unit="亿千瓦时",
+            periods=("月", "年"),
+            city_types=(3001, 3002),
+        )
+        return [
+            IndicatorHit(INDICATOR, 0.9, "exact"),
+            IndicatorHit(other, 0.89, "fuzzy"),
+        ]
+
+
+def test_describe_returns_confirmation_metadata():
+    service, _client = _service()
+    result = service.describe(indicators=["售电量"])
+    assert result["status"] == "ok"
+    assert result["candidates"]
+    assert result["needs_confirmation"] is False
+    assert result["notes"] == []
+    assert result["indicators"][0]["unit"] == "亿千瓦时"
+
+
+def test_describe_flags_ambiguous_candidates():
+    service = BusinessQueryService(FakeClient(), AmbiguousCatalog(), _config())
+    result = service.describe(indicators=["售电量"])
+    assert result["needs_confirmation"] is True
+    assert [item["name"] for item in result["candidates"]] == ["售电量", "全社会用电量"]
+
+
 def test_month_end_and_start():
     assert _month_end(date(2025, 2, 1)) == date(2025, 2, 28)
     assert _month_end(date(2025, 12, 1)) == date(2025, 12, 31)
