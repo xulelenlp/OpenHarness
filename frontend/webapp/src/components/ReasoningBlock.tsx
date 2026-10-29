@@ -1,13 +1,14 @@
 import { useEffect, useRef } from "react";
 
-import { reasoningParagraphs } from "../reasoning";
+import { reasoningSegments } from "../reasoning";
 
 /**
  * 思考过程正文。
  *
  * 取舍：
- * - 按空行分段，避免把整段英文 reasoning 渲染成一块密文；
- * - 固定最大高度 + 内部滚动，展开后也不会把整轮对话顶得很长；
+ * - 普通叙述按空行分段、段内换行压成空格，避免文字被切得很碎；
+ * - 「准备调用工具」后面的 JSON/代码单独成块，用等宽字体紧凑展示；
+ * - 固定最大高度 + 内部滚动，展开后不会把整轮对话顶得很长；
  * - 流式输出时自动贴底，用户手动向上翻后不再抢滚动位置。
  */
 export function ReasoningBlock({ text, running }: { text: string; running: boolean }) {
@@ -21,34 +22,32 @@ export function ReasoningBlock({ text, running }: { text: string; running: boole
     node.scrollTop = node.scrollHeight;
   }, [text, running]);
 
-  const paragraphs = reasoningParagraphs(text);
-  if (!paragraphs.length) return null;
+  const segments = reasoningSegments(text);
+  if (!segments.length) return null;
 
   return (
-    <div className="reasoning-wrap">
-      <div className="reasoning-head">
-        <span>模型思考过程</span>
-        <span className="reasoning-note">仅用于了解分析路径，不影响最终结论</span>
-      </div>
-      <div
-        className="reasoning-body"
-        ref={bodyRef}
-        role="region"
-        aria-label="模型思考过程"
-        tabIndex={0}
-        onScroll={(event) => {
-          const node = event.currentTarget;
-          stickToBottom.current =
-            node.scrollHeight - node.scrollTop - node.clientHeight < 40;
-        }}
-      >
-        {paragraphs.map((paragraph, index) => (
-          <p key={index}>{paragraph}</p>
-        ))}
-      </div>
-      {text.length > 1200 ? (
-        <div className="reasoning-foot">内容较长，可滚动查看完整思考</div>
-      ) : null}
+    <div
+      className="reasoning-body"
+      ref={bodyRef}
+      role="region"
+      aria-label="思考"
+      tabIndex={0}
+      onScroll={(event) => {
+        const node = event.currentTarget;
+        stickToBottom.current =
+          node.scrollHeight - node.scrollTop - node.clientHeight < 40;
+      }}
+    >
+      {segments.map((segment, index) =>
+        segment.kind === "tool" ? (
+          <div className="reasoning-tool" key={`tool-${index}`}>
+            <span className="reasoning-tool-label">调用工具 · {segment.label}</span>
+            {segment.text ? <pre className="reasoning-tool-code">{segment.text}</pre> : null}
+          </div>
+        ) : (
+          <p key={`text-${index}`}>{segment.text}</p>
+        ),
+      )}
     </div>
   );
 }

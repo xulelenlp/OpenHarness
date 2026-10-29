@@ -19,7 +19,7 @@ import path from "node:path";
 const ENTRY = `
 import { renderToStaticMarkup } from "react-dom/server";
 import { MarkdownView, unwrapFencedDocument } from "./src/markdown";
-import { reasoningParagraphs, reasoningPreview } from "./src/reasoning";
+import { reasoningSegments, reasoningPreview } from "./src/reasoning";
 import { ReasoningBlock } from "./src/components/ReasoningBlock";
 
 const fenced = [
@@ -34,6 +34,7 @@ const fenced = [
 const code = "\`\`\`python\\nprint(1 < 2)\\n\`\`\`";
 const unsafe = "![t](http://tracker.example/x.png) [点我](javascript:alert(1)) [正常](https://a.b/c)";
 const reasoningText = "第一段：先看总体走势。\\n\\n第二段：再看地市分化。\\n\\n第三段：最后筛原因。";
+const reasoningToolText = '先看数据。\\n\\n[准备调用工具 db_query]\\n{"indicators":["售电量"]}\\n\\n[准备调用工具 run_script]\\n{"code":"print(1)"}';
 
 export const result = {
   unwrapped: unwrapFencedDocument(fenced),
@@ -41,9 +42,11 @@ export const result = {
   code: renderToStaticMarkup(<MarkdownView content={code} />),
   unsafe: renderToStaticMarkup(<MarkdownView content={unsafe} />),
   plain: renderToStaticMarkup(<MarkdownView content={"| a | b |\\n| --- | --- |\\n| 1 | 2 |"} />),
-  reasoningParagraphs: reasoningParagraphs(reasoningText),
+  reasoningSegments: reasoningSegments(reasoningText),
+  reasoningToolSegments: reasoningSegments(reasoningToolText),
   reasoningPreview: reasoningPreview("这是一段很长的思考内容，需要在折叠时截断。", 12),
   reasoning: renderToStaticMarkup(<ReasoningBlock text={reasoningText} running={false} />),
+  reasoningTool: renderToStaticMarkup(<ReasoningBlock text={reasoningToolText} running={false} />),
 };
 `;
 
@@ -90,7 +93,13 @@ try {
   check("未解包的裸表格也能渲染", result.plain.includes("<table>"));
 
   console.log("思考展示自检：");
-  check("思考按空行分段", result.reasoningParagraphs.length === 3, result.reasoningParagraphs.length);
+  check("思考按空行分段", result.reasoningSegments.length === 3, result.reasoningSegments.length);
+  check(
+    "思考工具调用单独成块",
+    result.reasoningToolSegments.some(
+      (segment) => segment.kind === "tool" && segment.label === "db_query",
+    ),
+  );
   check("折叠预览会截断", result.reasoningPreview.endsWith("…"), result.reasoningPreview);
   check("思考正文有独立容器", result.reasoning.includes('class="reasoning-body"'));
   check(
@@ -98,7 +107,17 @@ try {
     (result.reasoning.match(/<p>/g) || []).length === 3,
     result.reasoning,
   );
-  check("思考卡片有提示文案", result.reasoning.includes("不影响最终结论"));
+  check(
+    "思考不显示额外提示",
+    !result.reasoning.includes("模型思考过程") &&
+      !result.reasoning.includes("不影响最终结论") &&
+      !result.reasoning.includes("内容较长"),
+  );
+  check(
+    "思考工具代码有紧凑容器",
+    result.reasoningTool.includes('class="reasoning-tool-code"') &&
+      result.reasoningTool.includes("调用工具 · db_query"),
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
