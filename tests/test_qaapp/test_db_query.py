@@ -162,6 +162,22 @@ def test_describe_flags_ambiguous_candidates():
     assert [item["name"] for item in result["candidates"]] == ["售电量", "全社会用电量"]
 
 
+def test_outline_exposes_adaptive_framework():
+    service, _client = _service()
+    result = service.outline(
+        theme="2026年9月售电量分析",
+        scenario="sales",
+        start="2026-09",
+        end="2026-09",
+    )
+    assert result["status"] == "ok"
+    assert result["framework"]["style"] == "趋势归因"
+    assert result["framework"]["principle"]
+    assert result["framework"]["note"]
+    assert result["framework"]["candidate_sections"]
+    assert result["sections"][0]["heading"].startswith("1. 核心结论")
+
+
 def test_month_end_and_start():
     assert _month_end(date(2025, 2, 1)) == date(2025, 2, 28)
     assert _month_end(date(2025, 12, 1)) == date(2025, 12, 31)

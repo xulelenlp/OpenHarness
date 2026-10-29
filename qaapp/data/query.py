@@ -393,10 +393,17 @@ class BusinessQueryService(ResolverMixin, FetcherMixin, ShapingMixin):
                     "suggested_agents": self._suggested_agents(title),
                 }
             )
+        framework = {
+            "style": scenario_obj.report_style,
+            "principle": scenario_obj.report_principle,
+            "candidate_sections": list(scenario_obj.report_sections),
+            "note": "参考骨架：按主题选择 4–7 个章节并改写成判断句；没有内容的章节删掉或合并，不要照抄。",
+        }
         return {
             "status": "ok" if selected else "no_data",
-            "summary": f"{scenario_obj.name}大纲：{len(sections)} 个章节，{len(selected)} 个指标，{len(gaps)} 个数据缺口。",
+            "summary": f"{scenario_obj.name}大纲：{len(sections)} 个候选章节，{len(selected)} 个指标，{len(gaps)} 个数据缺口。",
             "scenario": scenario_obj.to_dict(),
+            "framework": framework,
             "theme": theme,
             "org": (resolved.orgs[0].label if resolved.orgs else org),
             "period": resolved.period,
@@ -586,24 +593,34 @@ class BusinessQueryService(ResolverMixin, FetcherMixin, ShapingMixin):
     def _section_objective(title: str, scenario: AnalysisScenario) -> str:
         """给大纲章节一个具体的写作目标，避免所有章节都写同一句。"""
         text = str(title or "")
-        if "摘要" in text:
+        if any(word in text for word in ("摘要", "结论", "判断")):
             return "结论先行：3–5 条核心发现，每条带指标/日期/数字/来源。"
         if "背景" in text or "口径" in text:
             return "说明主题、机构、期间、指标定义、单位、实际/预测口径与数据来源。"
+        if "政策" in text or "时间线" in text:
+            return "只写与主题/报告期相关的政策条款与生效时间；列出时间线，不摘抄原文。"
+        if "传导" in text:
+            return "写清“政策/事件 → 影响对象 → 传导路径 → 可观测指标 → 方向/量级”，无路径的不写。"
         if "总体" in text:
             return "回答规模、增速、目标完成、与同期/目标的差距，给出核心指标表。"
-        if "趋势" in text or "时间" in text:
+        if "走势" in text or "趋势" in text or "时间" in text:
             return "看近 12 期走势、拐点、连续下降/上升；区分季节性、基数效应与异常。"
         if "区域" in text or "地市" in text:
             return "九地市排名、分化、贡献度；找出最强/最弱区域并解释。"
         if "产业" in text or "行业" in text or "结构" in text:
             return "看产业/行业/客户结构占比、增量贡献、集中度与结构变化。"
-        if "问题" in text or "诊断" in text:
+        if "问题" in text or "诊断" in text or "异常" in text:
             return "列出 2–3 个问题，按严重程度排序；每个问题给数据证据、影响与涉及机构。"
-        if "成因" in text:
+        if "风险" in text or "客户" in text or "设备" in text:
+            return "按风险大小列重点对象（客户/设备/地市），给数据证据、影响与处置优先级。"
+        if "进度" in text or "偏差" in text:
+            return "给目标、实际、缺口、偏差原因与责任方向；突出滞后项目和下一步动作。"
+        if "预测" in text:
+            return "给预测值/区间、与目标或上期的偏差、关键假设；不做多情景推演。"
+        if "成因" in text or "原因" in text:
             return "只写经四问筛选、真正有影响的因素（1–3 个）；每个因素给影响路径与数据验证，不罗列所有可能因素。"
-        if "建议" in text or "预测" in text:
-            return "给趋势判断和 3–5 条可执行建议；标注依据与责任方向。"
+        if "建议" in text or "措施" in text or "下一步" in text:
+            return "给 3–5 条可执行动作：对象 + 动作 + 预期效果；标注依据与责任方向。"
         return f"围绕「{title}」回答：{('、'.join(scenario.required_analyses)) or '现状、问题、成因与建议'}。"
 
     @staticmethod

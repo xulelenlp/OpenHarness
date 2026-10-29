@@ -172,6 +172,8 @@ def test_catalog_preserves_general_and_adds_analysis_as_optional():
     assert "当前日期：2026-10-21" in catalog
     assert "售电量 最新 2026-09-30" in catalog
     assert "不要只选一个" in catalog
+    assert "结构按主题生成" in catalog
+    assert "固定八章模板" in catalog
 
 
 def test_actual_general_config_keeps_tools_and_analysis_optional():
@@ -189,6 +191,8 @@ def test_actual_general_config_keeps_tools_and_analysis_optional():
     assert "指标口径" in general["system_prompt"]
     assert "上传文档" in general["system_prompt"]
     assert "document-analysis" in general["system_prompt"]
+    assert "结构按主题" in general["system_prompt"]
+    assert "固定八章模板" in general["system_prompt"]
     assert general["max_turns"] >= 60
 
 

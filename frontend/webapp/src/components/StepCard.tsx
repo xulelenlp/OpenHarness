@@ -10,7 +10,9 @@ import {
   ToolIcon,
 } from "../icons";
 import { questionText } from "../questions";
+import { reasoningPreview } from "../reasoning";
 import type { Step } from "../types";
+import { ReasoningBlock } from "./ReasoningBlock";
 
 export type ApprovalAction = (
   requestId: string,
@@ -122,6 +124,12 @@ export function StepCard({
         </span>
       </button>
 
+      {step.kind === "reasoning" && collapsed && step.text ? (
+        <div className="reasoning-preview" aria-hidden="true">
+          {reasoningPreview(step.text)}
+        </div>
+      ) : null}
+
       {!collapsed && (
         <div className="step-body">
           {step.kind === "tool" && (
@@ -189,9 +197,12 @@ export function StepCard({
               </div>
             ))}
 
-          {(step.kind === "status" || step.kind === "error" || step.kind === "reasoning") &&
-          step.text ? (
+          {(step.kind === "status" || step.kind === "error") && step.text ? (
             <div className="step-text">{step.text}</div>
+          ) : null}
+
+          {step.kind === "reasoning" && step.text ? (
+            <ReasoningBlock text={step.text} running={step.status === "running"} />
           ) : null}
         </div>
       )}

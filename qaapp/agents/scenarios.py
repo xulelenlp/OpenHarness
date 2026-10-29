@@ -21,6 +21,8 @@ class AnalysisScenario:
     required_analyses: tuple[str, ...] = ()
     external_sources: tuple[str, ...] = ()
     report_sections: tuple[str, ...] = ()
+    report_style: str = "综合诊断"
+    report_principle: str = ""
     default_org: str = "福建"
     default_period: str = "月"
 
@@ -36,6 +38,8 @@ class AnalysisScenario:
             "required_analyses": list(self.required_analyses),
             "external_sources": list(self.external_sources),
             "report_sections": list(self.report_sections),
+            "report_style": self.report_style,
+            "report_principle": self.report_principle,
             "default_org": self.default_org,
             "default_period": self.default_period,
         }
@@ -52,7 +56,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市", "产业"),
         required_analyses=("目标完成度", "同比环比", "结构变化", "地市对比", "异常识别"),
         external_sources=("政策", "节假日", "气象气候", "能源价格", "重大事件", "国外政策事件"),
-        report_sections=("摘要", "总体经营情况", "售电量与电价", "电费回收", "问题诊断", "成因分析", "建议"),
+        report_sections=("核心结论", "经营总体", "售电量与电价", "电费回收", "问题与风险", "原因分析", "措施建议"),
+        report_style="综合诊断",
+        report_principle="先给经营总体判断，再只展开有变化的两三条业务线；最后落到问题、原因和可执行动作，不要为每类指标各设一章。",
     ),
     "sales": AnalysisScenario(
         key="sales",
@@ -64,7 +70,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市", "产业", "行业", "客户类型", "气温"),
         required_analyses=("趋势", "同比环比", "九地市对比", "产业/行业贡献度", "目标完成", "气温/负荷相关性", "政策/企业事件"),
         external_sources=("新能源政策", "电价政策", "地方重大企业", "节假日", "气温与气候", "重大事件", "国外政策事件"),
-        report_sections=("摘要", "总体售电情况", "时间趋势", "区域对比", "产业/行业结构", "问题诊断", "成因分析", "趋势与建议"),
+        report_sections=("核心结论", "走势与拐点", "区域分化", "产业/行业结构", "异常与拖累", "原因与研判", "工作建议"),
+        report_style="趋势归因",
+        report_principle="围绕“走势—分化—异常—原因—研判”组织，重点回答变化从哪里来；不写泛泛的总体情况和主要特点。",
     ),
     "recovery": AnalysisScenario(
         key="recovery",
@@ -76,7 +84,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市", "客户类型", "欠费账龄"),
         required_analyses=("回收率趋势", "目标缺口", "欠费结构", "风险客户清单", "预收/回收联动", "政策影响"),
         external_sources=("电价政策", "地方企业事件", "节假日", "经济环境", "重大事件"),
-        report_sections=("摘要", "回收总体情况", "欠费结构", "风险客户", "成因分析", "催收建议", "附录"),
+        report_sections=("风险判断", "回收总体", "欠费结构", "重点风险客户", "成因分析", "处置建议", "附录"),
+        report_style="风险处置",
+        report_principle="按“风险总览—结构—重点对象—成因—处置”组织；以名单、账龄、大额客户为主，不做面面俱到的指标罗列。",
     ),
     "service": AnalysisScenario(
         key="service",
@@ -88,7 +98,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市", "业务类型", "客户类型"),
         required_analyses=("热点", "重复诉求", "区域/环节对比", "时长/数量趋势", "根因分析", "整改建议"),
         external_sources=("服务政策", "地方事件", "节假日", "天气", "重大事件"),
-        report_sections=("摘要", "服务总体情况", "投诉/工单热点", "抢修/业扩效率", "问题诊断", "根因与建议"),
+        report_sections=("核心结论", "服务总体", "投诉/工单热点", "重复诉求", "抢修/业扩效率", "根因与整改", "附录"),
+        report_style="问题诊断",
+        report_principle="按“热点—重复诉求—效率—根因—整改”组织；用投诉/工单证据说话，不平均用力。",
     ),
     "grid": AnalysisScenario(
         key="grid",
@@ -100,7 +112,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市", "设备/线路", "电压等级"),
         required_analyses=("可靠性趋势", "停电归因", "线损异常", "设备风险", "区域对比"),
         external_sources=("天气与气候", "电网政策", "地方事件", "重大事故"),
-        report_sections=("摘要", "运行总体情况", "可靠性", "线损/电压", "设备风险", "问题诊断", "建议"),
+        report_sections=("运行判断", "可靠性", "停电归因", "线损/电压", "风险设备", "措施建议", "附录"),
+        report_style="风险处置",
+        report_principle="按“运行结果—可靠性/停电—设备风险—原因—措施”组织；以风险设备和事件为主。",
     ),
     "asset": AnalysisScenario(
         key="asset",
@@ -112,7 +126,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "单位", "项目类型"),
         required_analyses=("进度", "预算偏差", "结构", "风险", "建议"),
         external_sources=("投资政策", "地方重大项目", "节假日", "重大事件"),
-        report_sections=("摘要", "资产总体情况", "投资进度", "转资/预算", "风险与建议"),
+        report_sections=("完成判断", "投资进度", "预算偏差", "转资进度", "风险项目", "下一步安排"),
+        report_style="目标进度",
+        report_principle="按“目标—进度—偏差—风险项目—下一步”组织；突出预算/转资缺口，不写与进度无关的泛化分析。",
     ),
     "new_energy": AnalysisScenario(
         key="new_energy",
@@ -124,7 +140,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市", "能源类型"),
         required_analyses=("政策时间线", "影响路径", "数据验证", "趋势研判"),
         external_sources=("新能源政策", "电价政策", "地方企业", "重大事件", "国外政策事件"),
-        report_sections=("摘要", "政策背景", "新能源发展", "电价/市场", "影响分析", "建议"),
+        report_sections=("核心判断", "政策要点", "政策时间线", "传导路径", "数据验证", "趋势研判", "建议"),
+        report_style="政策专题",
+        report_principle="按“政策要点—时间线—传导路径—数据验证—研判—建议”组织；不要把政策原文大段摘抄。",
     ),
     "region": AnalysisScenario(
         key="region",
@@ -136,7 +154,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "企业", "行业", "区域"),
         required_analyses=("事件时间线", "贡献度", "敏感性", "对比"),
         external_sources=("地方重大企业", "地方政策", "新闻事件", "节假日"),
-        report_sections=("摘要", "区域/企业概况", "事件时间线", "数据影响", "结论与建议"),
+        report_sections=("核心结论", "区域/企业概况", "事件时间线", "影响评估", "对比分析", "结论与建议"),
+        report_style="事件专题",
+        report_principle="按“概况—事件时间线—影响—对比—结论”组织；围绕事件讲清因果，不做全域扫描。",
     ),
     "forecast": AnalysisScenario(
         key="forecast",
@@ -148,7 +168,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("时间", "地市"),
         required_analyses=("预测偏差", "目标缺口", "趋势研判", "建议"),
         external_sources=("政策", "经济环境", "天气", "节假日", "国外政策事件"),
-        report_sections=("摘要", "目标完成", "预测与偏差", "趋势研判", "建议"),
+        report_sections=("预测结论", "目标完成", "预测与偏差", "关键假设", "趋势判断", "建议"),
+        report_style="预测研判",
+        report_principle="按“目标/预测—偏差—关键假设—趋势判断—建议”组织；不写多情景推演。",
     ),
     "custom": AnalysisScenario(
         key="custom",
@@ -160,7 +182,9 @@ SCENARIOS: dict[str, AnalysisScenario] = {
         dimensions=("用户指定",),
         required_analyses=("口径对齐", "数据清洗", "差异分析", "业务解释"),
         external_sources=("用户附件", "业务库", "政策", "节假日"),
-        report_sections=("摘要", "数据与口径", "差异分析", "业务解释", "建议", "附录"),
+        report_sections=("核心结论", "数据与口径", "差异分析", "业务解释", "建议", "附录"),
+        report_style="数据诊断",
+        report_principle="按“口径对齐—差异—解释—建议”组织；先讲清数据能支持什么、不能支持什么。",
     ),
 }
 

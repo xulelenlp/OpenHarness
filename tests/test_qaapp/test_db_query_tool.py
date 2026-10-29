@@ -109,3 +109,44 @@ async def test_describe_surfaces_candidates_for_confirmation(tmp_path: Path):
     assert "全社会用电量" in result.output
     assert "备注" in result.output
     assert "亿千瓦时" in result.output
+
+
+class FakeOutlineService:
+    def outline(self, **kwargs):
+        return {
+            "status": "ok",
+            "scenario": {"name": "售电量与市场分析"},
+            "framework": {
+                "style": "趋势归因",
+                "principle": "围绕“走势—分化—异常—原因—研判”组织",
+                "note": "参考骨架：按主题选择 4–7 个章节并改写成判断句；不要照抄。",
+                "candidate_sections": ["核心结论", "走势与拐点", "原因分析", "工作建议"],
+            },
+            "indicators": [
+                {
+                    "name": "售电量",
+                    "unit": "亿千瓦时",
+                    "latest_available": "2026-09-30",
+                    "dimensions": [{"name": "产业"}],
+                }
+            ],
+            "sections": [
+                {"heading": "1. 核心结论", "objective": "结论先行"},
+                {"heading": "2. 走势与拐点", "objective": "看近 12 期走势"},
+            ],
+            "gaps": [],
+        }
+
+
+@pytest.mark.asyncio
+async def test_outline_surfaces_framework_not_fixed_template(tmp_path: Path):
+    tool = DbQueryTool(FakeOutlineService())
+    result = await tool.execute(
+        DbQueryInput(operation="outline", theme="2026年9月售电量分析", scenario="sales"),
+        ToolExecutionContext(cwd=tmp_path, metadata={CONVERSATION_DIR_KEY: str(tmp_path)}),
+    )
+    assert result.is_error is False
+    assert "推荐框架：趋势归因" in result.output
+    assert "候选章节" in result.output
+    assert "不要照抄" in result.output
+    assert "数据质量只做内部校验" in result.output

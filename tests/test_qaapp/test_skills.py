@@ -48,6 +48,8 @@ async def test_skill_tool_loads_from_tracked_folder():
     assert "开场对齐" in result.output
     assert "任务简报" in result.output
     assert "不要重复问" in result.output
+    assert "结构框架" in result.output
+    assert "不要每份报告都套用" in result.output
 
 
 @pytest.mark.asyncio

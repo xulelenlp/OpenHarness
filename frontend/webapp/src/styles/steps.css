@@ -180,6 +180,83 @@
   word-break: break-word;
 }
 
+/* ---------- 思考过程 ---------- */
+
+.reasoning-preview {
+  padding: 0 12px 9px 35px;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-card.reasoning.running .reasoning-preview {
+  color: var(--brand-700);
+}
+
+.reasoning-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.reasoning-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.reasoning-head > span:first-child {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.reasoning-note {
+  font-size: 10.5px;
+  opacity: 0.8;
+}
+
+.reasoning-body {
+  max-height: 340px;
+  padding: 11px 13px;
+  overflow: auto;
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--brand-100);
+  border-radius: 10px;
+  scrollbar-gutter: stable;
+}
+
+.reasoning-body p {
+  margin: 0 0 0.65em;
+}
+
+.reasoning-body p:last-child {
+  margin-bottom: 0;
+}
+
+.reasoning-body:focus-visible {
+  outline: 2px solid var(--brand-100);
+  outline-offset: 2px;
+}
+
+.reasoning-foot {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: right;
+}
+
 .approval-step {
   display: flex;
   flex-direction: column;

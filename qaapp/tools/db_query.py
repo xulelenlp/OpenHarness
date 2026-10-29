@@ -86,7 +86,7 @@ class DbQueryTool(BaseTool):
         "查询客户业务库（MySQL，只读）的指标数据。**任何业务数字/明细/趋势/对比都应先用本工具取数**，"
         "不要凭记忆或让外部智能体代查。\n"
         "常用：operation=query（单/多指标取数）、explore（EDA：趋势/九地市/维度/问题候选）、"
-        "outline（按业务场景生成分析大纲）、describe（指标口径/最新日期/维度）、"
+        "outline（按业务场景给出推荐框架与候选章节，不是固定模板）、describe（指标口径/最新日期/维度）、"
         "news（政策/企业事件）、chart（生成图表）、forecast（Redis 预测/特征缓存）、"
         "resolve（指标/机构/维度解析）。\n"
         "会自动处理：指标别名、A1/A2/B1/B2 表路由、月末日期、周期回退、维度回退、无数据诊断、数据质量检查。"
@@ -312,6 +312,13 @@ class DbQueryTool(BaseTool):
 
         if arguments.operation == "outline":
             lines.append(f"场景：{(result.get('scenario') or {}).get('name', arguments.scenario)}")
+            framework = result.get("framework") or {}
+            if framework.get("style"):
+                lines.append(f"推荐框架：{framework.get('style')}")
+                if framework.get("principle"):
+                    lines.append(f"- 组织原则：{framework.get('principle')}")
+                if framework.get("note"):
+                    lines.append(f"- 结构提醒：{framework.get('note')}")
             lines.append("")
             for item in result.get("indicators", []):
                 lines.append(
@@ -319,7 +326,7 @@ class DbQueryTool(BaseTool):
                     f"维度 {len(item.get('dimensions') or [])} 个"
                 )
             lines.append("")
-            lines.append("### 建议章节")
+            lines.append("### 候选章节（按主题增删/改名，不要照抄）")
             for section in result.get("sections", []):
                 lines.append(f"- {section.get('heading')}：{section.get('objective')}")
             if result.get("gaps"):
@@ -330,9 +337,9 @@ class DbQueryTool(BaseTool):
             lines.append("")
             lines.append(
                 "最低要求：3+ 指标、3+ 维度、2+ 对比基准、2–3 个问题点、2+ 条成因、3–5 条建议；"
-                "数据质量必须披露。"
+                "数据质量只做内部校验，不单列章节。"
             )
-            lines.append("请先向用户确认大纲，再进入 EDA；确认前不要开始大段分析。")
+            lines.append("请先向用户确认结构（选 4–7 个章节并改写成判断句），再进入 EDA；确认前不要开始大段分析。")
             return "\n".join(lines)
 
         if arguments.operation == "news":

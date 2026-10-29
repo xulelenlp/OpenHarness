@@ -216,7 +216,7 @@ export function reduceEvent(acc: TurnAccumulator, evt: Record<string, unknown>):
           key,
           kind: "reasoning",
           status: "running",
-          title: "思考",
+          title: "思考过程",
           text,
           ts: evt.ts as number | undefined,
         });

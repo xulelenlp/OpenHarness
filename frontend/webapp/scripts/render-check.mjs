@@ -19,6 +19,8 @@ import path from "node:path";
 const ENTRY = `
 import { renderToStaticMarkup } from "react-dom/server";
 import { MarkdownView, unwrapFencedDocument } from "./src/markdown";
+import { reasoningParagraphs, reasoningPreview } from "./src/reasoning";
+import { ReasoningBlock } from "./src/components/ReasoningBlock";
 
 const fenced = [
   "\`\`\`markdown",
@@ -31,6 +33,7 @@ const fenced = [
 
 const code = "\`\`\`python\\nprint(1 < 2)\\n\`\`\`";
 const unsafe = "![t](http://tracker.example/x.png) [点我](javascript:alert(1)) [正常](https://a.b/c)";
+const reasoningText = "第一段：先看总体走势。\\n\\n第二段：再看地市分化。\\n\\n第三段：最后筛原因。";
 
 export const result = {
   unwrapped: unwrapFencedDocument(fenced),
@@ -38,6 +41,9 @@ export const result = {
   code: renderToStaticMarkup(<MarkdownView content={code} />),
   unsafe: renderToStaticMarkup(<MarkdownView content={unsafe} />),
   plain: renderToStaticMarkup(<MarkdownView content={"| a | b |\\n| --- | --- |\\n| 1 | 2 |"} />),
+  reasoningParagraphs: reasoningParagraphs(reasoningText),
+  reasoningPreview: reasoningPreview("这是一段很长的思考内容，需要在折叠时截断。", 12),
+  reasoning: renderToStaticMarkup(<ReasoningBlock text={reasoningText} running={false} />),
 };
 `;
 
@@ -82,6 +88,17 @@ try {
   check("javascript: 链接被中和", !result.unsafe.includes('href="javascript:'), result.unsafe);
   check("远程图片不自动加载", !result.unsafe.includes("<img"), result.unsafe);
   check("未解包的裸表格也能渲染", result.plain.includes("<table>"));
+
+  console.log("思考展示自检：");
+  check("思考按空行分段", result.reasoningParagraphs.length === 3, result.reasoningParagraphs.length);
+  check("折叠预览会截断", result.reasoningPreview.endsWith("…"), result.reasoningPreview);
+  check("思考正文有独立容器", result.reasoning.includes('class="reasoning-body"'));
+  check(
+    "思考正文按段落渲染",
+    (result.reasoning.match(/<p>/g) || []).length === 3,
+    result.reasoning,
+  );
+  check("思考卡片有提示文案", result.reasoning.includes("不影响最终结论"));
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }
