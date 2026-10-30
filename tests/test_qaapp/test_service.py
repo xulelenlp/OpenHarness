@@ -259,6 +259,29 @@ def test_external_agent_stream(service):
         assert detail["turns"]
 
 
+def test_trace_records_user_message_for_each_turn(service):
+    """每一轮的用户输入都写进轨迹。
+
+    会话快照里 role=user 的消息混有工具回传的 tool_result，前端若按下标对齐会
+    从第二次输入起错位；轨迹里的 user_message 是历史回放的权威来源。
+    """
+    with TestClient(service.app) as client:
+        cid = _new_conversation(client)
+        for text in ("第一轮问题", "第二轮问题"):
+            resp = client.post(
+                f"/api/v1/conversations/{cid}/messages",
+                json={"content": text, "stream": False},
+            )
+            assert resp.status_code == 200, resp.text
+
+        detail = client.get(f"/api/v1/conversations/{cid}").json()
+        turn_texts = [
+            [event["text"] for event in turn["events"] if event["type"] == "user_message"]
+            for turn in detail["turns"]
+        ]
+        assert turn_texts == [["第一轮问题"], ["第二轮问题"]]
+
+
 def test_approval_mechanism(service):
     import asyncio
 

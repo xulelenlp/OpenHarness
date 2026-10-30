@@ -7,7 +7,8 @@
  * 3. 审批提交目标按 request_id 归属会话（不再用当前 activeId）；
  * 4. 累加器写回只落在同一会话的助手消息上（不会串写别的会话）；
  * 5. 历史回放带 conversationId / turnId 和轨迹游标；
- * 6. 权限审批超时显示「已超时（按拒绝处理）」，不再显示「已允许」。
+ * 6. 权限审批超时显示「已超时（按拒绝处理）」，不再显示「已允许」；
+ * 7. 历史回放按回合还原用户输入（tool_result 不占下标，优先用轨迹 user_message）。
  *
  * 用法：npm run check:approvals
  */
@@ -101,6 +102,47 @@ const detail = {
 const built = buildHistory(detail);
 const builtLast = built.lastTurn ?? {};
 
+// 第一轮用过工具时，快照里会多出一条 role=user 的 tool_result；
+// 它不能占用回合下标，否则第二轮的 user_message 会被挤掉（历史里看不到）。
+const toolDetail = {
+  conversation_id: "c1",
+  messages: [
+    { role: "user", content: [{ type: "text", text: "第一轮问题" }] },
+    {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "u1", name: "db_query", input: {} }],
+    },
+    {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "u1", content: "查询结果" }],
+    },
+    { role: "assistant", content: [{ type: "text", text: "第一轮回答" }] },
+    { role: "user", content: [{ type: "text", text: "第二轮问题" }] },
+    { role: "assistant", content: [{ type: "text", text: "第二轮回答" }] },
+  ],
+  turns: [
+    { turn_id: "t1", events: [{ type: "turn_complete" }] },
+    { turn_id: "t2", events: [{ type: "turn_complete" }] },
+  ],
+};
+const toolBuilt = buildHistory(toolDetail);
+
+// 新轨迹带 user_message 时以轨迹为准（快照被压缩后 user 消息下标不可信）。
+const tracedDetail = {
+  conversation_id: "c1",
+  messages: [],
+  turns: [
+    {
+      turn_id: "t1",
+      events: [
+        { type: "user_message", text: "轨迹里的用户问题" },
+        { type: "turn_complete" },
+      ],
+    },
+  ],
+};
+const tracedBuilt = buildHistory(tracedDetail);
+
 export const result = {
   merged: {
     added: merged.length,
@@ -157,6 +199,13 @@ export const result = {
     content: built.messages[1]?.content,
     turnId: builtLast.turnId,
     eventCount: builtLast.eventCount,
+  },
+  userMessages: {
+    length: toolBuilt.messages.length,
+    first: toolBuilt.messages[0]?.content,
+    secondRole: toolBuilt.messages[2]?.role,
+    second: toolBuilt.messages[2]?.content,
+    traced: tracedBuilt.messages[0]?.content,
   },
 };
 `;
@@ -226,6 +275,20 @@ try {
   check("历史回放带回合 id", result.history.assistantTurn === "t1" && result.history.turnId === "t1");
   check("历史回放保留正文", result.history.content === "结论如下");
   check("历史回放给出轨迹游标", result.history.eventCount === 3, String(result.history.eventCount));
+
+  check(
+    "工具结果不占用用户回合下标",
+    result.userMessages.length === 4 &&
+      result.userMessages.first === "第一轮问题" &&
+      result.userMessages.secondRole === "user" &&
+      result.userMessages.second === "第二轮问题",
+    JSON.stringify(result.userMessages),
+  );
+  check(
+    "新轨迹优先使用 user_message",
+    result.userMessages.traced === "轨迹里的用户问题",
+    String(result.userMessages.traced),
+  );
 } finally {
   rmSync(outDir, { recursive: true, force: true });
 }

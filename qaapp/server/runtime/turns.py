@@ -47,6 +47,10 @@ class TurnsMixin:
                 {"attachments": [public_record(record) for record in records]},
             )
             content = content.strip() or (DEFAULT_ATTACHMENT_PROMPT if records else "")
+            # 把本轮用户输入显式写进轨迹：会话快照里 role=user 的消息混有工具
+            # 回传的 tool_result，单靠快照下标对齐回合会在第二次输入起错位
+            # （历史回放看不到用户问题）。旧轨迹没有该事件时前端回退到快照。
+            self._emit(session, "user_message", {"text": content})
             resolved = await resolve_agent(
                 content,
                 registry=self.registry,

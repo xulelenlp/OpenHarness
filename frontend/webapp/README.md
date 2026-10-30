@@ -73,6 +73,9 @@
 | 下载鉴权 | 走 `fetch` + `Blob`（下载接口要 Cookie 或 Bearer，`<a href>` 带不了请求头，token 拼进 URL 又会泄漏） |
 | 上传/回答期间 | 禁止再次选择 / 拖拽 / 删除附件，避免附件被挂到错误的轮次 |
 
+历史回放时，每轮的用户问题优先取轨迹里的 `user_message` 事件（旧轨迹回退到会话快照按回合对齐，
+并过滤工具回传的 `tool_result` 消息——它们同样是 `role=user`，会挤掉真正的用户输入）。
+
 纯函数（`src/attachments.ts`：后缀白名单、`formatBytes`、上限筛选、状态文案）带零依赖自检：
 
 ```bash

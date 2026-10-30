@@ -40,6 +40,48 @@ export interface HistoryResult {
   lastTurn: HistoryLastTurn | null;
 }
 
+/** 工具结果回传给模型的消息同样是 role=user，但没有任何用户文字。 */
+function isToolResultMessage(message: { content: unknown }): boolean {
+  if (!Array.isArray(message.content)) return false;
+  return message.content.some(
+    (block) =>
+      Boolean(block) &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "tool_result",
+  );
+}
+
+/**
+ * 按顺序收集「真正的用户输入」文本。
+ *
+ * 会话快照里 role=user 的消息有两类：用户键入的问题，以及工具调用结束后回传
+ * 给模型的 tool_result。后者没有文本，若按全部 user 消息的下标对齐回合，第一轮
+ * 只要用过工具，后面每一轮的用户气泡都会整体错位——第二次输入就会「看不到」
+ * （内容其实一直在快照里，只是被 tool_result 占掉了回合下标）。
+ */
+export function collectUserTexts(
+  messages: Array<{ role: string; content: unknown }>,
+): string[] {
+  const texts: string[] = [];
+  for (const message of messages) {
+    if (message.role !== "user" || isToolResultMessage(message)) continue;
+    texts.push(extractText(message.content));
+  }
+  return texts;
+}
+
+/** 新轨迹会显式记录 user_message；旧轨迹没有该事件，回退到快照对齐。 */
+export function tracedUserText(
+  events: Array<Record<string, unknown>>,
+): string | null {
+  for (const event of events) {
+    if (event.type === "user_message" && typeof event.text === "string") {
+      return event.text;
+    }
+  }
+  return null;
+}
+
 export function buildHistory(
   detail: ConversationDetailShape,
   conversationId?: string,
@@ -48,10 +90,7 @@ export function buildHistory(
     conversationId ??
     (detail.conversation_id as string | undefined) ??
     "";
-  const userTexts: string[] = [];
-  for (const message of detail.messages ?? []) {
-    if (message.role === "user") userTexts.push(extractText(message.content));
-  }
+  const userTexts = collectUserTexts(detail.messages ?? []);
 
   const rebuilt: ChatMessage[] = [];
   let lastTurn: HistoryLastTurn | null = null;
@@ -59,7 +98,8 @@ export function buildHistory(
     const events = turn.events ?? [];
     const acc = makeAccumulator();
     for (const event of events) reduceEvent(acc, event);
-    const userText = userTexts[index] ?? "";
+    // 轨迹里显式记录的用户输入最权威（快照可能被压缩，user 消息下标会变）。
+    const userText = tracedUserText(events) ?? userTexts[index] ?? "";
     // 只发附件不写文字是合法的一轮，此时 content 为空但必须仍然渲染气泡与芯片。
     if (userText || acc.attachments?.length) {
       rebuilt.push({

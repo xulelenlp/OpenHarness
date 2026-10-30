@@ -8,6 +8,7 @@ The format is based on Keep a Changelog, and this project currently tracks chang
 
 ### Fixed
 
+- **历史会话里第二次及之后的用户输入看不到**：会话快照中 `role=user` 的消息混有工具回传的 `tool_result`（同样无文本），前端 `buildHistory` 按「全部 user 消息」的下标对齐轨迹回合，第一轮只要用过工具，后续用户气泡就会整体错位——第二次输入直接消失（内容其实一直在快照里）。修复：快照侧过滤 `tool_result` 消息后再对齐回合；服务端每轮新增 `user_message` 轨迹事件，历史回放优先用它按回合还原用户输入（旧轨迹仍回退到快照对齐，快照被压缩后也不受影响）。新增 `tests/test_qaapp/test_service.py::test_trace_records_user_message_for_each_turn` 与 `npm run check:approvals` 回归断言。
 - **审批卡片刷新后才可见、随后 300s 超时**：`approval_required` 过去只随发起该轮的 SSE 响应下发，页面刷新 / 切换会话后连接断开，服务端那一轮仍在跑却再也无法把审批送到界面（线上 `de4391e72be3` 的 `write_report_docx` 因此等满 300s 被拒；访问日志里还有一次 `POST /conversations/3ecff8bc3744/approvals/23a9ffc30191 → 404`）。新增 `GET /api/v1/approvals`（内存中活动会话的待审批 + 运行中回合，`payload` 裁掉大字段 `input`）与 `GET /conversations/{id}/turns/{turn_id}?after=N` 轨迹游标；前端每 4s 同步待审批、给后台会话加「待审批」角标与轻提示，并在刷新/切走后按游标继续跟进执行进度（≤4s 粒度）；对话详情补充 `busy` / `turn_id`。
 - **审批提交发错会话**：`handleApproval` 改用 `request_id` 所属会话而不是当前 `activeId`；`openConversation` 增加过期响应保护，避免快速切换时把上一个会话的消息/审批渲染到当前会话下。
 - **断流把会话标成空闲**：SSE 生成器 `finally` 不再清 `busy` / `current_task`，回合生命周期统一由 `run_turn` 收尾；浏览器刷新只退订，`interrupt` 仍然可用，也不会在同一会话里并发起第二轮。

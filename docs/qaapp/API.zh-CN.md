@@ -73,7 +73,8 @@ GET  /api/v1/conversations/{id}/workspace          # 列出 uploads/extracted/sc
 GET  /api/v1/conversations/{id}/files/scripts/analyze.py   # 下载（带 Bearer）
 ```
 
-**SSE 事件类型**：`attachments_ready`（本轮附件，历史回放靠它还原芯片）/ `agent_routed` /
+**SSE 事件类型**：`user_message`（本轮用户输入原文，历史回放靠它按回合还原问题）/
+`attachments_ready`（本轮附件，历史回放靠它还原芯片）/ `agent_routed` /
 `status` / `tool_started` / `tool_completed` / `tool_progress` / `assistant_delta` /
 `assistant_complete` / `approval_required` / `approval_resolved` / `turn_files` / `error` /
 `turn_complete`。
