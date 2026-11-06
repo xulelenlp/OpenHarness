@@ -44,3 +44,5 @@ Thumbs.db
 uv.lock
 .tmp-e2e/*
 .e2e-run/*
+config/backend/env_files/env_dev
+config/backend/env_files/env_pro

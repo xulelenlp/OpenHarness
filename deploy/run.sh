@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# qaapp 最简部署：加载镜像后，直接挂载项目配置 + 数据目录运行。
+# qaapp 最简部署：加载镜像后，直接挂载“部署包内”的 config/backend + 数据目录运行。
 #
 # 前置：
-#   1) docker load -i qaapp-image-0.1.9-amd64.tar.gz
-#   2) 在项目 config/backend/.env 中改好 DB_* / REDIS_*（以及模型 Key / CORS）
+#   1) docker load -i qaapp-image-....tar.gz
+#   2) 构建时已经用 --env dev/pro 选好配置，包内 config/backend/.env 可直接用
 #
 # 用法：
 #   ./run.sh
@@ -11,9 +11,10 @@
 #   FORCE=1 ./run.sh          # 覆盖已存在的 qaapp 容器（升级/重启）
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${IMAGE:-openharness-qaapp:0.1.9-offline}"
 NAME="${NAME:-qaapp}"
-CONFIG="${CONFIG:-/root/workspace/workspace/OpenHarness/config/backend}"
+CONFIG="${CONFIG:-$SCRIPT_DIR/config/backend}"
 DATA="${DATA:-/root/qaapp-data}"
 HOST_PORT="${HOST_PORT:-8787}"
 FORCE="${FORCE:-0}"
@@ -54,7 +55,7 @@ for _ in $(seq 1 60); do
         echo ""
         echo "qaapp 已启动"
         echo "  访问：http://<服务器IP>:${HOST_PORT}"
-        echo "  配置：$CONFIG/.env（改 DB/Redis 后执行 docker restart $NAME）"
+        echo "  配置：$CONFIG/.env（构建时已选好；修改后 docker restart $NAME）"
         echo "  数据：$DATA"
         echo "  日志：docker logs -f $NAME"
         echo "  首次登录：admin（默认 Admin@Qa2026，或首次启动前设置 QAAPP_DEFAULT_ADMIN_PASSWORD）"

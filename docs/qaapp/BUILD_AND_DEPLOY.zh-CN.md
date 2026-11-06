@@ -4,16 +4,18 @@
 > 字体 + 系统库），以后只在这台服务器上用 Docker 做**增量构建**，不下载基础镜像、
 > 不下载 pip 依赖、不需要外网。
 >
-> 目标机只做：`docker load` + 改项目配置里的 DB/Redis + `run.sh`。
+> 目标机只做：`docker load` + `run.sh`。部署包自带
+> `config/backend/.env`，**不需要 vim**。
 >
-> `deploy/` 只有 5 个文件（另加 README）：
+> `deploy/` 只有 5 个文件（含 README）：
 >
 > ```text
 > deploy/
 > ├── build.sh          # 唯一构建入口：docker build + docker save
 > ├── Dockerfile        # FROM 本地基础镜像，COPY 当前代码
 > ├── entrypoint.sh     # 容器入口
-> └── run.sh            # 目标机启动
+> ├── run.sh            # 目标机启动（挂载包内 config/backend）
+> └── README.md
 > ```
 
 ---
@@ -35,7 +37,8 @@ docker save → dist/qaapp-image-<version>-<timestamp>-amd64.tar.gz
 
 - **基础镜像**是“环境”，只需导入一次；保留好它的 tar。
 - **代码更新**只 `COPY` 覆盖，秒级~分钟级完成，不联网。
-- **DB/Redis 配置**不在镜像里，部署时挂载项目 `config/backend`；改库不需要重建镜像。
+- **环境配置**由构建时 `--env dev|pro` 选定，复制到部署包
+  `config/backend/.env`；目标机直接使用，不需要手工改。
 - **依赖/Node/字体变更**不属于增量构建范围，需要重新准备基础镜像。
 
 ---
@@ -107,10 +110,19 @@ cd ../..
 
 > `VITE_API_BASE_URL` 必须留空（同源）。后端代码改动不需要 npm。
 
-### 4.2 配置
+### 4.2 环境文件
 
-`config/backend/.env` 是**目标机配置**，不进入镜像。构建前不需要改 DB/Redis。
-模型 Key 在目标机 `.env` 里。
+```text
+config/backend/env_files/
+├── env_dev    # 开发环境
+└── env_pro    # 生产环境
+```
+
+这两个文件含 DB/Redis/模型 Key，已加入 `.gitignore`，不提交。
+构建时 `--env dev|pro` 把选中的文件复制为 `config/backend/.env`，
+并放入部署包 `dist/qaapp-simple/config/backend/.env`。
+
+`.env` 不进入镜像；镜像只带 `config/backend/*.json` 和 `.env_prod` 模板。
 
 ---
 
@@ -118,22 +130,27 @@ cd ../..
 
 ```bash
 cd /root/workspace/workspace/OpenHarness
-./deploy/build.sh
+./deploy/build.sh --env pro
+# 或
+./deploy/build.sh --env dev
 ```
 
 脚本执行：
 
 1. 检查 `docker` 和本地基础镜像；
-2. 检查 `frontend/webapp/dist/index.html`；
-3. `docker build --network none`：
+2. 检查 `--env dev|pro`，把 `config/backend/env_files/env_<env>`
+   复制为 `config/backend/.env`；
+3. 检查 `frontend/webapp/dist/index.html`；
+4. `docker build --network none`：
    - `FROM openharness-qaapp:0.1.9-offline`
    - `COPY` 当前 `src/`、`ohmo/`、`qaapp/`、`skills/`、`plugins/`、`scripts/`、`deploy/`
    - `COPY frontend/webapp/dist`
    - `COPY config/backend/*.json`（不含 `.env`）
    - 覆盖 `ENTRYPOINT /app/deploy/entrypoint.sh`
-4. `docker run --rm ... python -c "import qaapp, openharness, ohmo"` 做导入检查；
-5. `docker save | gzip` 输出镜像 tar；
-6. 整理 `dist/qaapp-simple/`，并让 `run.sh` 默认使用新 tag。
+5. `docker run --rm ... python -c "import qaapp, openharness, ohmo"` 做导入检查；
+6. `docker save | gzip` 输出镜像 tar；
+7. 整理 `dist/qaapp-simple/`：镜像、`config/backend/.env`、`run.sh`、
+   文档、校验和。
 
 **不下载任何东西**；`--network none` 保证构建过程无外网。
 
@@ -141,6 +158,7 @@ cd /root/workspace/workspace/OpenHarness
 
 | 参数 | 说明 |
 | --- | --- |
+| `--env` | **必填**：`dev` 或 `pro`，选择 `env_files/env_dev`/`env_pro` |
 | `--base` | 基础镜像 tag；默认 `openharness-qaapp:0.1.9-offline` |
 | `--tag` | 输出镜像 tag；默认 `openharness-qaapp:<version>-<timestamp>` |
 | `--output` | 镜像 tar；默认 `dist/qaapp-image-<version>-<timestamp>-amd64.tar.gz` |
@@ -149,6 +167,7 @@ cd /root/workspace/workspace/OpenHarness
 
 ```bash
 ./deploy/build.sh \
+  --env pro \
   --base openharness-qaapp:0.1.9-offline \
   --tag openharness-qaapp:0.1.9-20261106 \
   --output dist/qaapp-image-0.1.9-20261106-amd64.tar.gz
@@ -177,7 +196,7 @@ docker image inspect openharness-qaapp:<tag> --format '{{.Config.Entrypoint}}'
 
 ---
 
-## 7. 部署（目标机三步）
+## 7. 部署（目标机两步）
 
 ### 第 1 步：加载镜像
 
@@ -187,36 +206,19 @@ docker load -i qaapp-image-<version>-<timestamp>-amd64.tar.gz
 docker images | grep openharness-qaapp
 ```
 
-### 第 2 步：改项目配置的 DB/Redis
-
-```bash
-vi /root/workspace/workspace/OpenHarness/config/backend/.env
-```
-
-```bash
-DB_HOST=...
-DB_PORT=...
-DB_USER=...
-DB_PASSWORD=...
-DB_NAME=ai_search_fj
-
-REDIS_HOST=...
-REDIS_PORT=...
-REDIS_PASSWORD=...
-```
-
-模型 Key、外部 Agent 地址也在这里。**不需要重建镜像。**
-
-### 第 3 步：启动
+### 第 2 步：启动
 
 ```bash
 cd /root/qaapp-simple
 ./run.sh
 ```
 
+`run.sh` 默认挂载同目录的 `config/backend`；构建时已经选好 dev/pro，
+**不需要再改 `.env`**。
+
 默认：
 
-- 配置：`/root/workspace/workspace/OpenHarness/config/backend`
+- 配置：`/root/qaapp-simple/config/backend`（打包时已选好）
 - 数据：`/root/qaapp-data`
 - 端口：`8787`
 - 容器：`qaapp`
@@ -233,15 +235,18 @@ HOST_PORT=18790 ./run.sh
 docker run -d --name qaapp --restart unless-stopped \
   --user 0:0 \
   -p 8787:8787 \
-  -v /root/workspace/workspace/OpenHarness/config/backend:/app/config/backend:ro \
+  -v /root/qaapp-simple/config/backend:/app/config/backend:ro \
   -v /root/qaapp-data:/data \
   openharness-qaapp:<tag>
 ```
 
-> `--user 0:0` 用于读取项目里 root 0600 的 `.env`。
+> `--user 0:0` 用于读取包内 root 0600 的 `.env`。
 > 非 root：`chown -R 1000:1000 config/backend`，去掉 `--user 0:0`。
 
----
+### 可选：部署后改配置
+
+只有确实要换库/改密码时，编辑 `/root/qaapp-simple/config/backend/.env`，
+然后 `docker restart qaapp`。首次部署不需要这一步。
 
 ## 8. 验证
 
@@ -267,15 +272,16 @@ docker exec qaapp python -m qaapp datasource check \
 
 | 改了什么 | 怎么做 |
 | --- | --- |
-| `src/`、`ohmo/`、`qaapp/` | `git pull` → `./deploy/build.sh` |
-| `frontend/webapp` | `npm run build` → `./deploy/build.sh` |
-| `skills/`、`plugins/`、`scripts/` | `git pull` → `./deploy/build.sh` |
-| `config/backend/.env`（DB/Redis/Key） | 改目标机配置 → `docker restart qaapp` |
-| `config/backend/*.json` | 改目标机配置 → `docker restart qaapp` |
+| `src/`、`ohmo/`、`qaapp/` | `git pull` → `./deploy/build.sh --env pro` |
+| `frontend/webapp` | `npm run build` → `./deploy/build.sh --env pro` |
+| `skills/`、`plugins/`、`scripts/` | `git pull` → `./deploy/build.sh --env pro` |
+| `config/backend/env_files/env_dev`/`env_pro` | 改文件 → 重新 `--env dev/pro` 构建 |
+| 部署包内 `config/backend/.env`（临时换库） | 改包内文件 → `docker restart qaapp` |
+| `config/backend/*.json` | 改配置 → 重新构建或改包内文件后重启 |
 | `run.sh` | 重新拷贝脚本，不重建镜像 |
 | 依赖/Node/字体/系统库 | 需要新的基础镜像（增量构建不处理） |
 
-**DB/Redis 永远只改目标机配置，不重建镜像。**
+**环境配置在打包时选定；首次部署不需要改目标机配置。**
 
 ---
 
@@ -286,7 +292,7 @@ docker exec qaapp python -m qaapp datasource check \
 ```bash
 # 打包服务器
 git pull
-./deploy/build.sh
+./deploy/build.sh --env pro
 
 # 目标机
 cd /root/qaapp-simple
@@ -307,7 +313,7 @@ IMAGE=openharness-qaapp:<old-tag> ./run.sh
 
 ```bash
 tar czf /root/qaapp-backup-$(date +%F).tar.gz \
-  /root/workspace/workspace/OpenHarness/config/backend \
+  /root/qaapp-simple/config/backend \
   /root/qaapp-data
 ```
 

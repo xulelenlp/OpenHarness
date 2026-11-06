@@ -49,6 +49,8 @@ def test_build_uses_docker_and_local_base_only():
     text = BUILD_SH.read_text(encoding="utf-8")
     for token in (
         "docker image inspect",
+        "--env",
+        "env_files/env_",
         "docker build",
         "--network none",
         "--build-arg \"BASE_IMAGE=$BASE\"",
@@ -64,6 +66,7 @@ def test_build_uses_docker_and_local_base_only():
 def test_run_script_mounts_project_config():
     text = RUN_SH.read_text(encoding="utf-8")
     for token in (
+        "SCRIPT_DIR",
         "CONFIG=",
         "/app/config/backend:ro",
         "/root/qaapp-data",
@@ -83,6 +86,6 @@ def test_docs_mention_build_and_deploy():
     text = (ROOT / "docs" / "qaapp" / "BUILD_AND_DEPLOY.zh-CN.md").read_text(
         encoding="utf-8"
     )
-    assert "./deploy/build.sh" in text
+    assert "./deploy/build.sh --env pro" in text
     assert "docker load" in text
     assert "config/backend/.env" in text

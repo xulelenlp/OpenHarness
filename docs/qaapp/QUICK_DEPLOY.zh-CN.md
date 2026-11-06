@@ -1,7 +1,9 @@
 # qaapp 最简部署（镜像 tar + 项目配置）
 
-> 目标机只做三件事：**`docker load` 镜像、改项目 `config/backend/.env` 的
-> DB/Redis、运行 `run.sh`**。
+> 目标机只做两件事：**`docker load` 镜像、运行 `run.sh`**。
+>
+> 构建时已经用 `--env dev` 或 `--env pro` 选好配置，部署包自带
+> `config/backend/.env`，目标机**不需要 vim**。
 >
 > 不执行 `docker build`、不安装 Python/Node、不部署 MySQL/Redis、不需要外网。
 >
@@ -15,6 +17,7 @@
 ```text
 /root/qaapp-simple/
 ├── qaapp-image-<version>-<timestamp>-amd64.tar.gz
+├── config/backend/.env
 ├── run.sh
 ├── README.md
 ├── QUICK_DEPLOY.zh-CN.md
@@ -40,25 +43,15 @@ ss -ltnp | grep 8787 || true
 
 ---
 
-## 3. 改项目配置（只改这里）
+## 3. 配置（打包时已确定）
 
-```bash
-vi /root/workspace/workspace/OpenHarness/config/backend/.env
-```
+构建命令 `./deploy/build.sh --env pro` 会把
+`config/backend/env_files/env_pro` 复制成 `config/backend/.env`，并放进部署包。
+目标机**不需要再改配置**。
 
-```bash
-DB_HOST=...
-DB_PORT=...
-DB_USER=...
-DB_PASSWORD=...
-DB_NAME=ai_search_fj
-
-REDIS_HOST=...
-REDIS_PORT=...
-REDIS_PASSWORD=...
-```
-
-模型 Key、外部 Agent 地址也在这里。改完不需要重建镜像。
+如果后续确实要换库/改密码，直接编辑包内
+`/root/qaapp-simple/config/backend/.env`，然后执行 `docker restart qaapp`。
+这不是首次部署的必需步骤。
 
 ---
 
@@ -83,7 +76,7 @@ cd /root/qaapp-simple
 
 默认：
 
-- 配置：`/root/workspace/workspace/OpenHarness/config/backend`
+- 配置：`/root/qaapp-simple/config/backend`（打包时已选好）
 - 数据：`/root/qaapp-data`
 - 端口：`8787`
 - 容器：`qaapp`
@@ -92,7 +85,7 @@ cd /root/qaapp-simple
 
 ```bash
 HOST_PORT=18790 \
-CONFIG=/root/workspace/workspace/OpenHarness/config/backend \
+CONFIG=/root/qaapp-simple/config/backend \
 DATA=/root/qaapp-data \
 ./run.sh
 ```
@@ -103,7 +96,7 @@ DATA=/root/qaapp-data \
 docker run -d --name qaapp --restart unless-stopped \
   --user 0:0 \
   -p 8787:8787 \
-  -v /root/workspace/workspace/OpenHarness/config/backend:/app/config/backend:ro \
+  -v /root/qaapp-simple/config/backend:/app/config/backend:ro \
   -v /root/qaapp-data:/data \
   openharness-qaapp:<tag>
 ```
@@ -136,7 +129,7 @@ docker exec qaapp python -m qaapp datasource check \
 ## 7. 改配置 / 升级 / 备份
 
 ```bash
-# 改 DB/Redis 后
+# 改包内 config/backend/.env 后
 docker restart qaapp
 
 # 升级：docker load 新镜像后覆盖
@@ -147,7 +140,7 @@ docker logs -f qaapp
 
 # 备份
 tar czf /root/qaapp-backup-$(date +%F).tar.gz \
-  /root/workspace/workspace/OpenHarness/config/backend \
+  /root/qaapp-simple/config/backend \
   /root/qaapp-data
 
 # 停止/删除（数据保留）
