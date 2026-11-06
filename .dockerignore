@@ -1,0 +1,26 @@
+# 增量构建只 COPY 代码/前端 dist/配置模板，其它都不需要进上下文。
+.git
+.gitignore
+.venv
+.conda
+.conda-pkgs
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+**/node_modules
+dist
+*.tar.gz
+tests
+docs
+assets
+.github
+.openharness
+.agents
+.claude
+config/backend/.env
+config/backend/.env_dev
+config/frontend/.env
+config/frontend/.env_dev
+.DS_Store

@@ -1,75 +1,63 @@
 #!/usr/bin/env bash
-# 从当前仓库构建“代码 + 环境”的 qaapp 镜像，并整理成最简部署目录。
+# 在打包服务器上，用本地已导入的基础镜像做增量构建。
 #
-# 构建机不需要 Docker，只需要 Python 3.9+（带 pip）和外网。
-# 目标机只需要 Docker：docker load + 改项目 config/backend/.env + run.sh。
+# 前置（只需一次）：
+#   docker load -i qaapp-image-0.1.9-amd64.tar.gz
+#   # 默认基础镜像 tag：openharness-qaapp:0.1.9-offline
 #
 # 用法：
 #   ./deploy/build.sh
-#   ./deploy/build.sh --tag openharness-qaapp:0.1.9-offline
-#   ./deploy/build.sh --reuse-image      # 复用已有镜像，只整理部署目录
-#   ./deploy/build.sh --from-image dist/qaapp-image-0.1.9-amd64.tar.gz
-#                                               # 日常改代码：保留环境/依赖，只替换代码（无需外网）
-#   ./deploy/build.sh --refresh          # 重新下载基础镜像/依赖
+#   ./deploy/build.sh --base openharness-qaapp:0.1.9-offline
+#   ./deploy/build.sh --tag openharness-qaapp:0.1.9-20261106
+#   ./deploy/build.sh --output dist/qaapp-image-0.1.9-amd64.tar.gz
 #
 # 产物：
-#   dist/qaapp-image-<version>-amd64.tar.gz
+#   dist/qaapp-image-<version>-<timestamp>-amd64.tar.gz
 #   dist/qaapp-simple/
-#   ├── qaapp-image-<version>-amd64.tar.gz
+#   ├── qaapp-image-...tar.gz
 #   ├── run.sh
 #   ├── README.md
 #   ├── QUICK_DEPLOY.zh-CN.md
 #   ├── BUILD_AND_DEPLOY.zh-CN.md
 #   └── SHA256SUMS
+#
+# 不下载基础镜像/依赖，不需要 pip；只要求 Docker 和本地基础镜像。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+BASE="${BASE:-openharness-qaapp:0.1.9-offline}"
 TAG=""
 OUTPUT=""
-WORK_DIR="${WORK_DIR:-/tmp/openharness-offline}"
-REUSE_IMAGE=0
-REFRESH=0
-CLEAN_WORK=0
-FROM_IMAGE=""
-STAGE=""
 
 die() { echo "错误：$*" >&2; exit 1; }
 info() { echo "[INFO] $*"; }
 
 usage() {
-    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --base) BASE="$2"; shift 2 ;;
         --tag) TAG="$2"; shift 2 ;;
         --output) OUTPUT="$2"; shift 2 ;;
-        --work-dir) WORK_DIR="$2"; shift 2 ;;
-        --reuse-image) REUSE_IMAGE=1; shift ;;
-        --from-image) FROM_IMAGE="$2"; shift 2 ;;
-        --refresh) REFRESH=1; shift ;;
-        --clean-work) CLEAN_WORK=1; shift ;;
         --help|-h) usage ;;
         *) die "未知参数：$1（--help 查看用法）" ;;
     esac
 done
 
-command -v "$PYTHON_BIN" >/dev/null 2>&1 || die "未找到 $PYTHON_BIN"
-"$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' \
-    || die "需要 Python 3.9+"
-if [[ -z "$FROM_IMAGE" ]]; then
-    "$PYTHON_BIN" -m pip -V >/dev/null 2>&1 || die "当前 Python 没有 pip（完整构建需要）"
-fi
-if [[ "$REUSE_IMAGE" -eq 1 && -n "$FROM_IMAGE" ]]; then
-    die "--reuse-image 与 --from-image 不能同时使用"
-fi
-if [[ -n "$FROM_IMAGE" && ! -f "$FROM_IMAGE" ]]; then
-    die "--from-image 不存在：$FROM_IMAGE"
-fi
+command -v docker >/dev/null 2>&1 || die "未找到 docker"
+docker info >/dev/null 2>&1 || die "Docker daemon 不可用"
+docker image inspect "$BASE" >/dev/null 2>&1 || die \
+    "基础镜像不在本地：$BASE
+先在打包服务器执行：docker load -i qaapp-image-0.1.9-amd64.tar.gz
+如果导入后的 tag 不同，用 --base <tag> 指定。"
 
-VERSION="$("$PYTHON_BIN" - "$ROOT" <<'PY'
+[[ -f "$ROOT/frontend/webapp/dist/index.html" ]] || die \
+    "缺少 frontend/webapp/dist/index.html；请先在 frontend/webapp 执行 npm ci && npm run build"
+
+VERSION="$(python3 - "$ROOT" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -79,45 +67,43 @@ print(m.group(1) if m else "0.0.0")
 PY
 )"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-[[ -n "$TAG" ]] || TAG="openharness-qaapp:${VERSION}-offline"
-[[ -n "$OUTPUT" ]] || OUTPUT="$ROOT/dist/qaapp-image-${VERSION}-amd64.tar.gz"
-if [[ "$REUSE_IMAGE" -eq 1 && ! -s "$OUTPUT" ]]; then
-    die "--reuse-image 指定的镜像不存在：$OUTPUT"
-fi
+STAMP="$(date +%Y%m%d-%H%M%S)"
+[[ -n "$TAG" ]] || TAG="openharness-qaapp:${VERSION}-${STAMP}"
+[[ -n "$OUTPUT" ]] || OUTPUT="$ROOT/dist/qaapp-image-${VERSION}-${STAMP}-amd64.tar.gz"
+[[ "$TAG" != "$BASE" ]] || die "输出 tag 不能等于基础镜像 tag：$BASE"
+
 STAGE="$ROOT/dist/qaapp-simple"
+info "基础镜像：$BASE"
+info "输出镜像：$TAG"
+info "版本 $VERSION / commit $COMMIT"
 
-[[ -f "$ROOT/frontend/webapp/dist/index.html" ]] || die \
-    "缺少 frontend/webapp/dist/index.html；请先在 frontend/webapp 执行 npm ci && npm run build"
+info "增量构建（--network none，不下载任何依赖）..."
+docker build \
+    --network none \
+    -f "$ROOT/deploy/Dockerfile" \
+    --build-arg "BASE_IMAGE=$BASE" \
+    --build-arg "VERSION=$VERSION" \
+    --build-arg "COMMIT=$COMMIT" \
+    -t "$TAG" \
+    "$ROOT"
 
-info "版本 $VERSION / commit $COMMIT / tag $TAG"
-info "构建机：$("$PYTHON_BIN" -V 2>&1) / 不需要 Docker"
+info "导入检查..."
+docker run --rm "$TAG" python -c "import qaapp, openharness, ohmo; print('imports ok')"
 
-if [[ -n "$FROM_IMAGE" ]]; then
-    BUILD_ARGS=(--tag "$TAG" --output "$OUTPUT" --work-dir "$WORK_DIR" --from-image "$FROM_IMAGE")
-    [[ "$CLEAN_WORK" -eq 1 ]] && BUILD_ARGS+=(--clean)
-    info "从已有镜像离线重建（保留环境/依赖，只替换代码，约 2–4 分钟）..."
-    "$PYTHON_BIN" "$ROOT/deploy/build_image.py" "${BUILD_ARGS[@]}"
-elif [[ "$REUSE_IMAGE" -eq 1 && -s "$OUTPUT" && "$REFRESH" -eq 0 ]]; then
-    info "复用已有镜像：$OUTPUT"
-else
-    BUILD_ARGS=(--tag "$TAG" --output "$OUTPUT" --work-dir "$WORK_DIR")
-    [[ "$REFRESH" -eq 1 ]] && BUILD_ARGS+=(--refresh)
-    [[ "$CLEAN_WORK" -eq 1 ]] && BUILD_ARGS+=(--clean)
-    info "开始完整构建（首次需要下载基础镜像/依赖，约 10–20 分钟）..."
-    "$PYTHON_BIN" "$ROOT/deploy/build_image.py" "${BUILD_ARGS[@]}"
-fi
-[[ -s "$OUTPUT" ]] || die "镜像未生成：$OUTPUT"
+info "导出镜像：$OUTPUT"
+mkdir -p "$(dirname "$OUTPUT")"
+docker save "$TAG" | gzip -9 > "$OUTPUT"
+[[ -s "$OUTPUT" ]] || die "镜像导出失败：$OUTPUT"
 
-info "整理最简部署目录：$STAGE"
+info "整理部署目录：$STAGE"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 ln "$OUTPUT" "$STAGE/$(basename "$OUTPUT")" 2>/dev/null || cp "$OUTPUT" "$STAGE/$(basename "$OUTPUT")"
-# 让 run.sh 的默认镜像 tag 与本次构建一致（自定义 --tag 时也能直接 ./run.sh）
+# run.sh 默认镜像 tag 与本次构建一致
 sed "s|^IMAGE=.*|IMAGE=\"\${IMAGE:-$TAG}\"|" "$ROOT/deploy/run.sh" > "$STAGE/run.sh"
 cp "$ROOT/deploy/README.md" "$STAGE/README.md"
 cp "$ROOT/docs/qaapp/QUICK_DEPLOY.zh-CN.md" "$STAGE/QUICK_DEPLOY.zh-CN.md"
 cp "$ROOT/docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md" "$STAGE/BUILD_AND_DEPLOY.zh-CN.md"
-# 部署目录里的 README 用相对链接，避免指向仓库外的 ../../
 sed -i.bak -e 's|../../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md|BUILD_AND_DEPLOY.zh-CN.md|g' \
     -e 's|../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md|BUILD_AND_DEPLOY.zh-CN.md|g' "$STAGE/README.md" 2>/dev/null || \
     sed -i '' -e 's|../../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md|BUILD_AND_DEPLOY.zh-CN.md|g' \
@@ -125,7 +111,6 @@ sed -i.bak -e 's|../../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md|BUILD_AND_DEPLOY.zh-
 rm -f "$STAGE/README.md.bak"
 chmod 755 "$STAGE/run.sh"
 chmod 644 "$STAGE/README.md" "$STAGE/QUICK_DEPLOY.zh-CN.md" "$STAGE/BUILD_AND_DEPLOY.zh-CN.md"
-
 (
     cd "$STAGE"
     if command -v sha256sum >/dev/null 2>&1; then
@@ -145,9 +130,6 @@ echo "    ├── README.md"
 echo "    ├── QUICK_DEPLOY.zh-CN.md"
 echo "    ├── BUILD_AND_DEPLOY.zh-CN.md"
 echo "    └── SHA256SUMS"
-echo ""
-echo "拷贝到内网服务器："
-echo "  scp -r $STAGE root@<server>:/root/"
 echo ""
 echo "目标机："
 echo "  cd /root/qaapp-simple"

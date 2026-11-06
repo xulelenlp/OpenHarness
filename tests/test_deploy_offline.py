@@ -1,31 +1,21 @@
-"""deploy/ 精简构建与部署脚本的轻量契约测试（不做网络下载）。"""
+"""deploy/ 精简构建与部署契约测试（不执行 Docker）。"""
 
 from __future__ import annotations
 
-import importlib.util
 import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "deploy"
-BUILD_IMAGE = DEPLOY / "build_image.py"
 BUILD_SH = DEPLOY / "build.sh"
+DOCKERFILE = DEPLOY / "Dockerfile"
 RUN_SH = DEPLOY / "run.sh"
-
-
-def _load_builder():
-    spec = importlib.util.spec_from_file_location("deploy_build_image", BUILD_IMAGE)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_deploy_layout_is_simple():
     expected = {
         "build.sh",
-        "build_image.py",
-        "constraints.txt",
+        "Dockerfile",
         "entrypoint.sh",
         "run.sh",
         "README.md",
@@ -34,59 +24,65 @@ def test_deploy_layout_is_simple():
 
 
 def test_scripts_exist_and_executable():
-    assert BUILD_SH.is_file()
-    assert RUN_SH.is_file()
-    assert BUILD_IMAGE.is_file()
-    assert os.access(BUILD_SH, os.X_OK)
-    assert os.access(RUN_SH, os.X_OK)
+    for path in (BUILD_SH, RUN_SH, DEPLOY / "entrypoint.sh"):
+        assert path.is_file(), path
+        assert os.access(path, os.X_OK), path
 
 
-def test_split_image_variants():
-    builder = _load_builder()
-    assert builder._split_image("python:3.11-bookworm") == (
-        "library/python",
-        "3.11-bookworm",
-    )
-    assert builder._split_image("library/python") == ("library/python", "latest")
-    assert builder._split_image("registry.local:5000/ns/app:tag") == (
-        "registry.local:5000/ns/app",
-        "tag",
-    )
-
-
-def test_normalize_repo():
-    builder = _load_builder()
-    assert builder._normalize_repo("python") == "library/python"
-    assert builder._normalize_repo("library/python") == "library/python"
-    assert builder._normalize_repo("ghcr.io/ns/app") == "ghcr.io/ns/app"
-
-
-def test_builder_writes_docker_save_layout():
-    text = BUILD_IMAGE.read_text(encoding="utf-8")
+def test_dockerfile_is_incremental_from_local_base():
+    text = DOCKERFILE.read_text(encoding="utf-8")
     for token in (
-        '"manifest.json"',
-        '"config.json"',
-        '"layer.tar"',
-        "rootfs",
-        "diff_ids",
-        "Entrypoint",
-        "python:3.11-bookworm",
-        "/app/deploy/entrypoint.sh",
+        "ARG BASE_IMAGE=openharness-qaapp:0.1.9-offline",
+        "FROM ${BASE_IMAGE}",
+        "COPY --chown=1000:1000 src /app/src",
+        "COPY --chown=1000:1000 qaapp /app/qaapp",
+        "COPY --chown=1000:1000 frontend/webapp/dist",
+        "COPY --chown=1000:1000 config/backend/.env_prod",
+        "USER 1000:1000",
+        'ENTRYPOINT ["/app/deploy/entrypoint.sh"]',
+    ):
+        assert token in text, token
+    assert "config/backend/.env " not in text
+
+
+def test_build_uses_docker_and_local_base_only():
+    text = BUILD_SH.read_text(encoding="utf-8")
+    for token in (
+        "docker image inspect",
+        "docker build",
+        "--network none",
+        "--build-arg \"BASE_IMAGE=$BASE\"",
+        "docker save",
+        "docker run --rm",
+        "dist/qaapp-simple",
+    ):
+        assert token in text, token
+    assert "pip install" not in text
+    assert "curl " not in text
+
+
+def test_run_script_mounts_project_config():
+    text = RUN_SH.read_text(encoding="utf-8")
+    for token in (
+        "CONFIG=",
+        "/app/config/backend:ro",
+        "/root/qaapp-data",
+        "--user 0:0",
+        "/healthz",
     ):
         assert token in text, token
 
 
-def test_builder_supports_offline_rebuild():
-    text = BUILD_IMAGE.read_text(encoding="utf-8")
-    assert "--from-image" in text
-    assert "update_app" in text
-    assert "app/vendor" in text
+def test_dockerignore_excludes_secrets_and_build_output():
+    text = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+    for token in (".git", "dist", "config/backend/.env", "**/node_modules"):
+        assert token in text, token
 
 
 def test_docs_mention_build_and_deploy():
     text = (ROOT / "docs" / "qaapp" / "BUILD_AND_DEPLOY.zh-CN.md").read_text(
         encoding="utf-8"
     )
-    assert "deploy/build.sh" in text
+    assert "./deploy/build.sh" in text
     assert "docker load" in text
     assert "config/backend/.env" in text

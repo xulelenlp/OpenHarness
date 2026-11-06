@@ -1,76 +1,69 @@
 # deploy/
 
-qaapp 的**唯一打包/部署目录**。只保留 5 个脚本/配置（另加本 README）：
+qaapp 的打包/部署目录。只保留 5 个文件：
 
 ```text
 deploy/
-├── build.sh          # 构建镜像 + 整理 dist/qaapp-simple/（不需要 Docker）
-├── build_image.py    # 下载基础镜像/依赖、组装单层镜像
-├── constraints.txt   # Python 依赖 pin
+├── build.sh          # 唯一构建入口：docker build + docker save
+├── Dockerfile        # FROM 本地基础镜像，COPY 当前代码
 ├── entrypoint.sh     # 容器入口
-└── run.sh            # 目标机启动：docker load 后直接运行
+├── run.sh            # 目标机启动
+└── README.md
 ```
 
 详细步骤见
 [`docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md`](../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md)。
 
+## 前置：导入基础镜像（只一次）
+
+```bash
+cd /root/qaapp-simple
+docker load -i qaapp-image-0.1.9-amd64.tar.gz
+docker images | grep openharness-qaapp
+```
+
+默认基础镜像 tag：`openharness-qaapp:0.1.9-offline`。
+
 ## 构建
 
 ```bash
-# 首次 / 依赖变更（构建机需要外网）
+cd /root/workspace/workspace/OpenHarness
+git pull
 ./deploy/build.sh
-
-# 日常改代码：从已有镜像离线重建（不需要外网，2–4 分钟）
-./deploy/build.sh --from-image dist/qaapp-image-0.1.9-amd64.tar.gz
-
-# 只重新整理部署目录，不重建镜像
-./deploy/build.sh --reuse-image
 ```
 
-产物：
+- 使用本地基础镜像做增量构建，`--network none`，不下载基础镜像/依赖；
+- 输出 `dist/qaapp-image-<version>-<timestamp>-amd64.tar.gz`；
+- 同时整理 `dist/qaapp-simple/`。
 
-```text
-dist/qaapp-image-<version>-amd64.tar.gz
-dist/qaapp-simple/
-├── qaapp-image-<version>-amd64.tar.gz
-├── run.sh
-├── README.md
-├── QUICK_DEPLOY.zh-CN.md
-├── BUILD_AND_DEPLOY.zh-CN.md
-└── SHA256SUMS
+自定义：
+
+```bash
+./deploy/build.sh \
+  --base openharness-qaapp:0.1.9-offline \
+  --tag openharness-qaapp:0.1.9-20261106 \
+  --output dist/qaapp-image-0.1.9-20261106-amd64.tar.gz
 ```
+
+> 输出 tag 不能等于基础镜像 tag，避免覆盖基础镜像。
 
 ## 部署
 
 ```bash
-# 目标机
 cd /root/qaapp-simple
-docker load -i qaapp-image-0.1.9-amd64.tar.gz
+docker load -i qaapp-image-<version>-<timestamp>-amd64.tar.gz
 
 # 只改项目配置里的 DB/Redis
 vi /root/workspace/workspace/OpenHarness/config/backend/.env
 
-# 启动
 ./run.sh
 ```
 
 默认：配置 `/root/workspace/workspace/OpenHarness/config/backend`，数据
 `/root/qaapp-data`，端口 `8787`，容器名 `qaapp`。
 
-## 文件说明
+## 说明
 
-| 文件 | 作用 |
-| --- | --- |
-| `build.sh` | 构建入口；支持完整构建、`--from-image` 离线重建、`--reuse-image` |
-| `build_image.py` | 拉取基础镜像/wheels/Node/字体，组装单层 docker-save 镜像 |
-| `constraints.txt` | 运行期依赖锁定 |
-| `entrypoint.sh` | 容器启动脚本（`python -m qaapp webapp run`） |
-| `run.sh` | 目标机最简启动；挂载项目配置 + 数据目录 |
-
-## 注意
-
-- 构建机不需要 Docker；目标机只需要 Docker。
-- 目标机不需要外网、不需要 `docker build`、不部署 MySQL/Redis。
-- 配置（尤其 DB/Redis）永远只改项目 `config/backend/.env`，不需要重建镜像。
-- 详细构建/部署/排障见
-  [`BUILD_AND_DEPLOY.zh-CN.md`](../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md)。
+- 基础镜像 = 环境（Python/依赖/Node/字体），只需导入一次；请保留 tar。
+- 增量构建只更新代码；依赖/Node/字体变更需要新的基础镜像。
+- DB/Redis 永远只改目标机 `config/backend/.env`，不需要重建镜像。

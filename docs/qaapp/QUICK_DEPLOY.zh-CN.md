@@ -5,7 +5,7 @@
 >
 > 不执行 `docker build`、不安装 Python/Node、不部署 MySQL/Redis、不需要外网。
 >
-> 如何从源码构建镜像见
+> 如何构建镜像见
 > [`BUILD_AND_DEPLOY.zh-CN.md`](BUILD_AND_DEPLOY.zh-CN.md)。
 
 ---
@@ -14,17 +14,15 @@
 
 ```text
 /root/qaapp-simple/
-├── qaapp-image-0.1.9-amd64.tar.gz    # 镜像，约 501 MB
-├── run.sh                            # 启动脚本
+├── qaapp-image-<version>-<timestamp>-amd64.tar.gz
+├── run.sh
 ├── README.md
 ├── QUICK_DEPLOY.zh-CN.md
 ├── BUILD_AND_DEPLOY.zh-CN.md
 └── SHA256SUMS
 ```
 
-镜像 tag：`openharness-qaapp:0.1.9-offline`。
-
-镜像内已包含代码、Python 依赖、Node、ripgrep、Noto CJK 字体、前端 `dist`。
+镜像里已包含代码、Python 依赖、Node、ripgrep、Noto CJK 字体、前端 `dist`。
 **不含** DB/Redis/`.env`/历史会话。
 
 ---
@@ -60,8 +58,7 @@ REDIS_PORT=...
 REDIS_PASSWORD=...
 ```
 
-模型 Key、外部 Agent 地址也在这个文件；沿用现有配置即可。
-改完不需要重建镜像。
+模型 Key、外部 Agent 地址也在这里。改完不需要重建镜像。
 
 ---
 
@@ -69,7 +66,7 @@ REDIS_PASSWORD=...
 
 ```bash
 cd /root/qaapp-simple
-docker load -i qaapp-image-0.1.9-amd64.tar.gz
+docker load -i qaapp-image-<version>-<timestamp>-amd64.tar.gz
 docker images | grep openharness-qaapp
 ```
 
@@ -108,15 +105,11 @@ docker run -d --name qaapp --restart unless-stopped \
   -p 8787:8787 \
   -v /root/workspace/workspace/OpenHarness/config/backend:/app/config/backend:ro \
   -v /root/qaapp-data:/data \
-  openharness-qaapp:0.1.9-offline
+  openharness-qaapp:<tag>
 ```
 
-说明：
-
-- `--user 0:0`：项目 `.env` 是 root 0600，用 root 读最简单。
-  非 root：`chown -R 1000:1000 config/backend`，去掉该参数。
-- `config/backend` 只读挂载，容器不改配置。
-- `/data` 持久化会话、users.json、附件、日志。
+> `--user 0:0` 用于读取项目里 root 0600 的 `.env`。
+> 非 root：`chown -R 1000:1000 config/backend`，去掉该参数。
 
 ---
 
@@ -173,18 +166,16 @@ docker rm -f qaapp
 5. 新 `data` 是全新数据；旧 `~/.ohmo` 历史不在里面。
 6. `.env` 含密钥，按密钥文件管理。
 7. 8787 被旧进程占用时先停旧进程，或 `HOST_PORT=18790`。
-8. 镜像加载后约 1.47 GB。
+8. 基础镜像约 1.47 GB；增量镜像另计。
 
 ---
 
 ## 9. 本次实测
 
 - 目标机：CentOS 7.9、Docker 26.1.4。
-- `docker load` 成功。
-- 用项目现有 `config/backend/.env` 直接运行：healthz/首页/静态资源 200。
+- 基础镜像加载后直接挂项目配置运行：healthz/首页/静态资源 200。
 - admin 登录成功；模型 SSE 返回 `OK`。
 - MySQL 142 张表、Redis 36351 keys 正常。
-- 生产 8787 旧进程未动；测试容器已清理。
 
 ---
 
@@ -192,5 +183,5 @@ docker rm -f qaapp
 
 - 目标机启动：[`deploy/run.sh`](../../deploy/run.sh)
 - 构建入口：[`deploy/build.sh`](../../deploy/build.sh)
-- 镜像组装：[`deploy/build_image.py`](../../deploy/build_image.py)
+- 增量 Dockerfile：[`deploy/Dockerfile`](../../deploy/Dockerfile)
 - 构建+部署完整文档：[`BUILD_AND_DEPLOY.zh-CN.md`](BUILD_AND_DEPLOY.zh-CN.md)
