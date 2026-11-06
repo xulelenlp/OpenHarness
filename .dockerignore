@@ -24,3 +24,4 @@ config/backend/.env_dev
 config/frontend/.env
 config/frontend/.env_dev
 .DS_Store
+config/backend/env_files
