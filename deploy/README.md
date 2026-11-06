@@ -17,8 +17,7 @@ deploy/
 ## 前置：导入基础镜像（只一次）
 
 ```bash
-cd /root/qaapp-simple
-docker load -i qaapp-base-image.tar.gz
+docker load -i /root/qaapp-base-image.tar.gz
 docker images | grep openharness-qaapp
 ```
 
