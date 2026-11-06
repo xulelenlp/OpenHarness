@@ -1,11 +1,20 @@
 # deploy/
 
-qaapp 的 Docker 镜像打包与离线部署资产。完整说明见
+qaapp 的 Docker 镜像打包与离线部署资产。
+
+> **只想 load 镜像 + 改配置就部署？** 看
+> [`docs/qaapp/QUICK_DEPLOY.zh-CN.md`](../docs/qaapp/QUICK_DEPLOY.zh-CN.md)
+> 和 [`deploy/simple/`](simple/)。下面的 bundle/install 是高级一键安装方案，日常不需要。
+
+完整说明见
 [`docs/qaapp/OFFLINE_PACKAGING.zh-CN.md`](../docs/qaapp/OFFLINE_PACKAGING.zh-CN.md)（逐步操作手册）
 和 [`docs/qaapp/IMAGE_DEPLOY.zh-CN.md`](../docs/qaapp/IMAGE_DEPLOY.zh-CN.md)（设计说明）。
 
 ```text
 deploy/
+├── simple/                  # 最简部署：镜像 tar + run.sh（推荐）
+│   ├── run.sh               # docker load 后直接挂载项目配置运行
+│   └── README.md
 ├── build.sh                 # 构建镜像 + 组装部署包（在 Docker 构建机执行）
 ├── build_offline.sh         # 无 Docker 构建机：生成单层离线镜像 + 部署包
 ├── offline/

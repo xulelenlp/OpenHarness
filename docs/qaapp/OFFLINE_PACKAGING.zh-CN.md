@@ -1,5 +1,9 @@
 # qaapp 离线镜像打包与部署操作手册
 
+> **如果只想“load 镜像 + 改项目配置”**，直接看
+> [`QUICK_DEPLOY.zh-CN.md`](QUICK_DEPLOY.zh-CN.md)；本文是完整构建/高级方案
+> （包含一键安装包、升级、备份、排障），不是日常最短路径。
+>
 > 适用场景：**构建机有外网、目标服务器在内网且不能访问外网**，目标机只安装
 > Docker + Docker Compose v2，不执行 `docker build`，不下载 pip/npm/apt/yum 依赖。
 >
