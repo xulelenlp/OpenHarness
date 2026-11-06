@@ -4,7 +4,9 @@
 > DB/Redis**，然后运行。不执行 `docker build`、不安装 Python/Node、不部署
 > MySQL/Redis、不需要外网。
 >
-> 更完整的构建原理、排障、备份/升级说明见
+> 如何从源码构建镜像 / 离线重建 / 完整排障，见
+> [`BUILD_AND_DEPLOY.zh-CN.md`](BUILD_AND_DEPLOY.zh-CN.md)。
+> 更完整的构建原理、备份/升级说明见
 > [`OFFLINE_PACKAGING.zh-CN.md`](OFFLINE_PACKAGING.zh-CN.md)；
 > `deploy/bundle/install.sh` 是“一键安装包”方案，**日常不需要**。
 

@@ -79,5 +79,5 @@ docker rm -f qaapp
 - 外网/多入口访问时，把 `QAAPP_CORS_ORIGINS` 改成实际来源；HTTPS 反代时设
   `QAAPP_AUTH_TRUST_PROXY=true`。
 - 单实例；不能 `--scale`。
-- 更完整的配置、依赖和排障见
-  [`docs/qaapp/QUICK_DEPLOY.zh-CN.md`](../../docs/qaapp/QUICK_DEPLOY.zh-CN.md)。
+- 如何构建镜像、离线重建、完整排障见
+  [`docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md`](../../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md)。

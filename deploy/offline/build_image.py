@@ -521,11 +521,10 @@ def install_vendor(rootfs: Path, wheels: Path, args: argparse.Namespace) -> None
         shutil.rmtree(cache, ignore_errors=True)
 
 
-def install_app(rootfs: Path, args: argparse.Namespace, wheels: Path) -> None:
+def copy_app_payload(rootfs: Path, args: argparse.Namespace) -> None:
+    """Copy repository source/dist/config into the existing /app (keep /app/vendor)."""
     app = rootfs / "app"
-    if app.exists():
-        shutil.rmtree(app)
-    app.mkdir(parents=True)
+    app.mkdir(parents=True, exist_ok=True)
     ignore = shutil.ignore_patterns(
         "__pycache__", "*.pyc", "*.pyo", ".DS_Store", ".git", "node_modules",
         ".venv", ".conda", ".conda-pkgs", "dist",
@@ -537,9 +536,13 @@ def install_app(rootfs: Path, args: argparse.Namespace, wheels: Path) -> None:
     dist_dst = app / "frontend" / "webapp" / "dist"
     if not (dist_src / "index.html").is_file():
         die("frontend/webapp/dist 不存在；请先构建前端")
+    if dist_dst.exists():
+        shutil.rmtree(dist_dst)
     shutil.copytree(dist_src, dist_dst)
     config_src = REPO_ROOT / "config" / "backend"
     config_dst = app / "config" / "backend"
+    if config_dst.exists():
+        shutil.rmtree(config_dst)
     config_dst.mkdir(parents=True)
     for name in (
         "agents.json",
@@ -551,7 +554,6 @@ def install_app(rootfs: Path, args: argparse.Namespace, wheels: Path) -> None:
         shutil.copy2(config_src / name, config_dst / name)
     for name in ("README.md", "LICENSE", "pyproject.toml"):
         shutil.copy2(REPO_ROOT / name, app / name)
-    install_vendor(rootfs, wheels, args)
     for name, module in (("abcqa", "qaapp"), ("abc", "openharness"), ("abcag", "ohmo")):
         write_text(
             rootfs / "usr/local/bin" / name,
@@ -572,6 +574,70 @@ def install_app(rootfs: Path, args: argparse.Namespace, wheels: Path) -> None:
             ]
         ),
     )
+
+
+def install_app(rootfs: Path, args: argparse.Namespace, wheels: Path) -> None:
+    """Full build: reset /app, copy source, install Linux wheels into /app/vendor."""
+    app = rootfs / "app"
+    if app.exists():
+        shutil.rmtree(app)
+    app.mkdir(parents=True)
+    copy_app_payload(rootfs, args)
+    install_vendor(rootfs, wheels, args)
+
+
+def update_app(rootfs: Path, args: argparse.Namespace) -> None:
+    """Offline rebuild from an existing image: replace code, keep /app/vendor."""
+    app = rootfs / "app"
+    if not (app / "vendor").is_dir():
+        die("--from-image 的 rootfs 中没有 /app/vendor；请用完整构建")
+    for name in (
+        "src", "ohmo", "qaapp", "skills", "plugins", "scripts", "deploy",
+        "frontend", "config", "README.md", "LICENSE", "pyproject.toml", "BUILD_INFO",
+    ):
+        _remove(app / name)
+    copy_app_payload(rootfs, args)
+
+
+def extract_image_rootfs(image: Path, work: Path) -> Path:
+    """Extract docker-save image's single layer.tar into a writable rootfs."""
+    rootfs = work / "rootfs"
+    if rootfs.exists():
+        shutil.rmtree(rootfs)
+    rootfs.mkdir(parents=True)
+    layer_path = work / "from-image-layer.tar"
+    info(f"展开已有镜像 layer：{image}")
+    with tarfile.open(image, "r:gz") as outer:
+        try:
+            member = outer.getmember("layer.tar")
+        except KeyError:
+            die(f"{image} 不是预期的单层镜像（缺少 layer.tar）")
+        source = outer.extractfile(member)
+        if source is None:
+            die("无法读取 layer.tar")
+        with layer_path.open("wb") as target:
+            shutil.copyfileobj(source, target)
+    with tarfile.open(layer_path, "r") as tar:
+        members = tar.getmembers()
+
+        def _filter(member: tarfile.TarInfo, _path: str):
+            return member.replace(
+                uid=os.getuid(), gid=os.getgid(), uname="", gname=""
+            )
+
+        for member in members:
+            if member.isdev():
+                continue
+            try:
+                tar.extract(member, path=rootfs, filter=_filter)
+            except TypeError:
+                try:
+                    tar.extract(member, path=rootfs)
+                except (OSError, PermissionError) as exc:
+                    warn(f"跳过 {member.name}：{exc}")
+            except (OSError, PermissionError) as exc:
+                warn(f"跳过 {member.name}：{exc}")
+    return rootfs
 
 
 def install_system(
@@ -728,6 +794,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tag", default="")
     parser.add_argument("--output", default="")
     parser.add_argument("--work-dir", default=str(Path(tempfile.gettempdir()) / "openharness-offline"))
+    parser.add_argument("--from-image", default="", help="从已有镜像重建：保留环境/依赖，只替换代码")
     parser.add_argument("--base-image", default=DEFAULT_BASE_IMAGE)
     parser.add_argument("--registry", default=DEFAULT_REGISTRY)
     parser.add_argument("--auth-url", default=DEFAULT_AUTH_URL)
@@ -755,24 +822,41 @@ def main(argv: list[str] | None = None) -> int:
     output = Path(args.output).expanduser().resolve()
 
     info(f"版本 {args.version} / commit {args.commit} / tag {args.tag}")
-    base_rootfs = ensure_base(args, work)
-    wheels = ensure_wheels(args, work)
-    node = ensure_node(args, work)
-    fonts = ensure_fonts(args, work)
-    rg = ensure_rg(args, work)
 
-    rootfs = work / "rootfs"
-    if rootfs.exists():
-        shutil.rmtree(rootfs)
-    info("复制基础 rootfs（约 1 GB，请耐心等待）...")
-    shutil.copytree(base_rootfs, rootfs, symlinks=True)
-    install_app(rootfs, args, wheels)
-    install_system(rootfs, node=node, rg=rg, fonts=fonts, args=args)
+    source_image = Path(args.from_image).expanduser().resolve() if args.from_image else None
+    if source_image is not None:
+        if not source_image.is_file():
+            die(f"--from-image 不存在：{source_image}")
+        if args.refresh:
+            warn("--from-image 模式忽略 --refresh（不下载任何依赖）")
+        rootfs = extract_image_rootfs(source_image, work)
+        update_app(rootfs, args)
+    else:
+        base_rootfs = ensure_base(args, work)
+        wheels = ensure_wheels(args, work)
+        node = ensure_node(args, work)
+        fonts = ensure_fonts(args, work)
+        rg = ensure_rg(args, work)
+
+        rootfs = work / "rootfs"
+        if rootfs.exists():
+            shutil.rmtree(rootfs)
+        info("复制基础 rootfs（约 1 GB，请耐心等待）...")
+        shutil.copytree(base_rootfs, rootfs, symlinks=True)
+        install_app(rootfs, args, wheels)
+        install_system(rootfs, node=node, rg=rg, fonts=fonts, args=args)
 
     layer = work / "layer.tar"
     build_layer(rootfs, layer)
     info(f"layer 大小：{layer.stat().st_size / 1048576:.1f} MB")
-    build_image(layer, output, args)
+
+    # 输入和输出是同一个文件时，先写临时文件再替换，避免读一半被覆盖。
+    target = output
+    if source_image is not None and source_image == output:
+        target = work / "qaapp-image-new.tar.gz"
+    build_image(layer, target, args)
+    if target != output:
+        os.replace(target, output)
     info(f"完成：{output}（{output.stat().st_size / 1048576:.1f} MB）")
     info(f"docker load -i {output}")
     return 0

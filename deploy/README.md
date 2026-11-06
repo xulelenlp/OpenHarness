@@ -2,8 +2,8 @@
 
 qaapp 的 Docker 镜像打包与离线部署资产。
 
-> **只想 load 镜像 + 改配置就部署？** 看
-> [`docs/qaapp/QUICK_DEPLOY.zh-CN.md`](../docs/qaapp/QUICK_DEPLOY.zh-CN.md)
+> **从源码构建镜像 + 内网部署？** 看
+> [`docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md`](../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md)
 > 和 [`deploy/simple/`](simple/)。下面的 bundle/install 是高级一键安装方案，日常不需要。
 
 完整说明见
