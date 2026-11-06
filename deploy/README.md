@@ -18,7 +18,7 @@ deploy/
 
 ```bash
 cd /root/qaapp-simple
-docker load -i qaapp-image-0.1.9-amd64.tar.gz
+docker load -i qaapp-base-image.tar.gz
 docker images | grep openharness-qaapp
 ```
 

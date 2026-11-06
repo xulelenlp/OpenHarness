@@ -68,7 +68,7 @@ dist/
 ```bash
 mkdir -p /root/qaapp-simple
 cd /root/qaapp-simple
-docker load -i qaapp-image-0.1.9-amd64.tar.gz
+docker load -i qaapp-base-image.tar.gz
 docker images | grep openharness-qaapp
 ```
 
@@ -323,7 +323,7 @@ tar czf /root/qaapp-backup-$(date +%F).tar.gz \
 
 | 现象 | 处理 |
 | --- | --- |
-| `基础镜像不在本地` | `docker load -i qaapp-image-0.1.9-amd64.tar.gz`；或 `--base <tag>` |
+| `基础镜像不在本地` | `docker load -i qaapp-base-image.tar.gz`；或 `--base <tag>` |
 | `frontend/webapp/dist/index.html` 不存在 | 先 `npm ci && npm run build` |
 | `docker build` 报 `--network none` | 确认 Docker 支持；本构建不需要网络 |
 | 输出 tag 不能等于基础镜像 | 换 `--tag`；不要覆盖基础镜像 |

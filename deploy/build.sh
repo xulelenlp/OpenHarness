@@ -2,7 +2,7 @@
 # 在打包服务器上，用本地已导入的基础镜像做增量构建。
 #
 # 前置（只需一次）：
-#   docker load -i qaapp-image-0.1.9-amd64.tar.gz
+#   docker load -i qaapp-base-image.tar.gz
 #   # 默认基础镜像 tag：openharness-qaapp:0.1.9-offline
 #
 # 用法：
@@ -60,7 +60,7 @@ command -v docker >/dev/null 2>&1 || die "未找到 docker"
 docker info >/dev/null 2>&1 || die "Docker daemon 不可用"
 docker image inspect "$BASE" >/dev/null 2>&1 || die \
     "基础镜像不在本地：$BASE
-先在打包服务器执行：docker load -i qaapp-image-0.1.9-amd64.tar.gz
+先在打包服务器执行：docker load -i qaapp-base-image.tar.gz
 如果导入后的 tag 不同，用 --base <tag> 指定。"
 
 [[ "$ENV_NAME" == "dev" || "$ENV_NAME" == "pro" ]] || die \
