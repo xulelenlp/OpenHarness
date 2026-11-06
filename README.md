@@ -116,7 +116,6 @@ python -m qaapp cleanup --help     # dry-run by default; --apply to delete
 - [qaapp deployment and API](qaapp/README.md)
 - [qaapp image build & intranet deploy](docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md)
 - [qaapp quick deploy (load image + config)](docs/qaapp/QUICK_DEPLOY.zh-CN.md)
-- [qaapp Docker image deployment (offline bundle)](docs/qaapp/IMAGE_DEPLOY.zh-CN.md)
 - [qaapp documentation index](docs/qaapp/README.zh-CN.md)
 - [qaapp architecture and extension contracts](docs/qaapp/ARCHITECTURE.zh-CN.md)
 - [Documentation index](docs/README.md)

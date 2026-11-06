@@ -11,10 +11,8 @@
 
 > **文档导航**
 > - 部署、配置、运维与排障：[`docs/qaapp/DEPLOYMENT.zh-CN.md`](../docs/qaapp/DEPLOYMENT.zh-CN.md)
-> - Docker 镜像打包与离线迁移：[`docs/qaapp/IMAGE_DEPLOY.zh-CN.md`](../docs/qaapp/IMAGE_DEPLOY.zh-CN.md)
 > - 镜像构建与内网部署：[`docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md`](../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md)
 > - 最简部署（load 镜像 + 改配置）：[`docs/qaapp/QUICK_DEPLOY.zh-CN.md`](../docs/qaapp/QUICK_DEPLOY.zh-CN.md)
-> - 离线打包与部署逐步手册：[`docs/qaapp/OFFLINE_PACKAGING.zh-CN.md`](../docs/qaapp/OFFLINE_PACKAGING.zh-CN.md)
 > - HTTP / SSE / WebSocket API：[`docs/qaapp/API.zh-CN.md`](../docs/qaapp/API.zh-CN.md)
 > - 架构、分层与扩展契约：[`docs/qaapp/ARCHITECTURE.zh-CN.md`](../docs/qaapp/ARCHITECTURE.zh-CN.md)
 > - 业务库口径与实测结构：[`docs/qaapp/DATABASE.zh-CN.md`](../docs/qaapp/DATABASE.zh-CN.md)

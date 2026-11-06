@@ -38,8 +38,8 @@ import urllib.request
 from pathlib import Path
 from typing import NoReturn
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CONSTRAINTS = REPO_ROOT / "deploy" / "docker" / "constraints.txt"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CONSTRAINTS = REPO_ROOT / "deploy" / "constraints.txt"
 
 DEFAULT_REGISTRY = "https://docker.m.daocloud.io"
 DEFAULT_AUTH_URL = "https://m.daocloud.io/auth/token"
@@ -741,7 +741,7 @@ def build_image(layer: Path, output: Path, args: argparse.Namespace) -> None:
                 "QAAPP_STATIC_DIR=/app/frontend/webapp/dist",
                 "MPLCONFIGDIR=/data/home/.cache/matplotlib",
             ],
-            "Entrypoint": ["/app/deploy/docker/entrypoint.sh"],
+            "Entrypoint": ["/app/deploy/entrypoint.sh"],
             "Cmd": [],
             "User": "1000:1000",
             "WorkingDir": "/app",
