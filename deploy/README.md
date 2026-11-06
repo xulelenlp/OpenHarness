@@ -68,8 +68,11 @@ docker load -i qaapp-image-<version>-<timestamp>-amd64.tar.gz
 ```
 
 `run.sh` 默认挂载同目录的 `config/backend`；构建时已经选好 dev/pro，
-所以目标机不需要再改 `.env`。只有后续要换库/改密码时才编辑包内
-`config/backend/.env` 后 `docker restart qaapp`。
+所以目标机不需要再改 `.env`。
+
+Docker 中存在多个 `openharness-qaapp:<version>-<timestamp>` 镜像时，`run.sh`
+自动选择 `CreatedAt` 最新的部署镜像（排除 `*-offline` 基础镜像）；已有容器
+镜像不是最新时会自动重建。回滚用 `IMAGE=openharness-qaapp:<old-tag> ./run.sh`。
 
 默认数据目录 `/root/qaapp-data`，端口 `8787`，容器名 `qaapp`。
 

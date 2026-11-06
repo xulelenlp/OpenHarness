@@ -123,7 +123,7 @@ done
 chmod 600 "$STAGE/config/backend/.env"
 chmod 644 "$STAGE/config/backend/"*.json "$STAGE/config/backend/.env_prod"
 # run.sh 默认镜像 tag 与本次构建一致
-sed "s|^IMAGE=.*|IMAGE=\"\${IMAGE:-$TAG}\"|" "$ROOT/deploy/run.sh" > "$STAGE/run.sh"
+sed "s|^DEFAULT_IMAGE=.*|DEFAULT_IMAGE=\"$TAG\"|" "$ROOT/deploy/run.sh" > "$STAGE/run.sh"
 cp "$ROOT/deploy/README.md" "$STAGE/README.md"
 cp "$ROOT/docs/qaapp/QUICK_DEPLOY.zh-CN.md" "$STAGE/QUICK_DEPLOY.zh-CN.md"
 cp "$ROOT/docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md" "$STAGE/BUILD_AND_DEPLOY.zh-CN.md"

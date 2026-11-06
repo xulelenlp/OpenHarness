@@ -63,6 +63,9 @@ docker load -i qaapp-image-<version>-<timestamp>-amd64.tar.gz
 docker images | grep openharness-qaapp
 ```
 
+如果有多个 `openharness-qaapp:<version>-<timestamp>` 镜像，`run.sh` 会自动
+选择 `CreatedAt` 最新的那个部署镜像（排除 `*-offline` 基础镜像），不需要手动改 tag。
+
 > 这是 gzip 压缩的 docker save 包，**不要**先 `tar xzf`；`docker load -i` 直接读。
 
 ---

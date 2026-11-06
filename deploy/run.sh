@@ -12,7 +12,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE="${IMAGE:-openharness-qaapp:0.1.9-offline}"
+DEFAULT_IMAGE="openharness-qaapp:0.1.9-offline"
+IMAGE="${IMAGE:-}"
 NAME="${NAME:-qaapp}"
 CONFIG="${CONFIG:-$SCRIPT_DIR/config/backend}"
 DATA="${DATA:-/root/qaapp-data}"
@@ -22,17 +23,45 @@ FORCE="${FORCE:-0}"
 die() { echo "错误：$*" >&2; exit 1; }
 info() { echo "[INFO] $*"; }
 
+# 选最新的部署镜像（排除基础镜像 *-offline）；没有部署镜像时回退基础镜像。
+latest_image() {
+    local tag
+    tag="$(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' \
+        | grep 'openharness-qaapp:' \
+        | grep -v -- '-offline$' \
+        | sort -r | head -1 | cut -f2- || true)"
+    if [[ -z "$tag" ]]; then
+        tag="$(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' \
+            | grep 'openharness-qaapp:' \
+            | sort -r | head -1 | cut -f2- || true)"
+    fi
+    printf '%s' "$tag"
+}
+
 command -v docker >/dev/null 2>&1 || die "未找到 docker"
+docker info >/dev/null 2>&1 || die "Docker daemon 不可用"
+
+if [[ -z "$IMAGE" ]]; then
+    IMAGE="$(latest_image)"
+    [[ -n "$IMAGE" ]] || IMAGE="$DEFAULT_IMAGE"
+fi
+info "使用镜像：$IMAGE"
+
 command -v curl >/dev/null 2>&1 || die "未找到 curl（用于健康检查）"
 [[ -f "$CONFIG/.env" ]] || die "找不到配置文件：$CONFIG/.env"
 docker image inspect "$IMAGE" >/dev/null 2>&1 || die "镜像不存在：$IMAGE（先 docker load -i ...）"
 
 if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
+    CURRENT_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$NAME" 2>/dev/null || true)"
     if [[ "$FORCE" == "1" ]]; then
         info "删除已存在的容器 $NAME ..."
         docker rm -f "$NAME" >/dev/null
+    elif [[ -n "$CURRENT_IMAGE" && "$CURRENT_IMAGE" != "$IMAGE" ]]; then
+        info "容器当前镜像：$CURRENT_IMAGE"
+        info "最新镜像：$IMAGE，自动重建 $NAME ..."
+        docker rm -f "$NAME" >/dev/null
     else
-        die "容器 $NAME 已存在；升级/重建请用 FORCE=1 ./run.sh"
+        die "容器 $NAME 已存在（镜像 $CURRENT_IMAGE）；如需重建请用 FORCE=1 ./run.sh"
     fi
 fi
 
@@ -53,7 +82,7 @@ info "等待服务就绪..."
 for _ in $(seq 1 60); do
     if curl -fsS "http://127.0.0.1:${HOST_PORT}/healthz" >/dev/null 2>&1; then
         echo ""
-        echo "qaapp 已启动"
+        echo "$NAME 已启动"
         echo "  访问：http://<服务器IP>:${HOST_PORT}"
         echo "  配置：$CONFIG/.env（构建时已选好；修改后 docker restart $NAME）"
         echo "  数据：$DATA"

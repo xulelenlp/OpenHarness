@@ -67,6 +67,10 @@ def test_run_script_mounts_project_config():
     text = RUN_SH.read_text(encoding="utf-8")
     for token in (
         "SCRIPT_DIR",
+        "DEFAULT_IMAGE",
+        "latest_image",
+        "CreatedAt",
+        "CURRENT_IMAGE",
         "CONFIG=",
         "/app/config/backend:ro",
         "/root/qaapp-data",

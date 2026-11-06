@@ -215,6 +215,15 @@ cd /root/qaapp-simple
 `run.sh` 默认挂载同目录的 `config/backend`；构建时已经选好 dev/pro，
 **不需要再改 `.env`**。
 
+如果 Docker 里存在多个 `openharness-qaapp:<version>-<timestamp>` 镜像，`run.sh`
+会自动选择 `CreatedAt` 最新的部署镜像（排除 `*-offline` 基础镜像），不需要手动改 tag。
+如果已有 `qaapp` 容器且镜像不是最新，会自动重建；镜像已是最新时用
+`FORCE=1 ./run.sh` 强制重建。回滚：
+
+```bash
+IMAGE=openharness-qaapp:<old-tag> ./run.sh
+```
+
 默认：
 
 - 配置：`/root/qaapp-simple/config/backend`（打包时已选好）
