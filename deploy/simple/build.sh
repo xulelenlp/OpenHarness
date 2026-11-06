@@ -64,9 +64,6 @@ fi
 if [[ "$REUSE_IMAGE" -eq 1 && -n "$FROM_IMAGE" ]]; then
     die "--reuse-image 与 --from-image 不能同时使用"
 fi
-if [[ "$REUSE_IMAGE" -eq 1 && ! -s "$OUTPUT" ]]; then
-    die "--reuse-image 指定的镜像不存在：$OUTPUT"
-fi
 if [[ -n "$FROM_IMAGE" && ! -f "$FROM_IMAGE" ]]; then
     die "--from-image 不存在：$FROM_IMAGE"
 fi
@@ -83,6 +80,9 @@ PY
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 [[ -n "$TAG" ]] || TAG="openharness-qaapp:${VERSION}-offline"
 [[ -n "$OUTPUT" ]] || OUTPUT="$ROOT/dist/qaapp-image-${VERSION}-amd64.tar.gz"
+if [[ "$REUSE_IMAGE" -eq 1 && ! -s "$OUTPUT" ]]; then
+    die "--reuse-image 指定的镜像不存在：$OUTPUT"
+fi
 STAGE="$ROOT/dist/qaapp-simple"
 
 [[ -f "$ROOT/frontend/webapp/dist/index.html" ]] || die \
@@ -115,8 +115,13 @@ ln "$OUTPUT" "$STAGE/$(basename "$OUTPUT")" 2>/dev/null || cp "$OUTPUT" "$STAGE/
 sed "s|^IMAGE=.*|IMAGE=\"\${IMAGE:-$TAG}\"|" "$ROOT/deploy/simple/run.sh" > "$STAGE/run.sh"
 cp "$ROOT/deploy/simple/README.md" "$STAGE/README.md"
 cp "$ROOT/docs/qaapp/QUICK_DEPLOY.zh-CN.md" "$STAGE/QUICK_DEPLOY.zh-CN.md"
+cp "$ROOT/docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md" "$STAGE/BUILD_AND_DEPLOY.zh-CN.md"
+# 部署目录里的 README 用相对链接，避免指向仓库外的 ../../
+sed -i.bak 's|../../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md|BUILD_AND_DEPLOY.zh-CN.md|g' "$STAGE/README.md" 2>/dev/null || \
+    sed -i '' 's|../../docs/qaapp/BUILD_AND_DEPLOY.zh-CN.md|BUILD_AND_DEPLOY.zh-CN.md|g' "$STAGE/README.md"
+rm -f "$STAGE/README.md.bak"
 chmod 755 "$STAGE/run.sh"
-chmod 644 "$STAGE/README.md" "$STAGE/QUICK_DEPLOY.zh-CN.md"
+chmod 644 "$STAGE/README.md" "$STAGE/QUICK_DEPLOY.zh-CN.md" "$STAGE/BUILD_AND_DEPLOY.zh-CN.md"
 
 (
     cd "$STAGE"
