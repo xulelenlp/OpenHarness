@@ -11,6 +11,8 @@
 - 目标机无外网（推荐）：[`deploy/build_offline.sh`](../../deploy/build_offline.sh)（构建机不需要 Docker）；
 - 构建机有 Docker：[`deploy/build.sh`](../../deploy/build.sh)。
 
+逐步操作手册见 [`OFFLINE_PACKAGING.zh-CN.md`](OFFLINE_PACKAGING.zh-CN.md)。
+
 部署包安装入口：`install.sh`。目标机只要求 Docker Engine + Docker Compose v2，
 不需要外网、不需要 `docker build`、不需要 pip/npm/apt/yum。
 

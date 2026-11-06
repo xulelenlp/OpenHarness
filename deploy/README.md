@@ -1,7 +1,8 @@
 # deploy/
 
 qaapp 的 Docker 镜像打包与离线部署资产。完整说明见
-[`docs/qaapp/IMAGE_DEPLOY.zh-CN.md`](../docs/qaapp/IMAGE_DEPLOY.zh-CN.md)。
+[`docs/qaapp/OFFLINE_PACKAGING.zh-CN.md`](../docs/qaapp/OFFLINE_PACKAGING.zh-CN.md)（逐步操作手册）
+和 [`docs/qaapp/IMAGE_DEPLOY.zh-CN.md`](../docs/qaapp/IMAGE_DEPLOY.zh-CN.md)（设计说明）。
 
 ```text
 deploy/

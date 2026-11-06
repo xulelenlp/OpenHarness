@@ -7,6 +7,7 @@ qaapp 是面向客户 APP/Web 端的问答产品服务，基于 OpenHarness 与 
 | [快速开始 / CLI](../../qaapp/README.md) | 5 步启动、命令速查、测试 |
 | [部署与运维](DEPLOYMENT.zh-CN.md) | 环境、配置、前端部署、安全、排障 |
 | [镜像化部署](IMAGE_DEPLOY.zh-CN.md) | Docker 镜像打包、离线部署包、外部 MySQL/Redis、升级回滚 |
+| [离线打包与部署操作手册](OFFLINE_PACKAGING.zh-CN.md) | 从构建机打包到内网 CentOS 部署的逐步命令、验收、排障 |
 | [HTTP API](API.zh-CN.md) | REST / SSE / WebSocket 契约 |
 | [架构与扩展](ARCHITECTURE.zh-CN.md) | 分层、生命周期、扩展契约、Checklist |
 | [先对齐再执行与选项式澄清验收](ASK_USER_OPTIONS.zh-CN.md) | 三类任务的开工对齐、选项式确认案例、排障与自检 |
