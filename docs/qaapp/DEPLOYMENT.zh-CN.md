@@ -2,7 +2,8 @@
 
 本文覆盖环境要求、配置体系、前端部署、运维安全与常见问题。快速开始与 CLI 见
 [`qaapp/README.md`](../../qaapp/README.md)；架构与扩展见
-[`ARCHITECTURE.zh-CN.md`](ARCHITECTURE.zh-CN.md)。
+[`ARCHITECTURE.zh-CN.md`](ARCHITECTURE.zh-CN.md)。需要 Docker 镜像打包、离线迁移与
+外部 MySQL/Redis 部署时，直接看 [`IMAGE_DEPLOY.zh-CN.md`](IMAGE_DEPLOY.zh-CN.md)。
 
 ---
 

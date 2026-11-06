@@ -1,0 +1,40 @@
+# qaapp 单容器部署（MySQL/Redis 使用外部现有实例）。
+# 所有变量来自同目录 stack.env（install.sh 生成）；不要在这里写死密钥。
+name: qaapp
+
+services:
+  qaapp:
+    image: ${QAAPP_IMAGE:?QAAPP_IMAGE 未设置，请先运行 install.sh}
+    container_name: qaapp
+    init: true
+    restart: unless-stopped
+    pull_policy: never
+    ports:
+      - "${QAAPP_BIND:-0.0.0.0}:${QAAPP_HOST_PORT:-8787}:8787"
+    environment:
+      OHMO_WORKSPACE: /data
+      QAAPP_CONFIG_DIR: /app/config/backend
+      QAAPP_STATIC_DIR: /app/frontend/webapp/dist
+      QAAPP_HOST: 0.0.0.0
+      QAAPP_PORT: "8787"
+      TZ: Asia/Shanghai
+      HOME: /data/home
+      MPLCONFIGDIR: /data/home/.cache/matplotlib
+      QAAPP_DEFAULT_ADMIN_PASSWORD: ${QAAPP_DEFAULT_ADMIN_PASSWORD:-}
+      QAAPP_DEFAULT_VIEWER_PASSWORD: ${QAAPP_DEFAULT_VIEWER_PASSWORD:-}
+    volumes:
+      - ${QAAPP_CONFIG_DIR_HOST:-./config/backend}:/app/config/backend:ro
+      - ${QAAPP_DATA_DIR_HOST:-./data}:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
